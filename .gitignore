@@ -8,3 +8,4 @@ compiler.opt
 # built effects: attach them to a release instead of committing them
 dist/*.ZDL
 release/*.zip
+tests/_gen/

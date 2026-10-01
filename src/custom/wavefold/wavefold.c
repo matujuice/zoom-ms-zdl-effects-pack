@@ -95,18 +95,19 @@ static inline float clamp01(float x)
     return x;
 }
 
-/* square root without libm: exponent-halving guess, three Newton steps (x > 0) */
-WF_ALWAYS_INLINE(wf_sqrt)
-static inline float wf_sqrt(float x)
+/* 1 / sqrt(x) without libm and without a divide (x > 0): the classic exponent trick for a
+ * first guess, then three Newton steps  y = y * (1.5 - 0.5 * x * y * y). */
+WF_ALWAYS_INLINE(wf_rsqrt)
+static inline float wf_rsqrt(float x)
 {
     union { float f; unsigned int u; } c;
-    float y;
+    float y, h = 0.5f * x;
     c.f = x;
-    c.u = (c.u >> 1) + 0x1fbd1df5u;
+    c.u = 0x5f3759dfu - (c.u >> 1);
     y = c.f;
-    y = 0.5f * (y + x / y);
-    y = 0.5f * (y + x / y);
-    y = 0.5f * (y + x / y);
+    y = y * (1.5f - h * y * y);
+    y = y * (1.5f - h * y * y);
+    y = y * (1.5f - h * y * y);
     return y;
 }
 
@@ -190,7 +191,7 @@ static inline void wf_process(WfState *s, const WfParams *P, float *buf, int n)
         ein += WF_ENV * (in * in - ein);
         elp += WF_ENV * (lp * lp - elp);
         if (ein > 1e-9f && elp > 1e-12f) {               /* hold the gain in silence */
-            float t = wf_sqrt(ein / elp);
+            float t = ein * wf_rsqrt(ein * elp);        /* = sqrt(ein / elp), no divide */
             if (t < 0.002f) t = 0.002f;
             if (t > 8.0f)   t = 8.0f;
             comp += WF_LVL * (t - comp);
