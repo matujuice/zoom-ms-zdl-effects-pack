@@ -1,0 +1,69 @@
+{
+  "effect_name": "EuGate",
+  "comment": "EuGate - Euclidean rhythm gate that chops the sound into a repeating pattern in time with your tempo, for synths, vocals, samples and drum machines. Steps = pattern length (1 to 64 sixteenths, so odd lengths make polymeters); Notes = how many notes play, spread evenly (Euclidean) over the steps; Shift moves the pattern; Swing delays only the weak 16ths; Reset restarts the pattern at every new note or when the pedal is turned on; Gap = small silence between two notes that touch; Soft = how soft the edges are; Tempo is the BPM; Mix is dry/wet.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 488,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Notes",
+      "max": 63,
+      "default": 4,
+      "comment": "How many notes play out of the steps, spread as evenly as possible. Shows 1 to 64. At or above the number of steps every step plays. Default 5."
+    },
+    {
+      "name": "Steps",
+      "max": 63,
+      "default": 15,
+      "comment": "Pattern length in 16th-note steps, shows 1 to 64. The pattern repeats after this many steps, so any length other than 16 (or 32, 64) runs against the bar: polymeters. Default 16."
+    },
+    {
+      "name": "Shift",
+      "max": 63,
+      "default": 0,
+      "comment": "Starts the pattern later by this many steps (0 to 63; it wraps around, so with 1 bar 16 is the same as 0)."
+    },
+    {
+      "name": "Swing",
+      "max": 100,
+      "default": 0,
+      "comment": "Shuffle. Delays only the weak 16ths (the 2nd and 4th 16th of each beat). 0 = straight, 100 = very shuffled."
+    },
+    {
+      "name": "Reset",
+      "max": 2,
+      "default": 0,
+      "comment": "What restarts the pattern at step 1. OFF = nothing, the pattern keeps running. NOTE = each time a note starts after a moment of silence. PEDAL = when you turn the effect on with the footswitch. Default OFF."
+    },
+    {
+      "name": "Gap",
+      "max": 50,
+      "default": 15,
+      "comment": "Small silence between two notes that touch. When a note is directly followed by another note, the sound is turned off for the last part of the first one, so you hear two notes. Shown as a percent of one step, so it scales with the tempo: 0 = no gap (touching notes join), 50 = half a step. Notes with a rest after them are not changed. When every step is a note, it chops each step. Default 15."
+    },
+    {
+      "name": "Soft",
+      "max": 100,
+      "default": 35,
+      "comment": "How soft the start and end of each note are. 0 = sharp chop, 100 = smooth swell. Scales with the tempo. Default 35."
+    },
+    {
+      "name": "Tempo",
+      "max": 240,
+      "default": 120,
+      "comment": "Speed in BPM, read straight off the knob so the pedal's own number is the tempo (40 to 240). Every step is a 16th note, so 120 = 125 ms per step. Default 120."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "comment": "Dry/wet. 100 = only the chopped sound, 0 = only the original. The gaps between notes are silent in the wet sound."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_EuGate",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

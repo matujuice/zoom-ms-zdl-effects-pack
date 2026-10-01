@@ -1,0 +1,45 @@
+{
+  "effect_name": "WaveFold",
+  "comment": "WaveFold - Buchla 259 style wavefolder, mono, after Esqueda/Pontynen/Valimaki/Parker (DAFx-2017). Five parallel folding stages plus the direct path (the paper's eqs. 13-18) bend the signal back on itself more and more as Drive pushes it past their thresholds (0.6, 1.8, 2.99, 4.08, 5.46 V). Symm adds an offset before the folder (even harmonics) and a DC blocker removes it afterwards. Tone is a one-pole low-pass like the paper's. The output loudness is automatically matched to the input (Level 50 = matched). No oversampling, so high notes at high Drive alias.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 487,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Drive",
+      "max": 100,
+      "default": 40,
+      "comment": "Input gain into the folder, 0.2x at 0 up to 15.2x at 100 (0.2 + 15*(n/100)^2), read as volts: the five folding stages start at 0.6, 1.8, 2.99, 4.08 and 5.46 V. Default 40."
+    },
+    {
+      "name": "Symm",
+      "max": 100,
+      "default": 50,
+      "comment": "Symmetry. Screen shows -50..+50, 0 = symmetric. Away from 0 an offset of up to +-2 V is added before the folder, which adds even harmonics; a DC blocker removes the offset afterwards. Default 50 = 0."
+    },
+    {
+      "name": "Tone",
+      "max": 100,
+      "default": 60,
+      "comment": "One-pole low-pass after the fold (the paper uses about 1.3 kHz). Coefficient 0.03 + 0.97*(n/100)^2: about 200 Hz at 0, about 2.5 kHz at 60, open at 100. Default 60."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "comment": "Wet output level. 50 = the wet signal has the same loudness as the input (automatic level match), 0 = silent, 100 = +6 dB."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "comment": "Dry/wet."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_Wavefold",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

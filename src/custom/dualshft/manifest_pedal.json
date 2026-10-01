@@ -1,0 +1,69 @@
+{
+  "effect_name": "DualShft",
+  "comment": "DualShft - tempo-synced modulated dual pitch shifter (mono). Two granular pitch-shift voices (-24..+24 st each, with tenths of a semitone between -1 and +1, two read taps per voice with a triangle crossfade), each with its own free echo time from 12 ms to 1 s, plus one tempo-synced LFO (triangle / square / random / stepped random / sine / rise / fall) that bends both voices in opposite directions by up to +-12 semitones. No feedback. On-screen text, live delay changes and patch reload confirmed on hardware.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 480,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Ptch1",
+      "max": 66,
+      "default": 49,
+      "comment": "Voice 1 pitch. Screen 0..66 shows -24..-1 semitones, then tenths -0.9..-0.1, 0 (no shift), +0.1..+0.9, then +1..+24. Default 49 = +7."
+    },
+    {
+      "name": "Ptch2",
+      "max": 66,
+      "default": 19,
+      "comment": "Voice 2 pitch. Screen 0..66 shows -24..-1 semitones, then tenths -0.9..-0.1, 0 (no shift), +0.1..+0.9, then +1..+24. Default 19 = -5."
+    },
+    {
+      "name": "Dly1",
+      "max": 100,
+      "default": 70,
+      "comment": "Voice 1 echo time, free (not tempo synced). ms = 12 + 0.0988*screen^2: screen 0 = 12ms, 50 = 259ms, 70 = 496ms, 100 = 1.00s. The screen shows the exact time. Default 70 = 496ms."
+    },
+    {
+      "name": "Dly2",
+      "max": 100,
+      "default": 50,
+      "comment": "Voice 2 echo time, same law as Dly1. Default 50 = 259ms."
+    },
+    {
+      "name": "Tempo",
+      "max": 240,
+      "default": 120,
+      "comment": "BPM for the LFO, read straight off the knob so the screen number IS the tempo. Clamped to 40..240 in the DSP (0..39 act as 40). The LFO restarts whenever this number changes. The delays do not use it."
+    },
+    {
+      "name": "Div",
+      "max": 16,
+      "default": 8,
+      "comment": "LFO length, one LFO cycle per note value. Screen text: 0 4bar, 1 3bar, 2 2bar, 3 1.5b, 4 1bar, 5 1/2., 6 1/2, 7 1/4., 8 1/4, 9 1/8., 10 1/8, 11 1/8T, 12 1/16, 13 1/16T, 14 1/32, 15 1/32T, 16 1/64. Default 8 = 1/4."
+    },
+    {
+      "name": "Depth",
+      "max": 80,
+      "default": 29,
+      "comment": "LFO swing in semitones, one direction. Screen 0 = no LFO. 1..70 = a gentle curve from 0.005 to 2.00 semitones (29 = 0.43, 48 = exactly 1.00, 70 = exactly 2.00). 71..80 = whole semitones 3, 4 ... 12. Voice 2 always moves opposite to voice 1. Default 29 = 0.43."
+    },
+    {
+      "name": "Shape",
+      "max": 6,
+      "default": 0,
+      "comment": "LFO shape. Screen text: 0 Tri, 1 Sqr, 2 Rand (smooth sine-like glide between random peaks and valleys), 3 Step (random sample and hold, one hop per cycle), 4 Sine, 5 Rise (ramp up), 6 Fall (ramp down). Voice 2 always moves opposite to voice 1."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 50,
+      "comment": "Dry/wet."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_DualShft",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

@@ -1,0 +1,69 @@
+{
+  "effect_name": "DubSiren",
+  "comment": "DubSiren - classic analogue-style dub siren (rounded square oscillator with linear FM, shaped and square LFOs, Wail / Fast / Slow / Laser modes, foot-pedal trigger) feeding its own tape-style dub echo with wow and flutter. The input passes through untouched. Mono. Defaults give a classic dancehall two-tone siren: Fast, G#4 and B5, short burst, warm echo.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 485,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Trig",
+      "max": 1,
+      "default": 1,
+      "comment": "Trigger: how the FOOT PEDAL (the effect's on/off footswitch) triggers the siren. 0 Hold (sounds while the effect is on, releases when off, echo rings out), 1 Pulse (each OFF -> ON press = one ~0.6 s burst, the ON -> OFF press does nothing). The footswitch latches, so only on/off is visible, not 'held down'."
+    },
+    {
+      "name": "Mode",
+      "max": 3,
+      "default": 1,
+      "comment": "Siren-style LFO mode: 0 Wail (shaped uneven triangle, 15 semitones), 1 Fast two-tone (square LFO, 2x Rate), 2 Slow two-tone (square LFO, 0.5x Rate), 3 Laser (falling ramp that repeats)."
+    },
+    {
+      "name": "Pitch",
+      "max": 100,
+      "default": 48,
+      "comment": "Base frequency, 110 Hz..1760 Hz exponential (4 octaves). Default 48 = G#4 (415 Hz), the low note of a classic two-tone siren."
+    },
+    {
+      "name": "Rate",
+      "max": 112,
+      "default": 67,
+      "comment": "LFO speed. 0 = Man: the LFO stops and the trigger fires a pitch envelope (Pulse drops, Hold climbs). 1..100 = free speed, 0.15 Hz..15 Hz exponential (default 67 = about 3.4 Hz, the classic two-tone wobble). 101..112 = synced to the Tempo knob: the time of one whole LFO cycle as a note value: 4bar, 2bar, 1bar, 1/2. (dotted), 1/2, 1/4., 1/4, 1/8., 1/8, 1/8T (triplet), 1/16, 1/32. Fast still runs twice as fast as the note value and Slow half as fast, as in the free range."
+    },
+    {
+      "name": "Depth",
+      "max": 100,
+      "default": 34,
+      "comment": "FM depth: f = f0*(1+4*Depth/100*LFO). Default 34 = about B5 at the top with default Pitch (a classic two-tone siren). Applies to every mode, Man included."
+    },
+    {
+      "name": "Vol",
+      "max": 100,
+      "default": 50,
+      "comment": "Siren level (linear, 0.3 x full-scale square at 100, so about -16 dBFS at the default 50). The echo is fed after this."
+    },
+    {
+      "name": "Time",
+      "max": 100,
+      "default": 40,
+      "comment": "Echo time, ms = 50 + 0.095*screen^2 (50ms..1.00s), shown on screen. Default 40 = 202 ms, one LFO cycle at the default Rate. Changes glide like tape. Never synced to Tempo."
+    },
+    {
+      "name": "Fdbk",
+      "max": 125,
+      "default": 70,
+      "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
+    },
+    {
+      "name": "Tempo",
+      "max": 240,
+      "default": 120,
+      "comment": "Speed in BPM, read straight off the knob (40 to 240; below 40 reads as 40). It only matters when Rate is set to a note value (the top of its range, 101..112). Default 120."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_DubSiren",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

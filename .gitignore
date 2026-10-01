@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.obj
+*_params.h
+linker.cmd
+compiler.opt
+.DS_Store
+# built effects: attach them to a release instead of committing them
+dist/*.ZDL
+release/*.zip
