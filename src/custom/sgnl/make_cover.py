@@ -3,7 +3,10 @@
 Concept (agreed with Luca, 2026-10-02): the title S.GN_L in blocky letters with corners
 clipped by one pixel, centred in the art rows 0..34. It was full width (27 px tall) at
 first; Luca asked for it in line with the other covers, so it is now 19 px tall (SCALE M,
-the default; SG_SCALE=L or S picks the full-width or a 15 px version). Behind
+the default; SG_SCALE=L or S picks the full-width or a 15 px version). Under it, a row of
+phone signal bars stands for the packet stream (SG_EXTRA=bars, the default): groups of four
+rising bars, kept, half lost, lost, reversed, corrupted and replayed. SG_EXTRA=packets,
+wave or readout are the other ideas tried; SG_EXTRA= (empty) leaves the title alone. Behind
 the "." and the "_" stand sparse dotted ghosts of the I and the A the signal lost (the
 "." is the foot of the I that survived), so it reads SIGNAL. The damage: the top of the
 L's stem stuck and repeated sideways (the second copy dithered), the top of the S lifted
@@ -51,7 +54,7 @@ G = {
 }
 DROP = {}                        # the underscore sits on the baseline with the others
 TX = (128 - (5 * GW + DOTW + 5 * LGAP)) // 2      # centred
-EXTRA = os.environ.get("SG_EXTRA", "")
+EXTRA = os.environ.get("SG_EXTRA", "bars")         # "" = title only
 TY = 2 if EXTRA else (35 - GH) // 2               # top when something sits under it
 
 
@@ -241,6 +244,39 @@ def extra_packets(c):
                 if t == "K" or (t == "R" and (xx + yy) % 2 == 0) or (t == "L" and edge and (xx + yy) % 2 == 0):
                     c.px(xx, yy)
         x += w + gap
+
+
+def extra_bars(c):
+    """Packets drawn as phone signal bars, in groups of four rising bars (one packet each):
+    arrived (solid), half lost (top two bars dotted, like a weak phone signal), lost (only
+    the empty slots on the baseline), reversed (falling), corrupted (wrong heights, broken
+    and slipped) and replayed (a dithered copy)."""
+    plan = ("K", "H", "L", "K", "V", "C", "R")
+    bw, gap, ggap, base = 3, 1, 3, 32
+    hs = (2, 4, 6, 8)
+    width = len(plan) * (4 * (bw + gap) - gap) + (len(plan) - 1) * ggap
+    x = (W - width) // 2
+    for g, t in enumerate(plan):
+        heights = hs[::-1] if t == "V" else hs
+        for i, h in enumerate(heights):
+            if t == "C":                                   # corrupted: wrong heights, slipped
+                h = (5, 8, 3, 6)[i]
+            for yy in range(base - h + 1, base + 1):
+                dx = 1 if (t == "C" and i == 1 and yy < base - 3) else 0
+                for xx in range(x, x + bw):
+                    on = True
+                    if t == "L":
+                        on = yy == base and xx != x + 1
+                    elif t == "H":
+                        on = i < 2 or (xx + yy) % 2 == 0
+                    elif t == "R":
+                        on = (xx + yy) % 2 == 0
+                    elif t == "C":
+                        on = not (i == 2 and yy == base - 1) and not (i == 0 and yy == base - 3)
+                    if on:
+                        c.px(xx + dx, yy)
+            x += bw + gap
+        x += ggap - gap
 
 
 def extra_wave(c):
