@@ -110,8 +110,10 @@ def build():
         for x in range(2, 124):
             if crisp[y][x] and not crisp[y + 1][x + 2] and (x + y) % 2 == 0:
                 c.pixels[y + 1][x + 2] = 1
-    # a few single-row slices on the lips, nudged 2-3 px (the title stays clean:
-    # sliced, it read badly)
+    # a few single-row slices, nudged 2-3 px on the lips and only 1 px on the
+    # title (3 px made CHORAL hard to read)
+    shift_rows(TEXT_Y + 4, TEXT_Y + 4, 1)
+    shift_rows(TEXT_Y + 10, TEXT_Y + 10, -1)
     shift_rows(21, 21, 3)
     shift_rows(29, 29, -3)
     # short dropouts
