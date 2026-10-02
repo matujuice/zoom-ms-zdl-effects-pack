@@ -125,11 +125,45 @@ int main(void)
         if (sz == 100 && best < 44 * 20) { puts("  FAIL: Edge 100 fades too short at Size 100"); fails++; }
     }
 
+    /* 4c. RND picks every Fill style; LATE plays older packets; REVRS and GARBL make sound */
+    {
+        float u[9] = {70, 30, 0, 7, 30, 0, 0, 0, 100};
+        int seen[7] = {0}, older = 0, lates = 0; long t = 0;
+        setup(&P, u);
+        for (int k = 0; k < 20 * 44100 / 8; k++) {
+            int was = S.lost;
+            for (int i = 0; i < 8; i++) b[i] = sig(t + i);
+            t += 8;
+            sg_process(&S, &P, b, 8);
+            if (S.lost && !was) {
+                int m = S.late ? 6 : S.rev ? 4 : S.wgarb > 0.0f ? 5 : S.wnoise > 0.0f ? 3 : S.wfade > 0.0f ? 2 : S.wrep > 0.0f ? 1 : 0;
+                seen[m]++;
+            }
+            if (S.lost && S.late && S.left == P.pkb - 1) { lates++; if (S.src != ((S.cur + 3) & 3)) older++; }
+        }
+        printf("RND outages per style: %d %d %d %d %d %d %d; LATE packets from an older one: %d of %d\n",
+               seen[0], seen[1], seen[2], seen[3], seen[4], seen[5], seen[6], older, lates);
+        for (int m = 0; m < 7; m++) if (seen[m] == 0) { puts("  FAIL: RND never picks a style"); fails++; break; }
+        if (lates == 0 || older * 2 < lates) { puts("  FAIL: LATE does not play older packets"); fails++; }
+        for (int fill = 4; fill <= 5; fill++) {
+            float v[9] = {100, 30, 0, (float)fill, 100, 0, 0, 0, 100}, e = 0.0f;
+            setup(&P, v);
+            for (int k = 0; k < 44100 / 8; k++) {
+                for (int i = 0; i < 8; i++) b[i] = sig(t + i);
+                t += 8;
+                sg_process(&S, &P, b, 8);
+                if (k > 2000) for (int i = 0; i < 8; i++) e += b[i] * b[i];
+            }
+            printf("Fill %d at Loss 100: rms %.3f\n", fill, sqrtf(e / ((44100 / 8 - 2001) * 8.0f)));
+            if (e < 1.0f) { puts("  FAIL: fill is silent"); fails++; }
+        }
+    }
+
     /* 5. every mode, extreme knobs, noise input: no NaN, level bounded */
     {
         unsigned int r = 1;
         float worst = 0.0f;
-        for (int fill = 0; fill <= 3; fill++)
+        for (int fill = 0; fill <= 7; fill++)
         for (int line = 0; line <= 3; line++)
         for (int ex = 0; ex < 2; ex++) {
             float u[9] = {ex ? 100.0f : 30.0f, ex ? 0.0f : 100.0f, ex ? 100.0f : 60.0f, (float)fill,
@@ -175,7 +209,7 @@ int main(void)
     {
         char s[8]; int sz[] = {0, 23, 40, 100};
         for (int i = 0; i < 4; i++) { ZDL_GetLabel_1((unsigned)sz[i], s); printf("Size %3d -> %s\n", sz[i], s); }
-        for (unsigned v = 0; v < 4; v++) { char a[8], c[8]; ZDL_GetLabel_3(v, a); ZDL_GetLabel_6(v, c); printf("%u: Fill %s, Line %s\n", v, a, c); }
+        for (unsigned v = 0; v < 8; v++) { char a[8], c[8] = ""; ZDL_GetLabel_3(v, a); if (v < 4) ZDL_GetLabel_6(v, c); printf("%u: Fill %s, Line %s\n", v, a, c); }
     }
     (void)knobs_def;
     return fails ? 1 : 0;

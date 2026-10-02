@@ -81,7 +81,7 @@ New, not yet tested on the pedal. The sound is cut into packets and some of them
 | Loss | 0..100 | How many packets are lost. 0 = clean line, 100 = about 85 %. |
 | Size | 2 ms..100 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
 | Codec | 0..100 | Codec quality going down. Above 50 the first packet after a silence is lost too, like a call clipping the start of a word. |
-| Fill | GAP, REPT, FADE, NOISE | What replaces a lost packet: silence, the last packet replayed, the replay dying away, or hiss at the level of the sound. |
+| Fill | GAP, REPT, FADE, NOISE, REVRS, GARBL, LATE, RND | What replaces a lost packet: silence, the last packet replayed, the replay dying away, hiss at the level of the sound, the last packet backwards, corrupted data (boosted random slices, a digital screech), an older packet out of order so phrases shuffle, or a random one of these per outage. |
 | Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
 | Jump | 0..100 | How often the quality suddenly drops for a few packets and comes back. |
 | Line | HIFI, VOIP, PHONE, WALKY | Band of the line: full and untouched, 200 Hz..5 kHz with a steep low cut and a boxy headset bump at 1.5 kHz, 300 Hz..3.4 kHz, or 500 Hz..2.5 kHz with some drive. |
