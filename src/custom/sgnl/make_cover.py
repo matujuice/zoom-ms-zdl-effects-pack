@@ -51,7 +51,8 @@ G = {
 }
 DROP = {}                        # the underscore sits on the baseline with the others
 TX = (128 - (5 * GW + DOTW + 5 * LGAP)) // 2      # centred
-TY = (35 - GH) // 2                               # centred in the art rows 0..34
+EXTRA = os.environ.get("SG_EXTRA", "")
+TY = 2 if EXTRA else (35 - GH) // 2               # top when something sits under it
 
 
 def Y(f):
@@ -154,7 +155,7 @@ def damage(art, sp):
     placed = 0
     while placed < 10:                                   # glitch lines: short dashes, XORed
         x, y = next(r) % W, next(r) % AH
-        if SCALE != "L" and not (TX - 6 <= x <= W - TX + 2 and TY - 5 <= y <= TY + GH + 4):
+        if SCALE != "L" and not (TX - 6 <= x <= W - TX + 2 and TY - 5 <= y <= TY + GH + (1 if EXTRA else 4)):
             continue                                     # stay near the title
         n = 2 + next(r) % 5                              # 2..6 px long
         if na - 2 <= x + n and x <= nb + 2:
@@ -227,6 +228,57 @@ def ghosts(art, sp):
             yy += ROWH[r]
 
 
+def extra_packets(c):
+    """A stream of packets under the title: kept ones solid, lost ones dotted outlines,
+    one replayed (hatched copy of the one before)."""
+    pat = "KKLKKKLLKRKKL"            # K kept, L lost, R replayed
+    w, gap, y0, y1 = 6, 3, 25, 30
+    x = (W - (len(pat) * (w + gap) - gap)) // 2
+    for t in pat:
+        for yy in range(y0, y1 + 1):
+            for xx in range(x, x + w):
+                edge = yy in (y0, y1) or xx in (x, x + w - 1)
+                if t == "K" or (t == "R" and (xx + yy) % 2 == 0) or (t == "L" and edge and (xx + yy) % 2 == 0):
+                    c.px(xx, yy)
+        x += w + gap
+
+
+def extra_wave(c):
+    """A sine wave cut into packets: some missing, one replayed, one bit-crushed."""
+    import math
+    x0, x1, yc, amp, seg = 6, 121, 28, 4, 8
+    plan = "kkLkkRkCkLLkkRk"
+    prev = None
+    for x in range(x0, x1 + 1):
+        k = (x - x0) // seg
+        t = plan[k % len(plan)]
+        if t == "L":
+            prev = None
+            continue
+        ph = x - seg if t == "R" else x                   # R: the piece before, again
+        v = math.sin(ph * 2 * math.pi / 24.0)
+        if t == "C":
+            v = round(v * 1.5) / 1.5                      # few bits: steps
+        y = yc - round(v * amp)
+        if prev is not None and (x - x0) % seg != 0:      # joined inside a packet
+            c.vline(x, min(prev, y), max(prev, y))
+        else:
+            c.px(x, y)
+        prev = y
+
+
+def extra_readout(c):
+    """A phone-style readout: signal bars with the top ones lost, and a status line."""
+    c.draw_text("-87DBM  LOST 7/12", 8, 26, scale=1, spacing=1)
+    bx = 100
+    for i, h in enumerate((2, 4, 6, 8)):
+        x = bx + i * 4
+        for yy in range(31 - h, 32):
+            for xx in range(x, x + 3):
+                if i < 2 or (xx + yy) % 2 == 0:
+                    c.px(xx, yy)
+
+
 def build():
     c = Canvas()
     art, sp = title()
@@ -237,6 +289,8 @@ def build():
         for x in range(W):
             if art[y][x]:
                 c.px(x, y)
+    if EXTRA:
+        globals()["extra_" + EXTRA](c)
     knob_row(c)
     leak(c)
     return c
