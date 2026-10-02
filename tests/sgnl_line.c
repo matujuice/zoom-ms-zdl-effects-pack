@@ -74,7 +74,7 @@ int main(void)
 
     /* 3. REPT at about 5 ms: during an outage the output repeats with the packet period */
     {
-        float u[9] = {100, 23, 0, 1, 100, 0, 0, 0, 100};   /* Size 23 -> ~5 ms */
+        float u[9] = {100, 26, 0, 1, 100, 0, 0, 0, 100};   /* Size 26 -> ~5 ms */
         static float out[44100];
         int pkb, per, ok = 0, checked = 0; long t = 0;
         setup(&P, u);
@@ -208,7 +208,7 @@ int main(void)
 
     /* 7. labels */
     {
-        char s[8]; int sz[] = {0, 23, 40, 100};
+        char s[8]; int sz[] = {0, 26, 40, 100};
         for (int i = 0; i < 4; i++) { ZDL_GetLabel_1((unsigned)sz[i], s); printf("Size %3d -> %s\n", sz[i], s); }
         for (unsigned v = 0; v < 8; v++) { char a[8], c[8] = ""; ZDL_GetLabel_3(v, a); if (v < 4) ZDL_GetLabel_6(v, c); printf("%u: Fill %s, Line %s\n", v, a, c); }
     }

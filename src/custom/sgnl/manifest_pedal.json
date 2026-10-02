@@ -2,7 +2,7 @@
   "effect_name": "SGNL",
   "display_name": "S.GN_L",
   "display_name_comment": "S.GN_L is the name the pedal shows (descriptor name entry only). effect_name SGNL is used for the file (SGNL.ZDL), the C symbol and the SONAME, because '.' is not legal in a C name. If the pedal shows the name wrongly or refuses the effect, delete display_name and rebuild: the effect is then simply called SGNL.",
-  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss, REVRS backwards, GARBL corrupted data, LATE out-of-order packets, RND a random one per outage, never GARBL); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is a DJ-style dry/wet crossfade.",
+  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (1 to 500 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss, REVRS backwards, GARBL corrupted data, LATE out-of-order packets, RND a random one per outage, never GARBL); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is a DJ-style dry/wet crossfade.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 489,
@@ -20,7 +20,7 @@
       "name": "Size",
       "max": 100,
       "default": 40,
-      "comment": "Packet length, 2 ms to 100 ms (shown in ms). Short packets turn losses into grit and, with Fill REPT, a robotic buzz at the packet rate (5 ms = about 200 Hz); long packets make syllables and notes drop out or stutter. Default 40 (about 10 ms)."
+      "comment": "Packet length, 1 ms to 500 ms (shown in ms). Short packets turn losses into grit and, with Fill REPT, a robotic buzz at the packet rate (5 ms = about 200 Hz); long packets make syllables and notes drop out or stutter, and at the top whole half-second chunks repeat or vanish. Default 40 (about 12 ms)."
     },
     {
       "name": "Codec",

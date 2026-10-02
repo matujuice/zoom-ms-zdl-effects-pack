@@ -2,7 +2,7 @@
  * sgnl.c - "S.GN_L": a broken digital line (packet loss + codec damage), mono
  *
  * Sounds like a VoIP call on bad Wi-Fi, a DAB radio losing lock or a stream that keeps
- * buffering. The sound is cut into PACKETS (Size, 2..100 ms) and some of them never
+ * buffering. The sound is cut into PACKETS (Size, 1..500 ms) and some of them never
  * arrive (Loss, Burst). What fills a hole is the character of the effect (Fill):
  *   GAP     a hard little silence
  *   REPT    the last packet that arrived is replayed over and over: a 5 ms packet becomes
@@ -27,7 +27,7 @@
  *   lost ones filled -> Edge crossfade between the live packet and the fill -> Mix
  *
  * PACKETS
- *   A packet is a whole number of 8-sample blocks (2 ms = 11 blocks, 100 ms = 551), so
+ *   A packet is a whole number of 8-sample blocks (1 ms = 6 blocks, 500 ms = 2756), so
  *   every decision is made once per block, where the knobs are read. The Size knob is
  *   latched at the start of each packet.
  *   Loss uses a two-state (Gilbert-Elliott) model, like real networks: GOOD and BAD.
@@ -37,12 +37,12 @@
  *   the same overall share. (Above about Loss 70 the outages get longer even at Burst 0:
  *   a high share of single losses would need more than every other packet lost.)
  *   The packet being played is recorded; when a packet is lost, the last one that
- *   arrived is what REPT, FADE, REVRS and GARBL use. Four 100 ms buffers take turns
- *   (70 KB): the one being recorded and the last three good packets (for LATE).
+ *   arrived is what REPT, FADE, REVRS and GARBL use. Four 500 ms buffers take turns
+ *   (353 KB of the at least 705 KB arena): the one being recorded and the last three good packets (for LATE).
  *
  * KNOBS (screen values)
  *   0 Loss  0..100  how many packets are lost
- *   1 Size  0..100  packet length, 2..100 ms (log); shown in ms
+ *   1 Size  0..100  packet length, 1..500 ms (log); shown in ms
  *   2 Codec 0..100  codec quality going down (0 = clean)
  *   3 Fill  0..7    GAP / REPT / FADE / NOISE / REVRS / GARBL / LATE / RND: what replaces
  *                   a lost packet
@@ -74,9 +74,9 @@
 #define SG_CODE_SECTION(fn)
 #endif
 
-#define SG_MAGIC      0x53474E33u        /* "SGN3": change whenever SgState changes */
-#define SG_PK_MAX     4416               /* samples: 100 ms rounded up to whole blocks */
-#define SG_PKB_MAX    552                /* SG_PK_MAX / 8 */
+#define SG_MAGIC      0x53474E34u        /* "SGN4": change whenever SgState changes */
+#define SG_PK_MAX     22056              /* samples: 500 ms rounded up to whole blocks */
+#define SG_PKB_MAX    2757               /* SG_PK_MAX / 8 */
 #define SG_MS_PER_BLK 0.18140590f        /* 8 / 44.1: one block in ms */
 #define SG_FADE_K     0.99924f           /* FADE: replay gain per sample, about 30 ms */
 #define SG_QUIET_LVL  0.003f             /* below this the input counts as silent */
@@ -175,7 +175,7 @@ static inline float sg_rsqrt(float x)
     return y;
 }
 
-/* 2^x for x in [0, 8): whole octaves by doubling, the fraction by a polynomial */
+/* 2^x for x in [0, 9): whole octaves by doubling, the fraction by a polynomial */
 SG_ALWAYS_INLINE(sg_exp2)
 static inline float sg_exp2(float x)
 {
@@ -203,11 +203,11 @@ static inline unsigned int sg_rand16(SgState *s)
     return (s->rng >> 8) & 0xFFFFu;
 }
 
-/* Size 0..100 -> packet length in blocks: 2 ms * 50^(Size/100) */
+/* Size 0..100 -> packet length in blocks: 1 ms * 500^(Size/100) */
 SG_ALWAYS_INLINE(sg_size_blocks)
 static inline int sg_size_blocks(float size_ui)
 {
-    float smp = 88.2f * sg_exp2(size_ui * 0.0564386f);     /* 5.64386 = log2(50) */
+    float smp = 44.1f * sg_exp2(size_ui * 0.0896578f);     /* 8.96578 = log2(500) */
     int b = (int)(smp * 0.125f + 0.5f);
     if (b < 1) b = 1;
     if (b > SG_PKB_MAX) b = SG_PKB_MAX;

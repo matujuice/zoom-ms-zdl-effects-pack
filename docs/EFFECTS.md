@@ -79,7 +79,7 @@ New, not yet tested on the pedal. The sound is cut into packets and some of them
 | Knob | Range | What it does |
 |---|---|---|
 | Loss | 0..100 | How many packets are lost. 0 = clean line, 100 = about 85 %. |
-| Size | 2 ms..100 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
+| Size | 1 ms..500 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
 | Codec | 0..100 | Codec quality going down. Above 50 the first packet after a silence is lost too, like a call clipping the start of a word. |
 | Fill | GAP, REPT, FADE, NOISE, REVRS, GARBL, LATE, RND | What replaces a lost packet: silence, the last packet replayed, the replay dying away, hiss at the level of the sound, the last packet backwards, corrupted data (boosted random slices, a digital screech), an older packet out of order so phrases shuffle, or a random one of these per outage (never GARBL). |
 | Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
