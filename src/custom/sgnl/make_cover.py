@@ -1,7 +1,9 @@
 """Generate src/airwindows/common/covers/SGNL.json (128x64 cover override) for S.GN_L.
 
-Concept (agreed with Luca, 2026-10-02): the title S.GN_L runs across the whole screen in
-blocky letters with corners clipped by one pixel, centred in the art rows 0..34. Behind
+Concept (agreed with Luca, 2026-10-02): the title S.GN_L in blocky letters with corners
+clipped by one pixel, centred in the art rows 0..34. It was full width (27 px tall) at
+first; Luca asked for it in line with the other covers, so it is now 19 px tall (SCALE M,
+the default; SG_SCALE=L or S picks the full-width or a 15 px version). Behind
 the "." and the "_" stand sparse dotted ghosts of the I and the A the signal lost (the
 "." is the foot of the I that survived), so it reads SIGNAL. The damage: the top of the
 L's stem stuck and repeated sideways (the second copy dithered), the top of the S lifted
@@ -30,8 +32,15 @@ LABELS = ("LOSS", "SIZE", "CODEC")
 AH = 35                          # art rows 0..34
 
 # --- wide title glyphs on a 5 x 7 grid ---------------------------------------------
-COLW = (5, 3, 4, 3, 5)           # 20 px wide
-ROWH = (4, 4, 4, 3, 4, 4, 4)     # 27 px tall (same height as the first draft)
+import os
+SCALE = os.environ.get("SG_SCALE", "M")
+if SCALE == "L":                 # the first, full-width version (27 px tall)
+    COLW, ROWH, DOTW, LGAP = (5, 3, 4, 3, 5), (4, 4, 4, 3, 4, 4, 4), 5, 4
+elif SCALE == "S":               # 15 px tall
+    COLW, ROWH, DOTW, LGAP = (3, 2, 2, 2, 3), (2, 2, 2, 3, 2, 2, 2), 3, 3
+else:                            # 19 px tall: a bit bigger than the other titles
+    COLW, ROWH, DOTW, LGAP = (4, 2, 3, 2, 4), (3, 3, 2, 3, 2, 3, 3), 4, 4
+GW, GH = sum(COLW), sum(ROWH)
 G = {
     "S": ["#####", "#....", "#....", "#####", "....#", "....#", "#####"],
     "G": ["#####", "#....", "#....", "#..##", "#...#", "#...#", "#####"],
@@ -41,9 +50,13 @@ G = {
     "_": [".....", ".....", ".....", ".....", ".....", ".....", "#####"],
 }
 DROP = {}                        # the underscore sits on the baseline with the others
-LGAP = 4
-TX = (128 - (4 * 20 + 5 + 20 + 5 * LGAP)) // 2   # centred: 125 px wide
-TY = (35 - 27) // 2                               # centred in the art rows 0..34
+TX = (128 - (5 * GW + DOTW + 5 * LGAP)) // 2      # centred
+TY = (35 - GH) // 2                               # centred in the art rows 0..34
+
+
+def Y(f):
+    """A row of the first 27-px design, scaled to this title height."""
+    return TY + round(f * GH / 27)
 
 
 def title():
@@ -52,7 +65,7 @@ def title():
     spans, x = [], TX
     for ch in "S.GN_L":
         g = G[ch]
-        widths = COLW if len(g[0]) > 1 else (5,)
+        widths = COLW if len(g[0]) > 1 else (DOTW,)
         yy = TY + DROP.get(ch, 0)
         for r, row in enumerate(g):
             xx = x
@@ -66,8 +79,8 @@ def title():
         if ch == "N":                                    # one unbroken diagonal, stem to stem
             h = sum(ROWH)
             for dy in range(h):
-                x0 = x + round(dy * (sum(COLW) - 5) / (h - 1))
-                for dx in range(5):
+                x0 = x + round(dy * (GW - COLW[0]) / (h - 1))
+                for dx in range(COLW[0]):
                     art[TY + dy][x0 + dx] = 1
         spans.append((ch, x, x + sum(widths) - 1))
         x += sum(widths) + LGAP
@@ -128,17 +141,21 @@ def round_corners(art):
 def damage(art, sp):
     """The agreed damage: stuck L, lifted S, slipped foot, glitch lines, torn band."""
     a, b = sp["L"]
-    for k, off in enumerate((6, 12)):                    # top of the L's stem stuck, repeated
-        copy(art, a, TY, a + 4, TY + 8, off, 0, dither=(k == 1))
+    st = COLW[0]
+    for k, off in enumerate((st + 1, 2 * st + 2)):       # top of the L's stem stuck, repeated
+        copy(art, a, TY, a + st - 1, Y(8), off, 0, dither=(k == 1))
     na, nb = sp["N"]
     s0, s1 = sp["S"]
-    copy(art, s0, TY, s1, TY + 3, 1, -2)                 # top of the S lifted off
-    clear(art, s0, TY + 2, s1, TY + 3)
-    shift(art, TY + 23, TY + 26, 3, sp["L"][0], W - 1)   # the L's foot slipped
-    r = lcg(7)
+    top = ROWH[0]
+    copy(art, s0, TY, s1, TY + top - 1, 1, -2)           # top of the S lifted off
+    clear(art, s0, TY + top - 2, s1, TY + top - 1)
+    shift(art, TY + GH - ROWH[6], TY + GH - 1, 3, sp["L"][0], W - 1)   # the L's foot slipped
+    r = lcg(7 if SCALE == "L" else 2)
     placed = 0
     while placed < 10:                                   # glitch lines: short dashes, XORed
         x, y = next(r) % W, next(r) % AH
+        if SCALE != "L" and not (TX - 6 <= x <= W - TX + 2 and TY - 5 <= y <= TY + GH + 4):
+            continue                                     # stay near the title
         n = 2 + next(r) % 5                              # 2..6 px long
         if na - 2 <= x + n and x <= nb + 2:
             continue                                     # keep the N clean
@@ -148,8 +165,8 @@ def damage(art, sp):
         for i in range(n):
             if x + i < W:
                 art[y][x + i] ^= 1
-    shift(art, TY + 10, TY + 12, 3)                      # torn band slides right
-    shift(art, TY + 13, TY + 13, 1)
+    shift(art, Y(10), Y(12), 3)                          # torn band slides right
+    shift(art, Y(13), Y(13), 1)
 
 
 # --- knob row with the damage leaking into it -----------------------------------------
@@ -195,7 +212,7 @@ def ghosts(art, sp):
     the signal lost. The "." is the foot of the I that survived."""
     for ch, (_, g) in GHOST.items():
         x0 = sp[ch][0]
-        widths = COLW if len(g[0]) > 1 else (5,)
+        widths = COLW if len(g[0]) > 1 else (DOTW,)
         yy = TY
         for r, row in enumerate(g):
             xx = x0
