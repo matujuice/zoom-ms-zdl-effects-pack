@@ -60,7 +60,7 @@
       "name": "Mix",
       "max": 100,
       "default": 100,
-      "comment": "Dry/wet. 100 = only the chopped sound, 0 = only the original. The gaps between notes are silent in the wet sound."
+      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. 100 = only the chopped sound, 0 = only the original. The gaps between notes are silent in the wet sound."
     }
   ],
   "audio_func_name": "Fx_DLY_EuGate",

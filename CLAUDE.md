@@ -44,7 +44,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 - DubSiren: siren into a tape-style echo; Rate 101..112 sync to the Tempo knob, Fast = 2x and Slow = 0.5x of the note value; echo Time is never synced; Fdbk 0 = echo off, default 70; siren level is 0.3 x full-scale at Vol 100.
 - EuGate: Steps 1..64 and Notes 1..64 (polymeters); Gap puts a small silence before a touching note; Mix stays on every effect; the cover is a 16-dot Euclid ring (round on the device), ghost "CLIDIAN", "5/16=3.3.3.3.4".
 - WaveFold: Buchla 259 fold curve; the level match follows the input directly (it used to creep back slowly after a quiet decay, which made notes swell in).
-- Every effect has a Mix knob.
+- Every effect except DubSiren has a Mix knob, and it is a DJ-style crossfade: dry gain min(1, 2 - 2m), wet gain min(1, 2m), so both are at full level at 50. DubSiren adds its siren on top of the untouched input, so it has Vol instead.
 
 ## Working habits
 

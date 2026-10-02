@@ -53,7 +53,7 @@
  *                   in percent of a step (0 = touching notes join, as before)
  *   6 Soft  0..100  how soft the edges of each note are
  *   7 Tempo 0..240  BPM, 40..240 (below 40 reads as 40)
- *   8 Mix   0..100  dry/wet
+ *   8 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  */
 
 #include <stdint.h>
@@ -89,7 +89,7 @@ typedef struct {
     float inc;             /* phase increment per sample (steps per sample)  */
     float swing;           /* 0..0.5                                          */
     float gap, c;          /* gap before a touching note, in steps; slew coefficient */
-    float mix;
+    float dryG, wetG;
     unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (already < steps) */
     unsigned int lo, hi;           /* the pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
 } ChParams;
@@ -146,7 +146,10 @@ static inline void ch_prepare(ChParams *P, const float *u)
     P->c = P->inc * e;
     if (P->c > 0.5f) P->c = 0.5f;
     P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL */
-    P->mix  = u[8] * 0.01f;
+    P->dryG = 2.0f - 2.0f * (u[8] * 0.01f);            /* Mix: dry full up to 50, then fades out */
+    if (P->dryG > 1.0f) P->dryG = 1.0f;
+    P->wetG = 2.0f * (u[8] * 0.01f);                    /* wet fades in up to 50, then full       */
+    if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
 CH_ALWAYS_INLINE(ch_process)
@@ -190,7 +193,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf, int n)
             if (hitn && (end - pp) < P->gap * len) target = 0.0f;
         } else target = 0.0f;
         g += P->c * (target - g);
-        buf[i] = in + P->mix * (in * g - in);
+        buf[i] = P->dryG * in + P->wetG * (in * g);
     }
     if (g < 1e-15f && g > -1e-15f) g = 0.0f;
     s->pp = pp; s->g = g; s->pos = pos; s->quiet = quiet;

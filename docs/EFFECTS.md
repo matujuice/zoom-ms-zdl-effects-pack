@@ -11,7 +11,7 @@ A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and 
 | Symm | -50..+50 | 0 is symmetric. Away from 0 adds even harmonics. |
 | Tone | 0..100 | Low-pass after the fold, about 200 Hz up to open. |
 | Level | 0..100 | 50 = wet matches the input loudness, 100 = +6 dB. |
-| Mix | 0..100 | Dry/wet. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### DualShft: tempo-synced dual pitch shifter
 Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO that bends them in opposite directions. No feedback.
@@ -24,7 +24,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
-| Mix | 0..100 | Dry/wet. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: vowel choir
 Filters tuned to the vowels A E I O U turn the input into a small choir. Five voices, a main voice with a human touch (vibrato, drift, breath) and four side voices.
@@ -39,7 +39,7 @@ Filters tuned to the vowels A E I O U turn the input into a small choir. Five vo
 | Div | 4 bars .. 1/64 | Length of one LFO cycle. |
 | Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
 | Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
-| Mix | 0..100 | Dry/wet. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
 Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are spread as evenly as possible over the steps (a Euclidean rhythm).
@@ -54,7 +54,7 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 | Gap | 0..50 % of a step | Small silence at the end of a note that is followed by another note. |
 | Soft | 0..100 | Softness of the note edges. 0 = hard chop. |
 | Tempo | 40..240 BPM | Tempo. |
-| Mix | 0..100 | Dry/wet. The gaps are silent in the wet sound. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. The gaps are silent in the wet sound. |
 
 Try 5 notes in 16 steps (the default), then 7 in 12 or 5 in 12 for a different feel.
 

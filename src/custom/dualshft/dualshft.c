@@ -17,7 +17,8 @@
  *   Voice 2: pitch-shifted echo, delay 2  (12 ms .. 1 s, free time in ms)
  *   Each voice reads two taps half a grain apart with a triangle crossfade
  *   (the overlapping-crossfade granular shifter, no clicks).
- *   wet = 0.5 * (A + B), then dry/wet mix. No feedback.
+ *   wet = 0.5 * (A + B), then dry/wet Mix (DJ-style: dry full up to 50,
+ *   wet full from 50, both full at 50). No feedback.
  *   One tempo-synced LFO bends the pitch of both voices by up to +-12
  *   semitones (Depth knob), voice B with the opposite sign (180 degrees out
  *   of phase). Depth goes one way only: screen 0 = no LFO, then a curve
@@ -167,7 +168,7 @@ typedef struct {
     float dlyA, dlyB;      /* target delays in samples                  */
     float lfo_inc;         /* LFO phase increment per sample            */
     float depth;           /* LFO swing in semitones, -12..+12 (signed) */
-    float mix;             /* 0..1                                      */
+    float dryG, wetG;      /* Mix gains, 0..1, both 1 at Mix 50         */
     int   shape;           /* SHAPE_* 0..6 (see the list at the top)    */
     int   retrig;          /* 1 = restart LFO phase at the top of block */
 } DualShiftParams;
@@ -475,7 +476,10 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     P->lfo_inc = bpm * subdiv_mult(idx) * BPM_TO_INC;
     P->depth = depth_st((int)(k[6] * 80.0f + 0.5f));   /* see depth_st */
     P->shape   = (int)(k[7] * 6.0f + 0.5f);         /* screen 0..6 */
-    P->mix     = k[8];
+    P->dryG = 2.0f - 2.0f * (k[8]);            /* Mix: dry full up to 50, then fades out */
+    if (P->dryG > 1.0f) P->dryG = 1.0f;
+    P->wetG = 2.0f * (k[8]);                    /* wet fades in up to 50, then full       */
+    if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
 /* Main loop. buf points at the 8 samples of the effect buffer and is
@@ -581,7 +585,7 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
         yB = voice_step(ring, w, &p2, P->ratioB * semis_to_ratio(-m), dB);
 
         /* mono: average the two voices, then dry/wet */
-        buf[i] = dry + P->mix * (0.5f * (yA * gainA + yB * gainB) - dry);
+        buf[i] = P->dryG * dry + P->wetG * (0.5f * (yA * gainA + yB * gainB));
     }
 
     s->w = w;
