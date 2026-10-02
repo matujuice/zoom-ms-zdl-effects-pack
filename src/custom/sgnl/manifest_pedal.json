@@ -2,7 +2,7 @@
   "effect_name": "SGNL",
   "display_name": "S.GN_L",
   "display_name_comment": "S.GN_L is the name the pedal shows (descriptor name entry only). effect_name SGNL is used for the file (SGNL.ZDL), the C symbol and the SONAME, because '.' is not legal in a C name. If the pedal shows the name wrongly or refuses the effect, delete display_name and rebuild: the effect is then simply called SGNL.",
-  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is dry/wet.",
+  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is a DJ-style dry/wet crossfade.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 489,
@@ -62,7 +62,7 @@
       "name": "Mix",
       "max": 100,
       "default": 100,
-      "comment": "Dry/wet. 100 = only the broken line, 0 = only the original."
+      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. 100 = only the broken line, 0 = only the original."
     }
   ],
   "audio_func_name": "Fx_DLY_SGNL",

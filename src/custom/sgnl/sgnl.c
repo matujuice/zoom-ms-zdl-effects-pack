@@ -45,7 +45,8 @@
  *                   WALKY (500 Hz..2.5 kHz, driven)
  *   7 Edge  0..100  cut at the packet edges: 0 = hard clicks, 100 = fades that fill most of
  *                   the packet (they scale with Size: about 12 ms at 10 ms packets)
- *   8 Mix   0..100  dry/wet
+ *   8 Mix   0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
+ *                   both full at 50
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch and no if/else dispatch on the mode knobs (they become
@@ -128,7 +129,7 @@ typedef struct {
     float lon, ah, al, lgain, drive;   /* Line                                 */
     float voip;                        /* VOIP: second low-cut pole and bump   */
     float c;               /* Edge crossfade coefficient                       */
-    float mix;
+    float dryG, wetG;      /* Mix: DJ crossfade gains                          */
 } SgParams;
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
@@ -265,7 +266,11 @@ static inline void sg_prepare(SgParams *P, const float *u)
     e = sg_rsqrt(1.0f + k);
     P->c = e * e;
 
-    P->mix = u[8] * 0.01f;
+    {   /* Mix: DJ crossfade, both full at 50 */
+        float m = u[8] * 0.01f;
+        P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
+        P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
+    }
 }
 
 /* Start of a packet: decide lost or kept, set the codec for it. */
@@ -417,7 +422,7 @@ static inline void sg_process(SgState *s, const SgParams *P, float *buf, int n)
         s->w += P->c * (target - s->w);
         y = f + s->w * (y - f);
 
-        buf[i] = in + P->mix * (y - in);
+        buf[i] = P->dryG * in + P->wetG * y;
     }
 }
 

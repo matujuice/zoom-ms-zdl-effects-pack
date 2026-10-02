@@ -33,6 +33,21 @@ int main(void)
         if (err > 1e-5f) { puts("  FAIL: clean settings change the sound"); fails++; }
     }
 
+    /* 1b. Mix is a DJ crossfade: on a clean line Mix 50 = dry + wet both full (2x), 25 = 1.5x */
+    for (int mx = 25; mx <= 50; mx += 25) {
+        float u[9] = {0, 40, 0, 1, 30, 0, 0, 30, (float)mx};
+        float err = 0.0f, want = mx == 50 ? 2.0f : 1.5f; long t = 0;
+        setup(&P, u);
+        for (int k = 0; k < 44100 / 8; k++) {
+            for (int i = 0; i < 8; i++) b[i] = sig(t + i);
+            sg_process(&S, &P, b, 8);
+            for (int i = 0; i < 8; i++) { float d = fabsf(b[i] - want * sig(t + i)); if (d > err) err = d; }
+            t += 8;
+        }
+        printf("Mix %d: gain %.1f, max difference %.2e\n", mx, want, err);
+        if (err > 1e-5f) { puts("  FAIL: Mix is not a DJ crossfade"); fails++; }
+    }
+
     /* 2. lost share follows Loss and does not move much with Burst; Burst lengthens runs */
     for (int L = 0; L <= 100; L += 50) {
         for (int B = 0; B <= 100; B += 100) {
