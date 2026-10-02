@@ -4,15 +4,16 @@ Project notes for Claude Code. Read this first, then the effect's own header com
 
 ## What this is
 
-Five custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren) for Zoom MS pedals, built as `.ZDL` files with the toolchain from themanro/ZoomMultistompZDL (`build/`). Owner's pedal: MS-60B running MS-50G firmware. Other pedals are untested. The README, docs/EFFECTS.md and the manifests all describe the knobs, so keep them in step when a knob changes.
+Six custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L) for Zoom MS pedals, built as `.ZDL` files with the toolchain from themanro/ZoomMultistompZDL (`build/`). Owner's pedal: MS-60B running MS-50G firmware. Other pedals are untested. The README, docs/EFFECTS.md and the manifests all describe the knobs, so keep them in step when a knob changes.
 
 ## Layout
 
-- `src/custom/<effect>/`: `<effect>.c` (DSP), `manifest_pedal.json` (knobs, ranges, defaults, fxid), `make_cover.py`, `build.py`. Choral lives in `formant/`.
+- `src/custom/<effect>/`: `<effect>.c` (DSP), `manifest_pedal.json` (knobs, ranges, defaults, fxid), `make_cover.py`, `build.py`. Choral lives in `formant/`, S.GN_L in `sgnl/`.
 - `src/airwindows/common/covers/*.json`: generated covers. `make_cover.py` writes them; `custom_covers.py` loads them.
 - `tests/`: host tests (`python3 tests/run.py [name]`).
 - `release/`: pack README, cover sheet. `make_release.py` zips `dist/*.ZDL` with them.
-- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488.
+- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489.
+- S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name). Not in `release/` or `make_release.py` until it has been tried on the pedal.
 
 ## Building and testing
 
@@ -44,6 +45,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 - DubSiren: siren into a tape-style echo; Rate 101..112 sync to the Tempo knob, Fast = 2x and Slow = 0.5x of the note value; echo Time is never synced; Fdbk 0 = echo off, default 70; siren level is 0.3 x full-scale at Vol 100.
 - EuGate: Steps 1..64 and Notes 1..64 (polymeters); Gap puts a small silence before a touching note; Mix stays on every effect; the cover is a 16-dot Euclid ring (round on the device), ghost "CLIDIAN", "5/16=3.3.3.3.4".
 - WaveFold: Buchla 259 fold curve; the level match follows the input directly (it used to creep back slowly after a quiet decay, which made notes swell in).
+- S.GN_L ("bad signal"): packets of 2..100 ms, lost by a Gilbert-Elliott model (Loss = share, Burst = outage length); Fill GAP/REPT/FADE/NOISE; one Codec knob for spectral holes, low-pass, rate hold and bits; Jump = sudden quality drops; Line HIFI/VOIP/PHONE/WALKY kept as its own knob; Size free (no tempo sync). Cover: wide glitched S.GN_L with dotted ghost I and A, damage leaking into the knob labels. Concept notes: /mnt/project-files/ideas/bad-signal.md.
 - Every effect has a Mix knob.
 
 ## Working habits

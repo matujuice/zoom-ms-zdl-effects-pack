@@ -1,0 +1,71 @@
+{
+  "effect_name": "SGNL",
+  "display_name": "S.GN_L",
+  "display_name_comment": "S.GN_L is the name the pedal shows (descriptor name entry only). effect_name SGNL is used for the file (SGNL.ZDL), the C symbol and the SONAME, because '.' is not legal in a C name. If the pedal shows the name wrongly or refuses the effect, delete display_name and rebuild: the effect is then simply called SGNL.",
+  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is dry/wet.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 489,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Loss",
+      "max": 100,
+      "default": 30,
+      "comment": "How many packets are lost. 0 = clean line, 100 = about 85 % of the packets lost. Default 30 (about 13 %)."
+    },
+    {
+      "name": "Size",
+      "max": 100,
+      "default": 40,
+      "comment": "Packet length, 2 ms to 100 ms (shown in ms). Short packets turn losses into grit and, with Fill REPT, a robotic buzz at the packet rate (5 ms = about 200 Hz); long packets make syllables and notes drop out or stutter. Default 40 (about 10 ms)."
+    },
+    {
+      "name": "Codec",
+      "max": 100,
+      "default": 30,
+      "comment": "Codec quality going down: random spectral holes (the underwater MP3 sound), a closing low-pass, a lower sample rate and fewer bits, all on one knob. 0 = clean. Above 50 the first packet after a silence is lost too, like a call clipping the start of a word. Default 30."
+    },
+    {
+      "name": "Fill",
+      "max": 3,
+      "default": 1,
+      "comment": "What replaces a lost packet. GAP = silence; REPT = the last packet that arrived, replayed over and over (buzz or stutter); FADE = the same replay dying away over about 30 ms; NOISE = soft hiss at the level of the sound. Default REPT."
+    },
+    {
+      "name": "Burst",
+      "max": 100,
+      "default": 30,
+      "comment": "How the losses are grouped, with the same overall amount. 0 = single scattered losses, 100 = long outages (about 12 packets on average). Default 30."
+    },
+    {
+      "name": "Jump",
+      "max": 100,
+      "default": 20,
+      "comment": "How often the codec suddenly drops to a much worse quality for a few packets and comes back, like a stream changing bitrate. 0 = never. Default 20."
+    },
+    {
+      "name": "Line",
+      "max": 3,
+      "default": 0,
+      "comment": "Band of the line, before the codec. HIFI = full band; VOIP = 100 Hz to 7 kHz; PHONE = 300 Hz to 3.4 kHz; WALKY = 500 Hz to 2.5 kHz, a bit driven. Default HIFI."
+    },
+    {
+      "name": "Edge",
+      "max": 100,
+      "default": 30,
+      "comment": "Shape of the cut where a packet is lost or comes back. 0 = hard clicks (authentic), 100 = soft 3 ms ramps. Default 30."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "comment": "Dry/wet. 100 = only the broken line, 0 = only the original."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_SGNL",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}
