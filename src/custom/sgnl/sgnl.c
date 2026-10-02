@@ -14,7 +14,7 @@
  *           random lengths and mixed with noise: the screech of a broken MP3 stream
  *   LATE    packets arriving out of order: each lost packet plays a random older one
  *           (2 or 3 packets back), so phrases shuffle
- *   RND     each outage picks one of the seven above at random
+ *   RND     each outage picks one of the others at random, except GARBL (it takes over)
  * On top of the losses the codec itself degrades (Codec): spectral holes (each of four
  * bands randomly switched off per packet: the "underwater" sound of a 32 kbps MP3), a
  * closing low-pass, a lower sample rate and fewer bits, all together on one knob. Jump
@@ -318,7 +318,10 @@ static inline void sg_packet(SgState *s, const SgParams *P)
         unsigned int m;
         if (!s->lost) {                                 /* new outage: replay from the top */
             s->rp = 0; s->fg = 1.0f; s->gc = 0;
-            if (mode >= 7) mode = (int)((sg_rand16(s) * 7u) >> 16);   /* RND: 0..6 */
+            if (mode >= 7) {                            /* RND: any but GARBL (too harsh) */
+                mode = (int)((sg_rand16(s) * 6u) >> 16);   /* 0..5 */
+                mode += (mode >= 5);                       /* 5 -> 6: skip GARBL */
+            }
             else if (mode < 0) mode = 0;
             s->wrep   = (float)(mode == 1) + (float)(mode == 2) + (float)(mode == 4) + (float)(mode == 6);
             s->wfade  = (float)(mode == 2);

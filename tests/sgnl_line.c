@@ -125,7 +125,7 @@ int main(void)
         if (sz == 100 && best < 44 * 20) { puts("  FAIL: Edge 100 fades too short at Size 100"); fails++; }
     }
 
-    /* 4c. RND picks every Fill style; LATE plays older packets; REVRS and GARBL make sound */
+    /* 4c. RND picks every Fill style but GARBL; LATE plays older packets; REVRS and GARBL make sound */
     {
         float u[9] = {70, 30, 0, 7, 30, 0, 0, 0, 100};
         int seen[7] = {0}, older = 0, lates = 0; long t = 0;
@@ -143,7 +143,8 @@ int main(void)
         }
         printf("RND outages per style: %d %d %d %d %d %d %d; LATE packets from an older one: %d of %d\n",
                seen[0], seen[1], seen[2], seen[3], seen[4], seen[5], seen[6], older, lates);
-        for (int m = 0; m < 7; m++) if (seen[m] == 0) { puts("  FAIL: RND never picks a style"); fails++; break; }
+        for (int m = 0; m < 7; m++) if (m != 5 && seen[m] == 0) { puts("  FAIL: RND never picks a style"); fails++; break; }
+        if (seen[5] != 0) { puts("  FAIL: RND picked GARBL"); fails++; }
         if (lates == 0 || older * 2 < lates) { puts("  FAIL: LATE does not play older packets"); fails++; }
         for (int fill = 4; fill <= 5; fill++) {
             float v[9] = {100, 30, 0, (float)fill, 100, 0, 0, 0, 100}, e = 0.0f;

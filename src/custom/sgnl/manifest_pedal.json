@@ -2,7 +2,7 @@
   "effect_name": "SGNL",
   "display_name": "S.GN_L",
   "display_name_comment": "S.GN_L is the name the pedal shows (descriptor name entry only). effect_name SGNL is used for the file (SGNL.ZDL), the C symbol and the SONAME, because '.' is not legal in a C name. If the pedal shows the name wrongly or refuses the effect, delete display_name and rebuild: the effect is then simply called SGNL.",
-  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss, REVRS backwards, GARBL corrupted data, LATE out-of-order packets, RND a random one per outage); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is a DJ-style dry/wet crossfade.",
+  "comment": "S.GN_L - a broken digital line: the sound is cut into packets and some never arrive, like a VoIP call on bad Wi-Fi or a DAB radio losing lock. Loss = how many packets are lost; Size = packet length (2 to 100 ms: short = buzz and grit, long = stutter); Codec = codec quality going down (spectral holes, low-pass, lower sample rate, fewer bits); Fill = what replaces a lost packet (GAP silence, REPT replays the last packet, FADE replays it dying away, NOISE hiss, REVRS backwards, GARBL corrupted data, LATE out-of-order packets, RND a random one per outage, never GARBL); Burst = scattered single losses or long outages; Jump = sudden quality drops; Line = band of the line (HIFI, VOIP, PHONE, WALKY); Edge = hard clicks or soft ramps at the packet edges; Mix is a DJ-style dry/wet crossfade.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 489,
@@ -32,7 +32,7 @@
       "name": "Fill",
       "max": 7,
       "default": 1,
-      "comment": "What replaces a lost packet. GAP = silence; REPT = the last packet that arrived, replayed over and over (buzz or stutter); FADE = the same replay dying away over about 30 ms; NOISE = soft hiss at the level of the sound; REVRS = the last packet backwards; GARBL = corrupted data, boosted random slices held for random lengths; LATE = out-of-order packets, each lost packet plays a random older one; RND = each outage picks one of the others at random. Default REPT."
+      "comment": "What replaces a lost packet. GAP = silence; REPT = the last packet that arrived, replayed over and over (buzz or stutter); FADE = the same replay dying away over about 30 ms; NOISE = soft hiss at the level of the sound; REVRS = the last packet backwards; GARBL = corrupted data, boosted random slices held for random lengths; LATE = out-of-order packets, each lost packet plays a random older one; RND = each outage picks one of the others at random, except GARBL. Default REPT."
     },
     {
       "name": "Burst",
