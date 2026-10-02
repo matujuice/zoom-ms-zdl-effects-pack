@@ -85,7 +85,7 @@ New, not yet tested on the pedal. The sound is cut into packets and some of them
 | Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
 | Jump | 0..100 | How often the quality suddenly drops for a few packets and comes back. |
 | Line | HIFI, VOIP, PHONE, WALKY | Band of the line: full and untouched, 200 Hz..5 kHz with a steep low cut and a boxy headset bump at 1.5 kHz, 300 Hz..3.4 kHz, or 500 Hz..2.5 kHz with some drive. |
-| Edge | 0..100 | Cut at the packet edges. 0 = hard clicks, 100 = 3 ms ramps. |
+| Edge | 0..100 | Cut at the packet edges. 0 = hard clicks, 100 = fades that fill most of the packet, so lost packets become soft dips and swells (longer with bigger Size). |
 | Mix | 0..100 | Dry/wet. |
 
 Try Size 5 ms with Fill REPT and Burst high for robot voice, or Size 60 ms, Fill GAP and Line PHONE for a bad call.

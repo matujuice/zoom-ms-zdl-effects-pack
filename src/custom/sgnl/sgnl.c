@@ -43,7 +43,8 @@
  *   6 Line  0..3    HIFI (full band, untouched) / VOIP (200 Hz..5 kHz, steep low cut,
  *                   boxy headset bump at 1.5 kHz) / PHONE (300 Hz..3.4 kHz) /
  *                   WALKY (500 Hz..2.5 kHz, driven)
- *   7 Edge  0..100  cut at the packet edges: 0 = hard clicks, 100 = 3 ms ramps
+ *   7 Edge  0..100  cut at the packet edges: 0 = hard clicks, 100 = fades that fill most of
+ *                   the packet (they scale with Size: about 12 ms at 10 ms packets)
  *   8 Mix   0..100  dry/wet
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -255,10 +256,14 @@ static inline void sg_prepare(SgParams *P, const float *u)
     P->drive = (float)(line >= 3u);
     P->voip  = (float)(line == 1u);
 
-    /* Edge: 0 = hard (c = 1), 100 = about 3 ms */
-    e = 1.0f - u[7] * 0.01f;
-    k = e * e;
-    P->c = 0.0076f + 0.9924f * k * k;
+    /* Edge: the fade time follows the packet length. Time constant
+       tau = E (0.3 + 0.7 E) x 0.3 x packet, so 0 = hard cut and 100 = the fade
+       fills most of the packet (lost packets become soft dips and swells).
+       c = 1 / (1 + tau), done as rsqrt squared to avoid a divide. */
+    e = u[7] * 0.01f;
+    k = e * (0.3f + 0.7f * e) * 2.4f * (float)P->pkb;   /* 0.3 x pkb x 8 samples */
+    e = sg_rsqrt(1.0f + k);
+    P->c = e * e;
 
     P->mix = u[8] * 0.01f;
 }

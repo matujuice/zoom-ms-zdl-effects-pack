@@ -91,6 +91,25 @@ int main(void)
         if (big > 0.01f) { puts("  FAIL: Edge 100 still clicks"); fails++; }
     }
 
+    /* 4b. Edge 100 fades scale with Size: rise time (10% -> 90%) after a lost packet */
+    for (int sz = 40; sz <= 100; sz += 60) {
+        float u[9] = {60, (float)sz, 0, 0, 30, 0, 0, 100, 100};
+        float prev = 0.0f; long t = 0, t10 = -1, best = 0;
+        setup(&P, u);
+        for (int k = 0; k < 4 * 44100 / 8; k++) {
+            for (int i = 0; i < 8; i++) b[i] = 0.5f;
+            sg_process(&S, &P, b, 8);
+            for (int i = 0; i < 8; i++, t++) {
+                if (b[i] < 0.05f) t10 = -1;
+                else if (prev < 0.05f) t10 = t;
+                if (t10 >= 0 && prev < 0.45f && b[i] >= 0.45f && t - t10 > best) best = t - t10;
+                prev = b[i];
+            }
+        }
+        printf("Edge 100 Size %3d: longest fade-in %.1f ms\n", sz, best / 44.1f);
+        if (sz == 100 && best < 44 * 20) { puts("  FAIL: Edge 100 fades too short at Size 100"); fails++; }
+    }
+
     /* 5. every mode, extreme knobs, noise input: no NaN, level bounded */
     {
         unsigned int r = 1;

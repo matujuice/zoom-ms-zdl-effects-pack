@@ -56,7 +56,7 @@
       "name": "Edge",
       "max": 100,
       "default": 30,
-      "comment": "Shape of the cut where a packet is lost or comes back. 0 = hard clicks (authentic), 100 = soft 3 ms ramps. Default 30."
+      "comment": "Shape of the cut where a packet is lost or comes back. 0 = hard clicks (authentic), 100 = soft fades that fill most of the packet (they grow with Size). Default 30."
     },
     {
       "name": "Mix",
