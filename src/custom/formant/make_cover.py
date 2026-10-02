@@ -110,9 +110,8 @@ def build():
         for x in range(2, 124):
             if crisp[y][x] and not crisp[y + 1][x + 2] and (x + y) % 2 == 0:
                 c.pixels[y + 1][x + 2] = 1
-    # a few single-row slices, nudged 2-3 px (shapes stay readable)
-    shift_rows(TEXT_Y + 4, TEXT_Y + 4, 3)
-    shift_rows(TEXT_Y + 10, TEXT_Y + 10, -3)
+    # a few single-row slices on the lips, nudged 2-3 px (the title stays clean:
+    # sliced, it read badly)
     shift_rows(21, 21, 3)
     shift_rows(29, 29, -3)
     # short dropouts
