@@ -40,7 +40,8 @@
  *   3 Fill  0..3    GAP / REPT / FADE / NOISE: what replaces a lost packet
  *   4 Burst 0..100  0 = scattered single losses, 100 = long outages
  *   5 Jump  0..100  how often the codec suddenly drops to a much worse quality for a moment
- *   6 Line  0..3    HIFI (full band) / VOIP (100 Hz..7 kHz) / PHONE (300 Hz..3.4 kHz) /
+ *   6 Line  0..3    HIFI (full band, untouched) / VOIP (200 Hz..5 kHz, steep low cut,
+ *                   boxy headset bump at 1.5 kHz) / PHONE (300 Hz..3.4 kHz) /
  *                   WALKY (500 Hz..2.5 kHz, driven)
  *   7 Edge  0..100  cut at the packet edges: 0 = hard clicks, 100 = 3 ms ramps
  *   8 Mix   0..100  dry/wet
@@ -63,7 +64,7 @@
 #define SG_CODE_SECTION(fn)
 #endif
 
-#define SG_MAGIC      0x53474E31u        /* "SGN1": change whenever SgState changes */
+#define SG_MAGIC      0x53474E32u        /* "SGN2": change whenever SgState changes */
 #define SG_PK_MAX     4416               /* samples: 100 ms rounded up to whole blocks */
 #define SG_PKB_MAX    552                /* SG_PK_MAX / 8 */
 #define SG_MS_PER_BLK 0.18140590f        /* 8 / 44.1: one block in ms */
@@ -73,13 +74,16 @@
 
 /* one-pole coefficients a = 1 - exp(-2 pi f / 44100) */
 #define SG_A_100      0.014146f
+#define SG_A_200      0.028093f
 #define SG_A_300      0.041842f
 #define SG_A_500      0.068760f
 #define SG_A_1200     0.157150f
 #define SG_A_2500     0.299670f
 #define SG_A_3400     0.383930f
 #define SG_A_4000     0.434450f
+#define SG_A_5000     0.509524f
 #define SG_A_7000     0.631180f
+#define SG_F_1500     0.213307f          /* 2 sin(pi 1500 / fs), SVF tuning     */
 
 typedef struct {
     unsigned int magic;
@@ -101,6 +105,8 @@ typedef struct {
     float ienv;            /* input level (for clipping the start of a word)   */
     /* line band */
     float lh, ll1, ll2;
+    float lh2;             /* second low-cut pole (VOIP)                       */
+    float vb, vl;          /* VOIP headset bump (state-variable filter)        */
     /* codec, set per packet */
     float b1, b2, b3;      /* crossover low-passes                             */
     float g0, g1, g2, g3;  /* band gains (smoothed)                            */
@@ -119,6 +125,7 @@ typedef struct {
     float q;               /* Codec 0..1                                       */
     float rep, fade, noise;/* Fill as weights: GAP = all 0                     */
     float lon, ah, al, lgain, drive;   /* Line                                 */
+    float voip;                        /* VOIP: second low-cut pole and bump   */
     float c;               /* Edge crossfade coefficient                       */
     float mix;
 } SgParams;
@@ -199,6 +206,7 @@ static inline void sg_init(SgState *s)
     s->jump = 0; s->quiet = 0; s->jq = 0.0f; s->fg = 1.0f; s->w = 1.0f;
     s->env = 0.0f; s->nlp = 0.0f; s->ienv = 0.0f;
     s->lh = 0.0f; s->ll1 = 0.0f; s->ll2 = 0.0f;
+    s->lh2 = 0.0f; s->vb = 0.0f; s->vl = 0.0f;
     s->b1 = 0.0f; s->b2 = 0.0f; s->b3 = 0.0f;
     s->g0 = 1.0f; s->g1 = 1.0f; s->g2 = 1.0f; s->g3 = 1.0f;
     s->t0 = 1.0f; s->t1 = 1.0f; s->t2 = 1.0f; s->t3 = 1.0f;
@@ -241,10 +249,11 @@ static inline void sg_prepare(SgParams *P, const float *u)
 
     /* Line as weights and coefficients */
     P->lon   = (float)(line >= 1u);
-    P->ah    = (float)(line == 1u) * SG_A_100  + (float)(line == 2u) * SG_A_300  + (float)(line >= 3u) * SG_A_500;
-    P->al    = (float)(line == 1u) * SG_A_7000 + (float)(line == 2u) * SG_A_3400 + (float)(line >= 3u) * SG_A_2500;
-    P->lgain = 1.0f + 0.4f * (float)(line == 2u);
+    P->ah    = (float)(line == 1u) * SG_A_200  + (float)(line == 2u) * SG_A_300  + (float)(line >= 3u) * SG_A_500;
+    P->al    = (float)(line == 1u) * SG_A_5000 + (float)(line == 2u) * SG_A_3400 + (float)(line >= 3u) * SG_A_2500;
+    P->lgain = 1.0f + 0.4f * (float)(line == 2u) + 0.5f * (float)(line == 1u);
     P->drive = (float)(line >= 3u);
+    P->voip  = (float)(line == 1u);
 
     /* Edge: 0 = hard (c = 1), 100 = about 3 ms */
     e = 1.0f - u[7] * 0.01f;
@@ -331,9 +340,18 @@ static inline void sg_process(SgState *s, const SgParams *P, float *buf, int n)
         /* Line */
         s->lh  += P->ah * (in - s->lh);
         x = in - s->lh;
+        s->lh2 += P->ah * (x - s->lh2);
+        x = x - P->voip * s->lh2;
         s->ll1 += P->al * (x - s->ll1);
         s->ll2 += P->al * (s->ll1 - s->ll2);
         x = s->ll2 * P->lgain;
+        {   /* VOIP headset bump: band-pass at 1.5 kHz (Q 1.5) added on top */
+            float hp;
+            s->vl += SG_F_1500 * s->vb;
+            hp = x - s->vl - 0.6667f * s->vb;
+            s->vb += SG_F_1500 * hp;
+            x = x + P->voip * 0.7f * s->vb;
+        }
         {
             float d = x * (1.0f + 1.5f * P->drive);
             if (d > 1.0f) d = 1.0f;

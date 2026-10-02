@@ -50,7 +50,7 @@
       "name": "Line",
       "max": 3,
       "default": 0,
-      "comment": "Band of the line, before the codec. HIFI = full band; VOIP = 100 Hz to 7 kHz; PHONE = 300 Hz to 3.4 kHz; WALKY = 500 Hz to 2.5 kHz, a bit driven. Default HIFI."
+      "comment": "Band of the line, before the codec. HIFI = full band; VOIP = 200 Hz to 5 kHz, steep low cut, boxy headset bump at 1.5 kHz; PHONE = 300 Hz to 3.4 kHz; WALKY = 500 Hz to 2.5 kHz, a bit driven. Default HIFI."
     },
     {
       "name": "Edge",

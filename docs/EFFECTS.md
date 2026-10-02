@@ -84,7 +84,7 @@ New, not yet tested on the pedal. The sound is cut into packets and some of them
 | Fill | GAP, REPT, FADE, NOISE | What replaces a lost packet: silence, the last packet replayed, the replay dying away, or hiss at the level of the sound. |
 | Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
 | Jump | 0..100 | How often the quality suddenly drops for a few packets and comes back. |
-| Line | HIFI, VOIP, PHONE, WALKY | Band of the line: full, 100 Hz..7 kHz, 300 Hz..3.4 kHz, or 500 Hz..2.5 kHz with some drive. |
+| Line | HIFI, VOIP, PHONE, WALKY | Band of the line: full and untouched, 200 Hz..5 kHz with a steep low cut and a boxy headset bump at 1.5 kHz, 300 Hz..3.4 kHz, or 500 Hz..2.5 kHz with some drive. |
 | Edge | 0..100 | Cut at the packet edges. 0 = hard clicks, 100 = 3 ms ramps. |
 | Mix | 0..100 | Dry/wet. |
 
