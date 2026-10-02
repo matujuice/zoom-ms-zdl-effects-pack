@@ -154,7 +154,7 @@ def damage(art, sp):
     copy(art, s0, TY, s1, TY + top - 1, 1, -2)           # top of the S lifted off
     clear(art, s0, TY + top - 2, s1, TY + top - 1)
     shift(art, TY + GH - ROWH[6], TY + GH - 1, 3, sp["L"][0], W - 1)   # the L's foot slipped
-    r = lcg(7 if SCALE == "L" else 2)
+    r = lcg(7 if SCALE == "L" else 9)
     placed = 0
     while placed < 10:                                   # glitch lines: short dashes, XORed
         x, y = next(r) % W, next(r) % AH
