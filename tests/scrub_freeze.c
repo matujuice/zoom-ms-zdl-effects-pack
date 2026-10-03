@@ -240,7 +240,7 @@ int main(void)
         ZDL_GetLabel_0(0, o);   CHECK(!strcmp(o, "4.00s"), "Pos 0 = %s", o);
         ZDL_GetLabel_0(275, o); CHECK(!strcmp(o, "1.25s"), "Pos 275 = %s", o);
         ZDL_GetLabel_0(399, o); CHECK(!strcmp(o, "10ms"), "Pos 399 = %s", o);
-        ZDL_GetLabel_0(400, o); CHECK(!strcmp(o, "NOW"), "Pos 400 = %s", o);
+        ZDL_GetLabel_0(400, o); CHECK(!strcmp(o, "0ms"), "Pos 400 = %s", o);
         /* the knob arrives as screen / 100: 2.75 must read as 275, not 3 */
         CHECK(sc_ui_pos(2.75f, 400.0f) == 275.0f, "Pos 2.75 read as %g", sc_ui_pos(2.75f, 400.0f));
         CHECK(sc_ui_pos(4.0f, 0.0f) == 400.0f, "Pos 4.00 read as %g", sc_ui_pos(4.0f, 0.0f));

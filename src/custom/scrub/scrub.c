@@ -50,7 +50,7 @@
  *
  * KNOBS (screen values)
  *   0 Pos    0..400  where the head reads, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD
- *                    the freeze moment); shown as the time back, "NOW", "990ms", "4.00s".
+ *                    the freeze moment); shown as the time back, "0ms", "990ms", "4.00s".
  *                    400 steps instead of 100 so no Range knob is needed (Luca, 2026-10-03).
  *                    Read as raw x 100 always (the pedal passes screen / 100, so 4.00 here
  *                    means 400; the 3.05 guess in sc_ui would read it as 4)
@@ -364,14 +364,13 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return 4;
 }
 
-/* knob 0 Pos: screen 0..400 -> how far back the head is: "4.00s".."1.00s", "990ms".."10ms",
- * "NOW" */
+/* knob 0 Pos: screen 0..400 -> how far back the head is: "4.00s".."1.00s", "990ms".."0ms"
+ * (0ms, not NOW: Luca, 2026-10-03) */
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     int cs, len, w = 0, t = 0;
     if (value > 400u) value = 400u;
     cs = 400 - (int)value;                       /* hundredths of a second back */
-    if (cs == 0) { out[0] = 'N'; out[1] = 'O'; out[2] = 'W'; out[3] = 0; return 3; }
     if (cs < 100) {
         len = sc_put_int(cs * 10, out);
         out[len] = 'm'; out[len + 1] = 's'; out[len + 2] = 0;
