@@ -6,7 +6,8 @@ played), right of the head they are dithered (still to come). The head is a 2 px
 with a cap on top that runs down onto a timeline under the title: solid behind the
 head, dotted ahead of it, arrows at both ends (you drag it both ways). The grain, the
 slice just before the head that loops when you stop, is a selection: a band inverted
-over the title and the timeline, like a region selected in a sample editor.
+over the title and the timeline, like a region selected in a sample editor, its two
+ends dithered from plain to inverted: the crossfade where the loop meets itself.
 
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
@@ -32,7 +33,8 @@ TY = 6                       # title rows 6..20
 HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
 LINE_Y = 28                  # timeline row
 LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
-GRAIN = 9                    # the selected grain: the 9 columns before the head (the gap and the front of the R)
+GRAIN = 13                   # the selected grain: the 13 columns before the head
+RAMP = 3                     # crossfade columns at each end of the selection
 SEL_Y0, SEL_Y1 = TY - 2, LINE_Y + 2   # the selection runs from above the title to below the timeline
 
 
@@ -88,8 +90,17 @@ def build():
         c.vline(LX1 + 6 - k, LINE_Y - k, LINE_Y + k)          # right arrow
 
     # --- the grain: a selection just before the head, inverted like in a sample editor -
+    # The edges are the crossfade: over RAMP columns at each end the inversion fades in
+    # and out through 25 / 50 / 75 % ordered dither.
+    x0, x1 = HEAD - 1 - GRAIN, HEAD - 2
     for y in range(SEL_Y0, SEL_Y1 + 1):
-        for x in range(HEAD - 1 - GRAIN, HEAD - 1):
+        for x in range(x0, x1 + 1):
+            d = min(x - x0, x1 - x) + 1                     # 1 at the edge columns
+            if d <= RAMP:
+                share = d / (RAMP + 1)                      # 0.25, 0.5, 0.75
+                bayer = ((0, 2), (3, 1))[y % 2][x % 2] / 4.0 + 0.125
+                if bayer > share:
+                    continue
             c.px(x, y, 0 if c.pixels[y][x] else 1)
 
     # --- labels and dials under the firmware value boxes (page 1 knobs) --------
