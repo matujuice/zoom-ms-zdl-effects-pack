@@ -1,6 +1,6 @@
 {
   "effect_name": "Scrub",
-  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is, 0 = Range ago, 100 = now; turning it slides through the audio like dragging tape, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Range = how much of the past Pos spans (0.1 to 4 s); Spray = random offset per grain, a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade.",
+  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 4 s, 10 ms per step, 0 = 4 s ago, 400 = now; turning it slides through the audio like dragging tape, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Spray = random offset per grain, a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 490,
@@ -10,9 +10,9 @@
   "params": [
     {
       "name": "Pos",
-      "max": 100,
-      "default": 100,
-      "comment": "Where the read head is in the recorded past: 0 = Range ago, 100 = now (in HOLD: the moment you froze). Turn it to scrub; stop and the grain there loops. Default 100."
+      "max": 400,
+      "default": 400,
+      "comment": "Where the read head is in the last 4 seconds, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD: the moment you froze). Shown as how far back the head is (NOW, 990ms, 2.50s). Turn it to scrub; stop and the grain there loops. Default 400 = now."
     },
     {
       "name": "Grain",
@@ -31,12 +31,6 @@
       "max": 100,
       "default": 40,
       "comment": "How slowly the head follows Pos. 0 = jumps straight there, 40 = about 0.1 s, 70 = about 1 s, 100 = about 3 s: a slow tape-like glide. Default 40."
-    },
-    {
-      "name": "Range",
-      "max": 100,
-      "default": 100,
-      "comment": "How much of the past the Pos knob spans, 0.1 s to 4 s (log), shown in ms or s. Small = fine scrubbing inside one hit. Default 100 = 4 s."
     },
     {
       "name": "Spray",

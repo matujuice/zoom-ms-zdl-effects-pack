@@ -78,11 +78,10 @@ New, not yet tested on the pedal. Everything you play is recorded into a 6 secon
 
 | Knob | Range | What it does |
 |---|---|---|
-| Pos | 0..100 | Where the head is: 0 = Range ago, 100 = now (in HOLD, the moment you froze). |
+| Pos | 4.00 s back..NOW | Where the head is in the last 4 seconds, in 10 ms steps (400 steps). The screen shows how far back it is; NOW is the present (in HOLD, the moment you froze). |
 | Grain | 10 ms..1 s | Length of the loop. Short = a buzzing tone made of the sound, long = a whole hit or chord repeating. |
 | Rec | LIVE, HOLD, STOMP | LIVE keeps recording, so Pos is how far back you listen: a delay you can sweep. HOLD stops recording and Pos scrubs the last 6 seconds. STOMP records while the effect is switched off and freezes the moment you switch it on (needs the pedal to pass the sound through a switched-off effect; if ON gives silence, use LIVE and HOLD). |
 | Glide | 0..100 | How slowly the head follows Pos. 0 = it jumps, 40 = about 0.1 s, 100 = about 3 s, a slow tape glide. It also hides the knob's steps. |
-| Range | 100 ms..4 s | How much of the past Pos spans. Small = fine scrubbing inside one drum hit. |
 | Spray | 0..100 | Random offset for each new grain, up to 0.5 s: a moving cloud instead of a steady loop. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
 

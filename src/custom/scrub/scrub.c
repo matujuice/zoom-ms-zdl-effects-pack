@@ -3,8 +3,8 @@
  *
  * Everything that goes in is recorded into a 6 second buffer. A read head sits somewhere
  * in that buffer and plays a short GRAIN from there, over and over, each repeat
- * crossfading into the next so the loop has no seam. Position moves the head along the buffer like a timeline: 0 = the far past
- * (Range ago), 100 = now. Turning Position slides the head and you hear the audio go by
+ * crossfading into the next so the loop has no seam. Position moves the head along the
+ * last 4 seconds like a timeline, in 10 ms steps: 0 = 4 s ago, 400 = now. Turning Position slides the head and you hear the audio go by
  * (faster turns = faster, like dragging tape: forward plays higher, backward plays
  * reversed); stop turning and the grain under the head keeps looping: a freeze.
  *
@@ -21,9 +21,9 @@
  *          checked on this pedal. If ON only gives silence, use LIVE and HOLD.
  *
  * THE HEAD
- *   The head's distance from "now" is D = (100 - Position)% of Range. D glides toward the
+ *   The head's distance from "now" is D = (400 - Position) x 10 ms. D glides toward the
  *   knob with a one-pole (Glide), once per 8-sample block, which also hides the knob's
- *   steps of 1/100. Each grain starts 1.25 x Grain + D (+ Spray jitter) back and reads forward;
+ *   10 ms steps. Each grain starts 1.25 x Grain + D (+ Spray jitter) back and reads forward;
  *   while D glides, each running grain is pushed along with it, so a move is heard at once
  *   and not only when the next grain starts. The push is limited to 3 samples per sample.
  *   In LIVE the age of what a grain reads stays fixed while D does not move (it is a
@@ -46,17 +46,20 @@
  *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 6 s = 264600 samples = 529 KB of
  *   the at least 705 KB arena. It is cleared 2048 samples per block after loading (about
  *   12 ms, the effect is dry meanwhile), so stale arena data is never played.
- *   The longest reach is 1.25 x Grain 1 s + Range 4 s + Spray 0.5 s = 5.75 s, inside the 6 s.
+ *   The longest reach is 1.25 x Grain 1 s + Position 4 s + Spray 0.5 s = 5.75 s, inside the 6 s.
  *
  * KNOBS (screen values)
- *   0 Pos    0..100  where the head reads: 0 = Range ago, 100 = now (the freeze moment)
+ *   0 Pos    0..400  where the head reads, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD
+ *                    the freeze moment); shown as the time back, "NOW", "990ms", "4.00s".
+ *                    400 steps instead of 100 so no Range knob is needed (Luca, 2026-10-03).
+ *                    Read as raw x 100 always (the pedal passes screen / 100, so 4.00 here
+ *                    means 400; the 3.05 guess in sc_ui would read it as 4)
  *   1 Grain  0..100  grain length, 10 ms .. 1 s (log); shown in ms / s
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
  *   3 Glide  0..100  how slowly the head follows Position: 0 = jumps, 40 = about 0.1 s,
  *                    70 = about 1 s, 100 = about 3 s
- *   4 Range  0..100  how much of the past Position spans, 0.1 .. 4 s (log); shown in ms / s
- *   5 Spray  0..100  random offset of each grain, up to 0.5 s (squared curve)
- *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
+ *   4 Spray  0..100  random offset of each grain, up to 0.5 s (squared curve)
+ *   5 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -201,11 +204,15 @@ static inline float sc_grain_len(float g)
     return 441.0f * sc_exp2(g * 0.06643856f);              /* 6.643856 = log2(100) */
 }
 
-/* Range 0..100 -> samples, 0.1 s * 40^(r/100) */
-SC_ALWAYS_INLINE(sc_range_len)
-static inline float sc_range_len(float r)
+/* Pos knob: the pedal passes screen / 100 (0..4.00); always scale by 100, no guessing */
+SC_ALWAYS_INLINE(sc_ui_pos)
+static inline float sc_ui_pos(float raw, float def_ui)
 {
-    return 4410.0f * sc_exp2(r * 0.05321928f);             /* 5.321928 = log2(40) */
+    float ui;
+    if (!(raw >= 0.0f && raw <= 4.005f)) ui = def_ui;
+    else ui = (float)(int)(raw * 100.0f + 0.5f);
+    if (ui > 400.0f) ui = 400.0f;
+    return ui;
 }
 
 SC_ALWAYS_INLINE(sc_init)
@@ -224,14 +231,14 @@ static inline void sc_prepare(ScParams *P, const float *u)
     float k, e, sp, m;
     P->len = sc_grain_len(u[1]);
     P->inc = 0.0022675737f * sc_exp2(-u[1] * 0.06643856f);  /* 1 / len */
-    P->Dt  = (1.0f - u[0] * 0.01f) * sc_range_len(u[4]);
+    P->Dt  = (400.0f - u[0]) * 441.0f;           /* 10 ms per step back from now */
     P->mode = (int)(u[2] + 0.5f);
     k = u[3] * 0.01f;
     e = 14.0f * k * (2.0f - k);                  /* 0..14: per-block coefficient 1 .. 2^-14 */
     P->c = sc_exp2(-e);
-    sp = u[5] * 0.01f;
+    sp = u[4] * 0.01f;
     P->spray = sp * sp * 22050.0f;
-    m = u[6] * 0.01f;
+    m = u[5] * 0.01f;
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
@@ -357,11 +364,24 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return 4;
 }
 
-/* knob 4 Range: screen 0..100 -> "100ms".."4.0s" */
-int ZDL_GetLabel_4(unsigned int value, char *out)
+/* knob 0 Pos: screen 0..400 -> how far back the head is: "4.00s".."1.00s", "990ms".."10ms",
+ * "NOW" */
+int ZDL_GetLabel_0(unsigned int value, char *out)
 {
-    if (value > 100u) value = 100u;
-    return sc_put_time((int)(sc_range_len((float)(int)value) * 0.022675737f + 0.5f), out);
+    int cs, len, w = 0, t = 0;
+    if (value > 400u) value = 400u;
+    cs = 400 - (int)value;                       /* hundredths of a second back */
+    if (cs == 0) { out[0] = 'N'; out[1] = 'O'; out[2] = 'W'; out[3] = 0; return 3; }
+    if (cs < 100) {
+        len = sc_put_int(cs * 10, out);
+        out[len] = 'm'; out[len + 1] = 's'; out[len + 2] = 0;
+        return len + 2;
+    }
+    while (cs >= 100) { cs -= 100; w++; }
+    while (cs >= 10)  { cs -= 10;  t++; }
+    out[0] = (char)('0' + w); out[1] = '.'; out[2] = (char)('0' + t); out[3] = (char)('0' + cs);
+    out[4] = 's'; out[5] = 0;
+    return 5;
 }
 
 /* ---- pedal entry point ---------------------------------------------------- */
@@ -388,7 +408,7 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ScState *s;
     ScParams P;
-    float u[7];
+    float u[6];
     int i;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -408,13 +428,12 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
 
     s = (ScState *)stateBase;
 
-    u[0] = sc_ui(params[SCRUB_POS_SLOT],    (float)SCRUB_POS_UI_DEFAULT,    100.0f);
+    u[0] = sc_ui_pos(params[SCRUB_POS_SLOT], (float)SCRUB_POS_UI_DEFAULT);
     u[1] = sc_ui(params[SCRUB_GRAIN_SLOT],  (float)SCRUB_GRAIN_UI_DEFAULT,  100.0f);
     u[2] = sc_ui(params[SCRUB_REC_SLOT],    (float)SCRUB_REC_UI_DEFAULT,    2.0f);
     u[3] = sc_ui(params[SCRUB_GLIDE_SLOT], (float)SCRUB_GLIDE_UI_DEFAULT, 100.0f);
-    u[4] = sc_ui(params[SCRUB_RANGE_SLOT],  (float)SCRUB_RANGE_UI_DEFAULT,  100.0f);
-    u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
-    u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
+    u[4] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
+    u[5] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
 
     if (s->magic != SC_MAGIC) sc_init(s);
     if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */

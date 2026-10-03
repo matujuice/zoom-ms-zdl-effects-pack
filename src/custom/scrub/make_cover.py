@@ -2,9 +2,10 @@
 
 Concept (after DualShft: the big title is the art): SCRUB across the screen, centred,
 and a playhead scrubbing through it. Left of the head the letters are solid (already
-played), right of the head they are dithered (still to come). The head is a 2 px line
-with a cap on top that runs down onto a timeline under the title: solid behind the
-head, dotted ahead of it, arrows at both ends (you drag it both ways). The grain, the
+played), right of the head they are dithered (still to come). The head is a small
+arrow on top (Luca chose it over a full-height line, SCRUB_HEAD_LINE=1 brings the line
+back); under the title a timeline, solid behind the head, dotted ahead of it, arrows at
+both ends (you drag it both ways). The grain, the
 slice around the head that loops when you stop, is a selection centred on the head,
 over the title and the timeline, like a region in a sample editor: black fill, the
 letters inside solid and inverted, its sides dithered ramps (the crossfade).
@@ -32,7 +33,7 @@ LGAP = 8
 TITLE = "SCRUB"
 TY = 6                       # title rows 6..20
 HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
-HEAD_LINE = os.environ.get("SCRUB_HEAD_LINE", "1") == "1"   # 0 = only the arrow on top
+HEAD_LINE = os.environ.get("SCRUB_HEAD_LINE", "0") == "1"   # 1 = also a line down from the arrow
 LINE_Y = 28                  # timeline row
 LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
 SEL_HALF = 11                # the selection reaches 11 columns either side of the head
