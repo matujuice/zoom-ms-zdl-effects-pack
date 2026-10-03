@@ -213,6 +213,10 @@ class LinkerConfig:
     output_path: str | os.PathLike        # output GAIN.ZDL etc.
 
     audio_func_name: Optional[str] = None # default: f"Fx_FLT_{effect_name}"
+    # Name written into the descriptor's name entry only (what the pedal lists), when it
+    # must differ from effect_name, e.g. "S.GN_L": effect_name still names the file,
+    # the symbols and the SONAME, where only C-safe characters are used.
+    display_name: Optional[str] = None
     fxid_version: bytes = b"1.00"         # 4 bytes
     flags_byte: int = 0x01                # ZDL header byte 0x3D; 0x01 matches majority
 
@@ -1235,7 +1239,7 @@ def link(cfg: LinkerConfig) -> None:
               f"(_init @ 0x{init_va:08X}, {len(body)}B)")
 
     desc_bytes, desc_relocs = _build_descriptor(
-        effect_name=cfg.effect_name,
+        effect_name=cfg.display_name or cfg.effect_name,
         audio_func_va=TEXT_VA + AUDIO_OFF,
         init_func_va=init_va,
         onf_func_va=onf_va,

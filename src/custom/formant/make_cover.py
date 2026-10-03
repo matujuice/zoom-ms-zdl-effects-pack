@@ -1,8 +1,9 @@
 """Generate src/airwindows/common/covers/Choral.json (128x64 cover override).
 
-Concept, in the repo's 1-bit cover style (big repo-font title with a stencil
-slit, dials under the firmware value boxes, bottom rule):
-  * the name CHORAL on top,
+Concept, in the repo's 1-bit cover style (dials under the firmware value boxes,
+no bottom rule):
+  * the name CHORAL on top in the repo font stretched wide and fat (each font
+    pixel 5 x 3), as wide as the lips row,
   * under it a row of five identical pairs of lips (robot voices, cupid's bow),
     one per vowel, only the opening differs; the whole picture has a digital
     glitch pass (sliced scanlines, dropped rows, tracking dashes, noise). Shaped like the vowel (A wide open, E half open, I stretched thin,
@@ -26,6 +27,8 @@ TITLE = "CHORAL"
 NAME = "Choral"
 SCALE = 3
 GAP = 1
+XS = 5                  # title: each font pixel 5 wide, 3 tall (Luca picked fat and wide, 2026-10-03)
+TGAP = 2
 TEXT_Y = 2
 SLIT_ROW = 9
 LABELS = ("VOWEL", "RESO", "CHORD")
@@ -71,18 +74,18 @@ def lips(c, cx, cy, vowel):
 def build():
     c = Canvas()
 
-    # 1. Title: repo 3x5 font at scale 3, stencil slit, centred
-    w = len(TITLE) * (3 * SCALE + GAP) - GAP
-    tx = (128 - w) // 2
+    # 1. Title: repo 3x5 font, each font pixel XS wide and SCALE tall (fat and wide), centred
     m = Canvas()
-    m.draw_text(TITLE, tx, TEXT_Y, scale=SCALE, spacing=GAP)
-    main = set()
-    for y in range(64):
-        for x in range(128):
+    m.draw_text(TITLE, 0, 0, scale=1, spacing=1)
+    w = len(TITLE) * (3 * XS + TGAP) - TGAP
+    tx = (128 - w) // 2
+    for y in range(5):
+        for x in range(len(TITLE) * 4):
             if m.pixels[y][x]:
-                main.add((x, y))
-    for (x, y) in main:
-        c.px(x, y)
+                ch, col = divmod(x, 4)
+                for yy in range(SCALE):
+                    for xx in range(XS):
+                        c.px(tx + ch * (3 * XS + TGAP) + col * XS + xx, TEXT_Y + y * SCALE + yy)
 
     # 2. Five pairs of lips, one per vowel, evenly spaced
     pitch = 25
@@ -110,11 +113,12 @@ def build():
         for x in range(2, 124):
             if crisp[y][x] and not crisp[y + 1][x + 2] and (x + y) % 2 == 0:
                 c.pixels[y + 1][x + 2] = 1
-    # a few single-row slices, nudged 2-3 px (shapes stay readable)
-    shift_rows(TEXT_Y + 4, TEXT_Y + 4, 3)
-    shift_rows(TEXT_Y + 10, TEXT_Y + 10, -3)
-    shift_rows(21, 21, 3)
-    shift_rows(29, 29, -3)
+    # a few single-row slices, nudged 1 px on the title and the lips alike
+    # (3 px made CHORAL hard to read; Luca asked for the lips to match, 2026-10-03)
+    shift_rows(TEXT_Y + 4, TEXT_Y + 4, 1)
+    shift_rows(TEXT_Y + 10, TEXT_Y + 10, -1)
+    shift_rows(21, 21, 1)
+    shift_rows(29, 29, -1)
     # short dropouts
     for x, y, n in ((18, 25, 4), (47, 27, 3), (73, 23, 4), (101, 28, 3)):
         for xx in range(x, x + n):

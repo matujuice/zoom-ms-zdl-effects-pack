@@ -1,4 +1,4 @@
-# The five effects
+# The six effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -72,3 +72,20 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Time | 50 ms..1 s | Echo time (never synced). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
 | Tempo | 40..240 BPM | Only used when Rate is set to a note value. |
+
+### S.GN_L: broken digital line
+New, not yet tested on the pedal. The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Loss | 0..100 | How many packets are lost. 0 = clean line, 100 = about 85 %. |
+| Size | 1 ms..500 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
+| Codec | 0..100 | Codec quality going down. Above 50 the first packet after a silence is lost too, like a call clipping the start of a word. |
+| Fill | GAP, REPT, FADE, NOISE, REVRS, GARBL, LATE, RND | What replaces a lost packet: silence, the last packet replayed, the replay dying away, hiss at the level of the sound, the last packet backwards, corrupted data (boosted random slices, a digital screech), an older packet out of order so phrases shuffle, or a random one of these per outage (never GARBL). |
+| Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
+| Jump | 0..100 | How often the quality suddenly drops for a few packets and comes back. |
+| Line | HIFI, VOIP, PHONE, WALKY | Band of the line: full and untouched, 200 Hz..5 kHz with a steep low cut and a boxy headset bump at 1.5 kHz, 300 Hz..3.4 kHz, or 500 Hz..2.5 kHz with some drive. |
+| Edge | 0..100 | Cut at the packet edges. 0 = hard clicks, 100 = fades that fill most of the packet, so lost packets become soft dips and swells (longer with bigger Size). |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
+
+Try Size 5 ms with Fill REPT and Burst high for robot voice, or Size 60 ms, Fill GAP and Line PHONE for a bad call.

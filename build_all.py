@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Build the five effects into ./dist/.
+"""Build the six effects into ./dist/.
 
-    py build_all.py              # all five
-    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren)
+    py build_all.py              # all six
+    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl)
 
-Needs the TI C6000 compiler (see README). formant is Choral.
+Needs the TI C6000 compiler (see README). formant is Choral, sgnl is S.GN_L (SGNL.ZDL).
 """
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren"]
+EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl"]
 
 want = sys.argv[1:] or EFFECTS
 bad = [n for n in want if n not in EFFECTS]
