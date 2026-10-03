@@ -18,7 +18,7 @@
       "name": "Grain",
       "max": 112,
       "default": 50,
-      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. A synced grain longer than about 1 s pulls the head in so it still fits in the 6 s buffer. Default 50 = 100 ms."
+      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. Long grains pull the head in so they still fit in the 6 s buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
     },
     {
       "name": "Rec",

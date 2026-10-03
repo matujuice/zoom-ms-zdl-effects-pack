@@ -317,6 +317,43 @@ int main(void)
         }
     }
 
+    /* 6c. no voice may run off the end of the buffer (a read age stuck at SC_AGE_MAX turns
+     * into a 6 s delay or a stuck sample): Pos 4.00s, Spray 100, every Dir, LIVE and HOLD,
+     * free grains and every synced grain at slow to fast tempos, for a voice's whole life */
+    {
+        const float bpms[5] = {40, 55, 80, 120, 240};
+        int runs = 0, over = 0;
+        for (int g = 0; g <= 112; g += (g < 100 ? 10 : 1)) {
+            for (int tb = 0; tb < (g > 100 ? 5 : 1); tb++) {
+                for (int dir = 0; dir < 4; dir++) {
+                    for (int rec = 0; rec < 2; rec++) {
+                        float u[8] = {0, 0, 0, 0, 0, 100, 100, 120};
+                        ScParams P;
+                        float worst = 0;
+                        u[1] = (float)g; u[4] = (float)dir; u[2] = (float)rec; u[7] = bpms[tb];
+                        sc_init(&S); S.clr = SC_N;
+                        sc_prepare(&P, u);
+                        for (t = 0; t < (long)(2.6f * P.len) + 4410; t += 8) {
+                            for (i = 0; i < 8; i++) b[i] = 0.0f;
+                            sc_prepare(&P, u);
+                            sc_process(&S, &P, b, 8);
+                            if (S.aC > worst) worst = S.aC;
+                            /* the old voice is only read during the seam */
+                            if (S.p * ((S.bC != S.bO) ? P.xft : P.xf) < 0.5f && S.aO > worst) worst = S.aO;
+                        }
+                        runs++;
+                        if (worst >= SC_AGE_MAX - 0.5f) {
+                            if (over < 6) printf("  overrun: Grain %d at %g BPM, Dir %d, %s, worst age %.0f\n", g, g > 100 ? bpms[tb] : 0.0f, dir, rec ? "HOLD" : "LIVE", worst);
+                            over++;
+                        }
+                    }
+                }
+            }
+        }
+        printf("buffer reach: %d runs (Pos 4.00s, Spray 100), %d hit the end of the buffer\n", runs, over);
+        CHECK(over == 0, "a voice ran off the end of the buffer");
+    }
+
     /* 7. labels */
     {
         char o[8];

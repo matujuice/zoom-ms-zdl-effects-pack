@@ -66,8 +66,13 @@
  *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 6 s = 264600 samples = 529 KB of
  *   the at least 705 KB arena. It is cleared 2048 samples per block after loading (about
  *   12 ms, the effect is dry meanwhile), so stale arena data is never played.
- *   The longest reach is 1.25 x Grain 1 s + Position 4 s + Spray 0.25 s = 5.5 s, inside the 6 s.
- *   A longer synced grain pulls the head in instead (see Grain).
+ *   A voice reads back to D + Spray plus 1.25 x Grain (forward), 1.5 x Grain (backward in
+ *   HOLD) or 2.75 x Grain (backward in LIVE, where the buffer moves on under it). The
+ *   free range always fits with the head 4 s back (2.75 x 1 s + 4 s + 0.25 s = 7 s would
+ *   not, so with Dir REV, PING or RAND in LIVE a grain over about 0.6 s pulls the head
+ *   in a little); a long synced grain pulls the head in, and one that cannot fit even at
+ *   now is shortened. No read reaches the end of the 6 s. The 2 s beyond Pos's 4 s are
+ *   this headroom: you scrub the last 4 s, the buffer keeps 6.
  *
  * KNOBS (screen values)
  *   0 Pos    0..400  where the head reads, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD
@@ -79,7 +84,8 @@
  *                    101..112 = a note value at Tempo (Luca, 2026-10-03): 1/64 1/32 1/16T
  *                    1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2, so the freeze loops in time.
  *                    A synced grain can reach 3 s (1/2 at 40 BPM); then the head cannot go
- *                    as far back as Pos asks (it stops where the grain still fits in 6 s)
+ *                    as far back as Pos asks (it stops where the grain still fits in 6 s),
+ *                    and a backward one in LIVE may be shortened (see MEMORY)
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
  *   3 Glide  0..100  how slowly the head follows Position: 0 = jumps, 40 = about 0.1 s,
  *                    70 = about 1 s, 100 = about 3 s
@@ -146,6 +152,7 @@ typedef struct {
     float inc;             /* grain phase increment per sample (1 / length)   */
     float len;             /* grain length, samples                           */
     float Dt;              /* head distance target, samples                   */
+    float Dmax;            /* furthest the head may be so every read fits     */
     float c;               /* Glide: one-pole coefficient per block          */
     float spray;           /* Spray: grains land up to this far either side   */
     float dryG, wetG;      /* Mix: DJ crossfade gains                         */
@@ -292,8 +299,10 @@ static inline void sc_init(ScState *s)
 SC_ALWAYS_INLINE(sc_prepare)
 static inline void sc_prepare(ScParams *P, const float *u)
 {
-    float k, e, sp, m, bpm, lim;
+    float k, e, sp, m, bpm, lim, reach, rinv;
     int g = (int)(u[1] + 0.5f);
+    P->mode = (int)(u[2] + 0.5f);
+    P->dir = (int)(u[4] + 0.5f);
     if (g > 100) {                               /* synced: the grain is a note at Tempo */
         bpm = u[7];
         if (bpm < 40.0f) bpm = 40.0f;
@@ -306,17 +315,27 @@ static inline void sc_prepare(ScParams *P, const float *u)
     }
     sp = u[5] * 0.01f;
     P->spray = sp * sp * 11025.0f;               /* up to +-250 ms */
-    /* 10 ms per step back from now; a long synced grain (up to 3 s, 1/2 at 40 BPM) pulls
-     * the head in so the whole grain still fits in the 6 s (the free range never needs it) */
-    P->Dt  = (400.0f - u[0]) * 441.0f;
-    lim = SC_AGE_MAX - 2.0f - 1.25f * P->len - P->spray;
+    /* How far back (beyond D + Spray) a voice reads during its 1.25 x Grain life: a forward
+     * voice 1.25 x Grain; a backward one starts 0.25 x Grain back and ages by 1 per sample
+     * in HOLD (1.5 x Grain) or by 2 in LIVE, where the buffer moves on under it (2.75 x
+     * Grain). A grain too long for the buffer even with the head at now (only synced ones,
+     * e.g. 1/2 below about 55 BPM with REV in LIVE) is shortened to fit; otherwise the
+     * head is pulled in. Either way no read ever reaches the end of the 6 s. */
+    reach = 1.25f; rinv = 0.8f;
+    if (P->dir != SC_DIR_FWD) {
+        if (P->mode == SC_MODE_LIVE) { reach = 2.75f; rinv = 0.36363637f; }
+        else { reach = 1.5f; rinv = 0.6666667f; }
+    }
+    lim = SC_AGE_MAX - 4.0f - P->spray;
+    if (reach * P->len > lim) { P->len = lim * rinv; P->inc = sc_recip(P->len); }
+    lim -= reach * P->len;
+    if (lim < 0.0f) lim = 0.0f;
+    P->Dmax = lim;
+    P->Dt  = (400.0f - u[0]) * 441.0f;           /* 10 ms per step back from now */
     if (P->Dt > lim) P->Dt = lim;
-    if (P->Dt < 0.0f) P->Dt = 0.0f;
-    P->mode = (int)(u[2] + 0.5f);
     k = u[3] * 0.01f;
     e = 14.0f * k * (2.0f - k);                  /* 0..14: per-block coefficient 1 .. 2^-14 */
     P->c = sc_exp2(-e);
-    P->dir = (int)(u[4] + 0.5f);
     /* Two voices playing the same way crossfade over the first quarter of the cycle. Where
      * the new voice turns round (PING always, RAND when the coin flips) it starts on the
      * sample the last voice was playing, so a long crossfade would only mix the sound with
@@ -372,6 +391,7 @@ static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
 
     if (!s->started) { s->D = P->Dt; s->started = 1; s->bC = 0; aC = sc_new_voice(s, P); aO = aC; s->bO = s->bC; }
     s->D += P->c * (P->Dt - s->D);               /* the head glides; new voices start there */
+    if (s->D > P->Dmax) s->D = P->Dmax;          /* a longer grain or Spray: pull it in now  */
     daF = rec ? 0.0f : -1.0f;                    /* age change of a forward voice  */
     daB = rec ? 2.0f : 1.0f;                     /* and of a backward one          */
 
