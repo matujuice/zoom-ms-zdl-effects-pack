@@ -4,9 +4,9 @@ Concept (after DualShft: the big title is the art): SCRUB across the screen, cen
 and a playhead scrubbing through it. Left of the head the letters are solid (already
 played), right of the head they are dithered (still to come). The head is a 2 px line
 with a cap on top that runs down onto a timeline under the title: solid behind the
-head, dotted ahead of it, arrows at both ends (you drag it both ways), and the grain
-just before the head drawn thick (the slice that loops when you stop), with copies of
-it ahead of the head fading out like echoes: the grain repeating.
+head, dotted ahead of it, arrows at both ends (you drag it both ways). The grain, the
+slice just before the head that loops when you stop, is a selection: a band inverted
+over the title and the timeline, like a region selected in a sample editor.
 
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
@@ -32,7 +32,8 @@ TY = 6                       # title rows 6..20
 HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
 LINE_Y = 28                  # timeline row
 LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
-GRAIN = 10                   # thick grain on the timeline, just before the head
+GRAIN = 9                    # the selected grain: the 9 columns before the head (the gap and the front of the R)
+SEL_Y0, SEL_Y1 = TY - 2, LINE_Y + 2   # the selection runs from above the title to below the timeline
 
 
 def big_text(c, text, x, y, v=1):
@@ -80,23 +81,16 @@ def build():
 
     # --- the timeline: solid behind, dotted ahead, the grain thick, arrows at the ends -
     c.hline(LX0, HEAD - 2, LINE_Y)
-    for y in (LINE_Y - 1, LINE_Y + 1):
-        c.hline(HEAD - 1 - GRAIN, HEAD - 2, y)
-    # the grain repeating: copies of it ahead of the head, fading out like echoes
-    # (solid, then hollow, then a dotted outline, then only its ends)
-    for k in range(4):
-        x0 = HEAD + 4 + k * (GRAIN + 3)
-        x1 = min(x0 + GRAIN - 1, LX1)
-        for x in range(x0, x1 + 1):
-            edge = x in (x0, x1)
-            for y in (LINE_Y - 1, LINE_Y, LINE_Y + 1):
-                rim = edge or y != LINE_Y
-                if k == 0 or (k == 1 and rim) or (k == 2 and rim and (x + y) % 2 == 0) \
-                        or (k == 3 and edge and y == LINE_Y):
-                    c.px(x, y)
+    for x in range(HEAD + 3, LX1 + 1, 2):
+        c.px(x, LINE_Y)
     for k in range(4):
         c.vline(LX0 - 6 + k, LINE_Y - k, LINE_Y + k)          # left arrow
         c.vline(LX1 + 6 - k, LINE_Y - k, LINE_Y + k)          # right arrow
+
+    # --- the grain: a selection just before the head, inverted like in a sample editor -
+    for y in range(SEL_Y0, SEL_Y1 + 1):
+        for x in range(HEAD - 1 - GRAIN, HEAD - 1):
+            c.px(x, y, 0 if c.pixels[y][x] else 1)
 
     # --- labels and dials under the firmware value boxes (page 1 knobs) --------
     for (kid, kx, ky), label in zip(cc.knob_layout(3), LABELS):
