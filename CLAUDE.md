@@ -12,7 +12,8 @@ Five custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren) for Zoom MS p
 - `src/airwindows/common/covers/*.json`: generated covers. `make_cover.py` writes them; `custom_covers.py` loads them.
 - `tests/`: host tests (`python3 tests/run.py [name]`).
 - `release/`: pack README, cover sheet. `make_release.py` zips `dist/*.ZDL` with them.
-- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488.
+- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489 (PR #2), Scrub 490.
+- Scrub is not in `release/` or `make_release.py` until it has been tried on the pedal.
 
 ## Building and testing
 
@@ -44,6 +45,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 - DubSiren: siren into a tape-style echo; Rate 101..112 sync to the Tempo knob, Fast = 2x and Slow = 0.5x of the note value; echo Time is never synced; Fdbk 0 = echo off, default 70; siren level is 0.3 x full-scale at Vol 100.
 - EuGate: Steps 1..64 and Notes 1..64 (polymeters); Gap puts a small silence before a touching note; Mix stays on every effect; the cover is a 16-dot Euclid ring (round on the device), ghost "CLIDIAN", "5/16=3.3.3.3.4".
 - WaveFold: Buchla 259 fold curve; the level match follows the input directly (it used to creep back slowly after a quiet decay, which made notes swell in).
+- Scrub: 6 s 16-bit buffer in the arena (cleared 2048 samples per block after loading); Pos scrubs a read head (0 = Range ago, 100 = now), Glide (the brief called it Smooth; 5-letter names like the rest of the pack) glides it and running voices are pushed along so moves are heard at once (tape-like); the freeze is a crossfaded loop (new voice fades in over the first quarter of each Grain while the old fades out), not a 50 % overlap cloud, which beat on held tones; Rec LIVE / HOLD / STOMP (STOMP records while switched off, relies on the pedal passing audio to a bypassed effect: unverified). Concept: /mnt/project-files/ideas/effect-ideas.md.
 - Every effect has a Mix knob.
 
 ## Working habits

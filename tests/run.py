@@ -19,7 +19,7 @@ from manifest_params import write_param_header  # noqa: E402
 GEN = HERE / "_gen"
 GEN.mkdir(exist_ok=True)
 for folder, prefix in [("wavefold", "WAVEFOLD"), ("dualshft", "DUALSHFT"), ("formant", "FORMANT"),
-                       ("eugate", "EUGATE"), ("dubsiren", "DUBSIREN")]:
+                       ("eugate", "EUGATE"), ("dubsiren", "DUBSIREN"), ("scrub", "SCRUB")]:
     m = json.loads((ROOT / "src" / "custom" / folder / "manifest_pedal.json").read_text(encoding="utf-8"))
     write_param_header(m, GEN / f"{folder}_params.h", prefix)
 
