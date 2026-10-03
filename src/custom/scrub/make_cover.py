@@ -2,8 +2,8 @@
 
 Concept, in the WaveFold layout (two equal rectangles mirrored around the middle of the
 screen, 2 px strokes, rounded corners): on the left a sample-editor view of the buffer,
-three drum hits drawn as a waveform with a 2 px playhead; the grain just before the head
-is the frozen loop, in a dotted frame with a loop arrow over it. On the right SCRUB in the
+three evenly spaced drum hits drawn as a waveform, centred, with a 2 px playhead in the
+middle; the grain just before the head is the frozen loop, in a dotted frame. On the right SCRUB in the
 top half, and in the bottom half a black block with a white scrub bar: a timeline, the
 head on it and arrows either side (you drag it both ways).
 
@@ -31,11 +31,12 @@ COLS = (2, 4, 2)             # font column -> px: 2 px stems, letters 8 wide
 ROWS = (3, 2, 3, 2, 3)       # font row -> px: letters 13 tall, as WaveFold
 LGAP = 2
 SPLIT = (ART_TOP + ART_BOTTOM) // 2                   # row 17: SCRUB in rows 0..16, block 18..34
-HITS = (4, 22, 44)           # drum hits along the buffer (x)
-HEAD = 38                    # playhead x (2 px: 38, 39)
-GRAIN = 12                   # frozen grain: the 12 columns before the head
-WCY = 21                     # waveform centre row
-WAMP = 9.0                   # waveform peak, px
+WX0, WX1 = 6, 54             # waveform columns: equal margins in the box (0..60)
+HITS = (6, 22, 38)           # drum hits, evenly spaced
+HEAD = 29                    # playhead x (2 px: 29, 30), the middle of the box
+GRAIN = 10                   # frozen grain: the 10 columns before the head
+WCY = (ART_TOP + ART_BOTTOM) // 2   # waveform centre row, the middle of the box
+WAMP = 9                     # waveform peak, px
 
 
 def big_text(c, text, x, y, v=1):
@@ -77,35 +78,28 @@ def round_corners(c, x0, x1, y0, y1):
 def build():
     c = Canvas()
 
-    # --- left box: the buffer, the head and the frozen grain ----------------------------
+    # --- left box: the buffer and the head, centred ------------------------------------
     c.rect(BOX_X0, ART_TOP, BOX_X1, ART_BOTTOM)
-    for x in range(BOX_X0 + 3, BOX_X1 - 2):
+    for x in range(WX0, WX1 + 1):
         a = env(x)
         # uneven column heights so it reads as a waveform, not a solid shape
-        h = round(WAMP * a * (0.45, 1.0, 0.7, 0.9, 0.55)[x % 5])
+        h = round(WAMP * a * (0.45, 1.0, 0.7, 0.9, 0.55)[(x - WX0) % 5])
         if h < 1:
             c.px(x, WCY)                          # silence: a flat line
         else:
             c.vline(x, WCY - h, WCY + h)
-    # the frozen grain: a dotted frame over the columns before the head
-    g0, g1 = HEAD - GRAIN, HEAD - 1
-    fy0, fy1 = WCY - 11, WCY + 11
-    for x in range(g0, g1 + 1, 2):
+    # the frozen grain: a dotted frame over the columns just before the head
+    g0 = HEAD - GRAIN
+    fy0, fy1 = WCY - WAMP - 2, WCY + WAMP + 2
+    for x in range(g0, HEAD, 2):
         c.px(x, fy0); c.px(x, fy1)
     for y in range(fy0, fy1 + 1, 2):
         c.px(g0, y)
-    # loop arrow over the grain: from its end, up, back left, down into its start
-    ay = fy0 - 2
-    c.hline(g0 + 1, g1 - 1, ay - 3)
-    c.px(g1, ay - 2); c.px(g1, ay - 1)
-    c.px(g0, ay - 2); c.px(g0, ay - 1)
-    c.hline(g0 - 2, g0 + 2, ay)                   # arrowhead pointing down at the start
-    c.hline(g0 - 1, g0 + 1, ay + 1)
-    # the playhead: 2 px, full height, a small flag on top
+    # the playhead: 2 px in the middle of the box, a small triangle at each end
     for x in (HEAD, HEAD + 1):
-        c.vline(x, ART_TOP + 3, ART_BOTTOM - 3)
-    c.hline(HEAD - 1, HEAD + 2, ART_TOP + 3)
-    c.hline(HEAD, HEAD + 1, ART_TOP + 4)
+        c.vline(x, fy0 - 1, fy1 + 1)
+    c.hline(HEAD - 1, HEAD + 2, fy0 - 2); c.hline(HEAD - 2, HEAD + 3, fy0 - 3)
+    c.hline(HEAD - 1, HEAD + 2, fy1 + 2); c.hline(HEAD - 2, HEAD + 3, fy1 + 3)
 
     # --- right box: SCRUB on top, a white scrub bar in a black block under it ----------
     c.rect(TXT_X0, ART_TOP, W - 1, ART_BOTTOM)
@@ -117,8 +111,8 @@ def build():
     bx0, bx1 = TXT_X0 + 12, W - 13
     for x in range(bx0, bx1 + 1, 2):              # the timeline, dotted
         c.px(x, by, 0)
-    c.hline(bx0, bx0 + 17, by, 0)                 # the part already played, solid
-    hx = bx0 + 18                                 # the head on the bar: a 2 px post
+    hx = (TXT_X0 + W - 1) // 2                    # the head on the bar: a 2 px post, centred
+    c.hline(bx0, hx - 1, by, 0)                   # the part already played, solid
     for x in (hx, hx + 1):
         c.vline(x, by - 5, by + 5, 0)
     for k in range(4):                            # arrows both ways at the ends
