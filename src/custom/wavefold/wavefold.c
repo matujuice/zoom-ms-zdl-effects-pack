@@ -43,7 +43,7 @@
  *   1 Symm  0..100  shown -50..+50, offset = +-2 V before the folder
  *   2 Tone  0..100  low-pass coefficient 0.03 + 0.97 * (n/100)^2 (about 200 Hz .. open)
  *   3 Level 0..100  0 .. 2x, 50 = 1x = output loudness equal to input loudness
- *   4 Mix   0..100  dry/wet
+ *   4 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  */
 
 #include <stdint.h>
@@ -84,7 +84,7 @@ typedef struct {
 } WfState;
 
 typedef struct {
-    float gain, bias, a, level, mix;
+    float gain, bias, a, level, dryG, wetG;
 } WfParams;
 
 WF_ALWAYS_INLINE(clamp01)
@@ -166,7 +166,10 @@ static inline void wf_prepare(WfParams *P, const float *k)
     P->bias  = (k[1] + k[1] - 1.0f) * WF_BIAS_V;
     P->a     = 0.03f + 0.97f * k[2] * k[2];
     P->level = k[3] + k[3];
-    P->mix   = k[4];
+    P->dryG = 2.0f - 2.0f * (k[4]);            /* Mix: dry full up to 50, then fades out */
+    if (P->dryG > 1.0f) P->dryG = 1.0f;
+    P->wetG = 2.0f * (k[4]);                    /* wet fades in up to 50, then full       */
+    if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
 WF_ALWAYS_INLINE(wf_process)
@@ -201,7 +204,7 @@ static inline void wf_process(WfState *s, const WfParams *P, float *buf, int n)
         else if (w < -1.5f) w = -1.0f;
         else w = w - 0.148148f * w * w * w;
         gate += 0.01f * ((ein > 1e-7f ? 1.0f : 0.0f) - gate);
-        buf[i] = in + P->mix * (w * gate * P->level - in);
+        buf[i] = P->dryG * in + P->wetG * (w * gate * P->level);
     }
     if (lp < 1e-15f && lp > -1e-15f) lp = 0.0f;          /* denormals */
     if (dcy < 1e-15f && dcy > -1e-15f) dcy = 0.0f;

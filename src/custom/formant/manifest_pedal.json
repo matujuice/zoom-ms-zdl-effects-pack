@@ -60,7 +60,7 @@
       "name": "Mix",
       "max": 100,
       "default": 100,
-      "comment": "Dry / wet."
+      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50."
     }
   ],
   "audio_func_name": "Fx_DLY_Formant",

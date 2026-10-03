@@ -95,7 +95,7 @@
  *              Swell  slow eased rise, quick fall
  *              Spot   a spotlight of vowel travels through the voices
  *   7 Depth  0..100 = how far the shape reaches from Vowel, 0..4 vowels (0 = still)
- *   8 Mix    dry / wet
+ *   8 Mix    dry / wet, DJ-style: dry full up to 50, wet full from 50
  *
  * SINGER'S FORMANT: the main (middle) voice has a 4th, fixed band at 3 kHz (x section scale),
  * level 0.06 (no vowel trim), Q half of the others: the bright "ring" of a
@@ -180,7 +180,7 @@ typedef struct {
     float lfo_inc;         /* LFO phase increment per 8-sample block          */
     float depth;           /* LFO swing in vowel units                        */
     float invq;            /* 1/Q                                             */
-    float mix;             /* 0..1                                            */
+    float dryG, wetG;      /* Mix gains, 0..1, both 1 at Mix 50               */
     float makeup;          /* wet gain compensation                           */
     float bpm;
     int   shape;           /* LFO shape 0..13                                 */
@@ -553,7 +553,10 @@ static inline void fm_prepare(FmState *s, FmParams *P, const float *k)
     P->spw     = 0.2f + 0.5f * k[7];
     P->spinv   = recip_w(P->spw);
     P->invq    = 0.5f - 0.47f * k[4];                 /* Q 2 .. 33                    */
-    P->mix     = k[5];
+    P->dryG = 2.0f - 2.0f * (k[5]);            /* Mix: dry full up to 50, then fades out */
+    if (P->dryG > 1.0f) P->dryG = 1.0f;
+    P->wetG = 2.0f * (k[5]);                    /* wet fades in up to 50, then full       */
+    if (P->wetG > 1.0f) P->wetG = 1.0f;
     {   /* more Reso = narrower bands = less level: lift the top of the range */
         float k2 = k[4] * k[4], k6 = k2 * k2 * k2;
         P->makeup = (FM_MAKEUP_A + FM_MAKEUP_B * k[4]) * (1.0f + FM_RESO_LIFT * k6);
@@ -885,7 +888,7 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
             if (s->comp < 0.02f) s->comp = 0.02f;
             if (s->comp > 8.0f)  s->comp = 8.0f;
         }
-        buf[i] = x0 + P->mix * (wet - x0);
+        buf[i] = P->dryG * x0 + P->wetG * wet;
     }
 }
 
