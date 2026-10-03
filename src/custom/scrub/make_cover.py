@@ -25,7 +25,8 @@ from custom_covers import _VSquash
 NAME = "Scrub"
 LABELS = ("POS", "GRAIN", "REC")
 W, H = 128, 64
-COLS = (3, 9, 3)             # font column -> px: 3 px stems, letters 15 wide
+COLS = (3, 8, 3)             # font column -> px: 3 px stems, letters 14 wide (title 102 wide:
+                             # even, so it centres on the 2 px head exactly)
 ROWS = (3, 3, 3, 3, 3)       # font row -> px: letters 15 tall, as DualShft
 LGAP = 8
 TITLE = "SCRUB"
@@ -99,7 +100,8 @@ def build():
             d = min(x - x0, x1 - x) + 1                     # 1 at the outer columns
             if d <= RAMP:
                 share = d / (RAMP + 1)                      # 0.25, 0.5, 0.75 inward
-                bayer = ((0, 2), (3, 1))[y % 2][x % 2] / 4.0 + 0.125
+                xm = x - x0 if x - x0 < x1 - x else x1 - x   # mirrored: both sides match
+                bayer = ((0, 2), (3, 1))[y % 2][xm % 2] / 4.0 + 0.125
                 if bayer > share:
                     continue
             c.px(x, y, 0 if c.pixels[y][x] else 1)
