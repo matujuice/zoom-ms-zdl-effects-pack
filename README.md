@@ -1,8 +1,8 @@
 # Matujuice Zoom MS ZDL effects pack
 
-Five free custom effects for Zoom MultiStomp pedals, with source code.
+Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
-![The five covers as the pedal's screen shows them](release/covers.png)
+![The seven covers as the pedal's screen shows them](release/covers.png)
 
 | Effect | What it is |
 |---|---|
@@ -11,6 +11,8 @@ Five free custom effects for Zoom MultiStomp pedals, with source code.
 | **Choral** | Turns the input into a vowel choir: five voices, 35 chords, 11 ways for the vowels to move. |
 | **EuGate** | Euclidean rhythm gate. Steps and Notes up to 64 each, so polymeters are possible. Swing, Gap and Soft too. |
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
+| **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
+| **Scrub** | Records the last 6 seconds; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
@@ -37,7 +39,7 @@ On Windows, double-click one of:
 - `build_eugate.bat`
 - `build_dubsiren.bat`
 
-Or run `py build_all.py` for all five. The results are in `dist/`. `py make_release.py` then packs them with the readme and licence into `release/Matujuice_ZoomMS_pack.zip`.
+S.GN_L builds with `py build_all.py sgnl` (output `dist/SGNL.ZDL`), Scrub with `py build_all.py scrub` (output `dist/Scrub.ZDL`). Or run `py build_all.py` for all of them. The results are in `dist/`. `py make_release.py` then packs them with the readme and licence into `release/Matujuice_ZoomMS_pack.zip`.
 
 ## Layout
 
@@ -50,7 +52,7 @@ docs/                  how to install, plus the DSP rules these effects follow
 
 To change a cover, edit that effect's `make_cover.py` and run it. It rewrites the cover JSON and a preview image. The pedal's pixels are 1.4 times taller than wide, so round shapes are drawn squashed.
 
-Effect IDs used here: 480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate. They are unique inside this repo. If another effect on your pedal uses one of the same numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Effect IDs used here: 480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub. They are unique inside this repo. If another effect on your pedal uses one of the same numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Credits
 
