@@ -1,4 +1,4 @@
-# The six effects
+# The seven effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -74,7 +74,7 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Tempo | 40..240 BPM | Only used when Rate is set to a note value. |
 
 ### S.GN_L: broken digital line
-New, not yet tested on the pedal. The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.
+The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -91,7 +91,7 @@ New, not yet tested on the pedal. The sound is cut into packets and some of them
 Try Size 5 ms with Fill REPT and Burst high for robot voice, or Size 60 ms, Fill GAP and Line PHONE for a bad call.
 
 ### Scrub: scrub through the past, freeze where you stop
-New, not yet tested on the pedal. Everything you play is recorded into a 6 second buffer. Pos moves a read head through it: turning it, short grains follow the head through the audio at the original pitch, and when you stop, the grain just before the head loops on and on, crossfaded so the loop has no click. Known from Mutable Instruments Clouds/Beads (Position + Freeze) and the Morphagene.
+Everything you play is recorded into a 6 second buffer. Pos moves a read head through it: turning it, short grains follow the head through the audio at the original pitch, and when you stop, the grain just before the head loops on and on, crossfaded so the loop has no click. Known from Mutable Instruments Clouds/Beads (Position + Freeze) and the Morphagene.
 
 | Knob | Range | What it does |
 |---|---|---|

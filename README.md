@@ -1,8 +1,8 @@
 # Matujuice Zoom MS ZDL effects pack
 
-Five free custom effects for Zoom MultiStomp pedals, with source code.
+Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
-![The five covers as the pedal's screen shows them](release/covers.png)
+![The seven covers as the pedal's screen shows them](release/covers.png)
 
 | Effect | What it is |
 |---|---|
@@ -11,8 +11,8 @@ Five free custom effects for Zoom MultiStomp pedals, with source code.
 | **Choral** | Turns the input into a vowel choir: five voices, 35 chords, 11 ways for the vowels to move. |
 | **EuGate** | Euclidean rhythm gate. Steps and Notes up to 64 each, so polymeters are possible. Swing, Gap and Soft too. |
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
-| **S.GN_L** | New, not yet tested on the pedal. A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
-| **Scrub** | New, not yet tested on the pedal. Records the last 6 seconds; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
+| **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
+| **Scrub** | Records the last 6 seconds; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 

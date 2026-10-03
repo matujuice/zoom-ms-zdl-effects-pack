@@ -4,7 +4,7 @@ Project notes for Claude Code. Read this first, then the effect's own header com
 
 ## What this is
 
-Six custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L) for Zoom MS pedals, built as `.ZDL` files with the toolchain from themanro/ZoomMultistompZDL (`build/`). Owner's pedal: MS-60B running MS-50G firmware. Other pedals are untested. The README, docs/EFFECTS.md and the manifests all describe the knobs, so keep them in step when a knob changes.
+Seven custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub) for Zoom MS pedals, built as `.ZDL` files with the toolchain from themanro/ZoomMultistompZDL (`build/`). Owner's pedal: MS-60B running MS-50G firmware. Other pedals are untested. The README, docs/EFFECTS.md and the manifests all describe the knobs, so keep them in step when a knob changes.
 
 ## Layout
 
