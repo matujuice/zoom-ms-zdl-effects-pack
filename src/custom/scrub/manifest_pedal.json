@@ -1,0 +1,63 @@
+{
+  "effect_name": "Scrub",
+  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 4 s, 10 ms per step, 0 = 4 s ago, 400 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop, or a note value synced to Tempo); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV, PING (ping-pong) or RAND (random direction) grains; Spray = random offset per grain (+- ms), a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade; Tempo = BPM for the synced Grain values.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 490,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Pos",
+      "max": 400,
+      "default": 400,
+      "comment": "Where the read head is in the last 4 seconds, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD: the moment you froze). Shown as how far back the head is (0ms, 990ms, 2.50s). Turn it to scrub; stop and the grain there loops. Default 400 = now."
+    },
+    {
+      "name": "Grain",
+      "max": 112,
+      "default": 50,
+      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. Long grains pull the head in so they still fit in the 6 s buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
+    },
+    {
+      "name": "Rec",
+      "max": 2,
+      "default": 0,
+      "comment": "LIVE = the buffer keeps recording, Pos is how far back you listen (a delay you can sweep). HOLD = recording stops, Pos scrubs through the last 6 seconds. STOMP = records while the effect is switched off, freezes the moment you switch it on (untested on the pedal). Default LIVE."
+    },
+    {
+      "name": "Glide",
+      "max": 100,
+      "default": 40,
+      "comment": "How slowly the head follows Pos. 0 = jumps straight there, 40 = about 0.1 s, 70 = about 1 s, 100 = about 3 s: a slow glide. Default 40."
+    },
+    {
+      "name": "Dir",
+      "max": 3,
+      "default": 0,
+      "comment": "Which way the grain plays. FWD = forward, REV = backward, PING = forward then backward in turns (ping-pong): the loop turns round on itself, so there is no jump at the seam. RAND = each grain flips a coin, forward or backward (random ping-pong). Default FWD."
+    },
+    {
+      "name": "Spray",
+      "max": 100,
+      "default": 0,
+      "comment": "Random offset for each new grain, either side of the head, up to +-250 ms (never ahead of now). Shown as OFF, then +-1 .. +-250 (ms). 0 = the freeze is a steady loop, higher = a moving cloud around the head. Default 0."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 50,
+      "comment": "Dry/wet crossfade, DJ style: dry full from 0 to 50, wet full from 50 to 100, both full at 50. Default 50: you play over the frozen sound."
+    },
+    {
+      "name": "Tempo",
+      "max": 240,
+      "default": 120,
+      "comment": "Speed in BPM, read straight off the knob (40 to 240; below 40 reads as 40). Only used when Grain is set to a note value (the top of its range, 101..112). The pedal gives custom effects no clock, so dial in the song's tempo. Default 120."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_Scrub",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

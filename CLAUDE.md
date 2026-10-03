@@ -12,8 +12,8 @@ Six custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L) for Zo
 - `src/airwindows/common/covers/*.json`: generated covers. `make_cover.py` writes them; `custom_covers.py` loads them.
 - `tests/`: host tests (`python3 tests/run.py [name]`).
 - `release/`: pack README, cover sheet. `make_release.py` zips `dist/*.ZDL` with them.
-- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489.
-- S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name). Not in `release/` or `make_release.py` until it has been tried on the pedal.
+- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489, Scrub 490.
+- S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name).
 
 ## Building and testing
 
@@ -35,7 +35,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 
 - 128 x 64, 1 bit. Previews are black on white. The screen shows the first three knobs: labels at y=37, firmware number boxes at y=46..61 (about 20 wide at x=14, 55, 96), the dial drawn by `_VSquash` under them.
 - Pixels are 1.4 times taller than wide (`build/lcd_geometry.py`). Draw round things through `_VSquash` or divide y by 1.4, and check the preview stretched 1.4x.
-- No bottom rule on WaveFold, DualShft, Choral, EuGate. DubSiren's bottom edge belongs to its metal box and was left in.
+- No bottom rule on WaveFold, DualShft, Choral, EuGate. DubSiren's bottom edge belongs to its metal box and stays (Luca, 2026-10-03: DubSiren works differently from the others, so its framed cover stays as it is).
 - Use `Canvas` text helpers; knob labels come from the manifest names, so renaming a knob means re-running `make_cover.py` (EuGate's labels are set in its `LABELS`).
 
 ## How the effects were shaped (decisions the owner made)
@@ -46,6 +46,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 - EuGate: Steps 1..64 and Notes 1..64 (polymeters); Gap puts a small silence before a touching note; Mix stays on every effect; the cover is a 16-dot Euclid ring (round on the device), ghost "CLIDIAN", "5/16=3.3.3.3.4".
 - WaveFold: Buchla 259 fold curve; the level match follows the input directly (it used to creep back slowly after a quiet decay, which made notes swell in).
 - S.GN_L ("bad signal"): packets of 1..500 ms, lost by a Gilbert-Elliott model (Loss = share, Burst = outage length); Fill GAP/REPT/FADE/NOISE/REVRS/GARBL/LATE/RND (RND picks one per outage, never GARBL: too harsh, Luca); one Codec knob for spectral holes, low-pass, rate hold and bits; Jump = sudden quality drops; Line HIFI/VOIP/PHONE/WALKY kept as its own knob; Size free (no tempo sync). Cover: wide glitched S.GN_L with dotted ghost I and A, damage leaking into the knob labels. Concept notes: /mnt/project-files/ideas/bad-signal.md.
+- Scrub: 6 s 16-bit buffer in the arena (cleared 2048 samples per block after loading); Pos scrubs a read head over the last 4 s in 400 steps of 10 ms (0 = 4 s ago, 400 = now, label "0ms" (not NOW); read as raw x 100, not through the 3.05 guess; Luca dropped the Range knob 2026-10-03 for this), Glide (the brief called it Smooth; 5-letter names like the rest of the pack) glides it; grains always play at normal speed, so the pitch never bends (Luca chose constant pitch over pushing running grains with the head, 2026-10-03); the freeze is a crossfaded loop (new voice fades in over the first quarter of each Grain while the old fades out), not a 50 % overlap cloud, which beat on held tones; Dir FWD / REV / PING / RAND (ping-pong voices alternate and turn round on the same sample, so wherever a voice turns round (PING always, RAND on a coin flip) the seam crossfade is 1 ms instead of the quarter-grain one, which cancelled against its own mirror image); Grain 101..112 are note values synced to a Tempo knob (8th knob, 40..240 BPM), a long synced grain pulls the head in to fit the 6 s; Spray scatters grains either side of the head, up to +-250 ms, label "+-N" in ms (Luca, 2026-10-03); Rec LIVE / HOLD / STOMP (STOMP records while switched off, relies on the pedal passing audio to a bypassed effect: unverified). Concept: /mnt/project-files/ideas/effect-ideas.md.
 - Every effect except DubSiren has a Mix knob, and it is a DJ-style crossfade: dry gain min(1, 2 - 2m), wet gain min(1, 2m), so both are at full level at 50. DubSiren adds its siren on top of the untouched input, so it has Vol instead.
 
 ## Working habits
@@ -58,4 +59,3 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 
 - Sound preview (audio or video) for the README and the Reddit post.
 - Ask owners of an unmodified MS-50G, MS-60B or MS-70CDR to report whether the effects load and work.
-- DubSiren cover: decide whether the box's bottom edge stays.
