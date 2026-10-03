@@ -11,8 +11,8 @@ the "." and the "_" stand sparse dotted ghosts of the I and the A the signal los
 "." is the foot of the I that survived), so it reads SIGNAL. The damage: the top of the
 L's stem stuck and repeated sideways (the second copy dithered), the top of the S lifted
 off, the L's foot slipped, ten short XOR glitch lines kept mostly in the gaps and off the
-N, and a torn band sliding right. The damage leaks into the knob labels: LOSS has its
-lower half slipped, SIZE lost a row, CODEC's last letter repeats like a stuck packet.
+N, and a torn band sliding right. The knob labels stay clean (Luca, 2026-10-03: they are
+read while playing); leak() still holds the old label damage but is not called.
 No bottom rule.
 
 Run from anywhere:  py src\\custom\\sgnl\\make_cover.py
@@ -328,7 +328,7 @@ def build():
     if EXTRA:
         globals()["extra_" + EXTRA](c)
     knob_row(c)
-    leak(c)
+    # leak(c): the glitch no longer reaches the knob labels (Luca, 2026-10-03)
     return c
 
 
