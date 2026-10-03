@@ -6,8 +6,8 @@ played), right of the head they are dithered (still to come). The head is a 2 px
 with a cap on top that runs down onto a timeline under the title: solid behind the
 head, dotted ahead of it, arrows at both ends (you drag it both ways). The grain, the
 slice around the head that loops when you stop, is a selection centred on the head,
-over the title and the timeline, like a region in a sample editor: the letters inside
-stay readable, its sides are dithered ramps (the crossfade) with dotted top and bottom.
+over the title and the timeline, like a region in a sample editor: black fill, the
+letters inside solid and inverted, its sides dithered ramps (the crossfade).
 
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
@@ -33,7 +33,7 @@ TY = 6                       # title rows 6..20
 HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
 LINE_Y = 28                  # timeline row
 LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
-SEL_HALF = 13                # the selection reaches 13 columns either side of the head
+SEL_HALF = 11                # the selection reaches 11 columns either side of the head
 RAMP = 3                     # crossfade columns at each end of the selection
 SEL_Y0, SEL_Y1 = TY - 2, LINE_Y + 2   # the selection runs from above the title to below the timeline
 
@@ -69,8 +69,8 @@ def build():
         for x in range(W):
             if not m.pixels[y][x]:
                 continue
-            if x < HEAD - 1:
-                c.px(x, y)
+            if x < HEAD - 1 or HEAD - SEL_HALF <= x <= HEAD + 1 + SEL_HALF:
+                c.px(x, y)                        # played, or inside the selection: solid
             elif x > HEAD + 2 and (x + y) % 2 == 0:
                 c.px(x, y)
 
@@ -90,19 +90,19 @@ def build():
         c.vline(LX1 + 6 - k, LINE_Y - k, LINE_Y + k)          # right arrow
 
     # --- the grain: a selection around the head, like a region in a sample editor ----
-    # Centred on the head: the grain is read around the head. The letters inside stay as
-    # they are; only the edges are drawn, RAMP columns of 25 / 50 / 75 % ordered dither
-    # getting denser toward the outside (the crossfade), with dotted top and bottom rules.
+    # Centred on the head: the grain is read around the head. Inside, everything is
+    # inverted (black fill, white letters, white head); over RAMP columns at each side the
+    # inversion fades in through 25 / 50 / 75 % ordered dither: the crossfade.
     x0, x1 = HEAD - SEL_HALF, HEAD + 1 + SEL_HALF
     for y in range(SEL_Y0, SEL_Y1 + 1):
-        for x in list(range(x0, x0 + RAMP)) + list(range(x1 - RAMP + 1, x1 + 1)):
-            d = min(x - x0, x1 - x)                         # 0 at the outer column
-            share = (RAMP - d) / (RAMP + 1)                 # 0.75, 0.5, 0.25 inward
-            bayer = ((0, 2), (3, 1))[y % 2][x % 2] / 4.0 + 0.125
-            if bayer <= share:
-                c.px(x, y)
-    for x in range(x0 + RAMP, x1 - RAMP + 1, 2):
-        c.px(x, SEL_Y0); c.px(x, SEL_Y1)
+        for x in range(x0, x1 + 1):
+            d = min(x - x0, x1 - x) + 1                     # 1 at the outer columns
+            if d <= RAMP:
+                share = d / (RAMP + 1)                      # 0.25, 0.5, 0.75 inward
+                bayer = ((0, 2), (3, 1))[y % 2][x % 2] / 4.0 + 0.125
+                if bayer > share:
+                    continue
+            c.px(x, y, 0 if c.pixels[y][x] else 1)
 
     # --- labels and dials under the firmware value boxes (page 1 knobs) --------
     for (kid, kx, ky), label in zip(cc.knob_layout(3), LABELS):
