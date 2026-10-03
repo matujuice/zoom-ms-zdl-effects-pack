@@ -1,6 +1,6 @@
 {
   "effect_name": "Scrub",
-  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 4 s, 10 ms per step, 0 = 4 s ago, 400 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Spray = random offset per grain, a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade.",
+  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 4 s, 10 ms per step, 0 = 4 s ago, 400 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV or PING (ping-pong) grains; Spray = random offset per grain, a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 490,
@@ -31,6 +31,12 @@
       "max": 100,
       "default": 40,
       "comment": "How slowly the head follows Pos. 0 = jumps straight there, 40 = about 0.1 s, 70 = about 1 s, 100 = about 3 s: a slow glide. Default 40."
+    },
+    {
+      "name": "Dir",
+      "max": 2,
+      "default": 0,
+      "comment": "Which way the grain plays. FWD = forward, REV = backward, PING = forward then backward in turns (ping-pong): the loop turns round on itself, so there is no jump at the seam. Default FWD."
     },
     {
       "name": "Spray",

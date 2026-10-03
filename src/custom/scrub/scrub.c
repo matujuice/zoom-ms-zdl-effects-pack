@@ -45,6 +45,19 @@
  *   Spray adds a random extra age to each new grain (up to 0.5 s), which turns a static
  *   loop into a moving cloud and breaks the buzz of very short frozen grains.
  *
+ * DIR (which way each voice plays)
+ *   FWD   every voice plays forward: it starts 1.25 x Grain + D back and ends at D.
+ *   REV   every voice plays backward: it starts 0.25 x Grain + D back and ends at
+ *         1.25 x Grain + D, the same slice turned round.
+ *   PING  the voices take turns: forward, backward, forward... A backward voice starts
+ *         exactly where the forward one is at the seam (and the other way round), so
+ *         with a still head each turn begins on the very sample the last voice was
+ *         playing: no jump at the seam, a smoother, more tonal loop. Its crossfade is
+ *         only 1 ms (a longer one would mix the turn with its own mirror image, which
+ *         cancels on held tones); a moving head or Spray can still make a small jump.
+ *   A backward voice reads older audio by one sample per sample (by two in LIVE, where
+ *   the buffer moves on under it).
+ *
  * MEMORY
  *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 6 s = 264600 samples = 529 KB of
  *   the at least 705 KB arena. It is cleared 2048 samples per block after loading (about
@@ -61,8 +74,9 @@
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
  *   3 Glide  0..100  how slowly the head follows Position: 0 = jumps, 40 = about 0.1 s,
  *                    70 = about 1 s, 100 = about 3 s
- *   4 Spray  0..100  random offset of each grain, up to 0.5 s (squared curve)
- *   5 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
+ *   4 Dir    0..2    FWD / REV / PING: which way the grain plays (see DIR)
+ *   5 Spray  0..100  random offset of each grain, up to 0.5 s (squared curve)
+ *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -82,7 +96,7 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435231u        /* "SCR1": change whenever ScState changes */
+#define SC_MAGIC      0x53435232u        /* "SCR2": change whenever ScState changes */
 #define SC_N          264600             /* buffer length: 6 s at 44.1 kHz              */
 #define SC_AGE_MAX    264597.0f          /* oldest age a read may use (SC_N - 3)        */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
@@ -95,6 +109,10 @@
 #define SC_MODE_HOLD  1
 #define SC_MODE_STOMP 2
 
+#define SC_DIR_FWD    0
+#define SC_DIR_REV    1
+#define SC_DIR_PING   2
+
 typedef struct {
     unsigned int magic;
     unsigned int rng;      /* LCG for Spray                                   */
@@ -105,6 +123,7 @@ typedef struct {
     float D;               /* smoothed head distance from now, samples        */
     float p;               /* grain phase 0..1                                */
     float aC, aO;          /* ages read by the current and the old voice      */
+    int   bC, bO;          /* 1 = that voice plays backward                   */
     float fin;             /* wet fade-in 0..1                                */
     short buf[SC_N];
 } ScState;
@@ -117,6 +136,8 @@ typedef struct {
     float spray;           /* max random extra age, samples                   */
     float dryG, wetG;      /* Mix: DJ crossfade gains                         */
     int   mode;            /* SC_MODE_*                                       */
+    int   dir;             /* SC_DIR_*                                        */
+    float xf;              /* seam: crossfade over the first 1/(2 xf) of a cycle */
 } ScParams;
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
@@ -223,6 +244,7 @@ static inline void sc_init(ScState *s)
     s->rng = 0x5C2B1A37u;
     s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0;
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
+    s->bC = 0; s->bO = 0;
     s->magic = SC_MAGIC;
 }
 
@@ -238,18 +260,32 @@ static inline void sc_prepare(ScParams *P, const float *u)
     k = u[3] * 0.01f;
     e = 14.0f * k * (2.0f - k);                  /* 0..14: per-block coefficient 1 .. 2^-14 */
     P->c = sc_exp2(-e);
-    sp = u[4] * 0.01f;
+    P->dir = (int)(u[4] + 0.5f);
+    /* FWD / REV: the seam crossfade is the first quarter of the cycle. PING turns round on
+     * the sample the last voice was playing, so a long crossfade would only mix the sound
+     * with its own mirror image (which cancels on held tones): 1 ms is enough there. */
+    P->xf = SC_XF_SCALE;
+    if (P->dir == SC_DIR_PING) {
+        P->xf = P->len * 0.0113379f;             /* len / (2 x 44.1): 1 ms */
+        if (P->xf < SC_XF_SCALE) P->xf = SC_XF_SCALE;
+    }
+    sp = u[5] * 0.01f;
     P->spray = sp * sp * 22050.0f;
-    m = u[5] * 0.01f;
+    m = u[6] * 0.01f;
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
-/* a new voice: 1.25 x Grain + D back from now, plus Spray */
-SC_ALWAYS_INLINE(sc_start_age)
-static inline float sc_start_age(ScState *s, const ScParams *P)
+/* a new voice: picks its direction (Dir), then its start: forward 1.25 x Grain + D back,
+ * backward 0.25 x Grain + D back, plus Spray. Sets s->bC, returns the start age. */
+SC_ALWAYS_INLINE(sc_new_voice)
+static inline float sc_new_voice(ScState *s, const ScParams *P)
 {
-    return sc_clamp_age(1.25f * P->len + s->D + 1.0f + P->spray * sc_rand(s));
+    int b = 0;
+    if (P->dir == SC_DIR_REV) b = 1;
+    if (P->dir == SC_DIR_PING) b = !s->bC;
+    s->bC = b;
+    return sc_clamp_age((b ? 0.25f : 1.25f) * P->len + s->D + 1.0f + P->spray * sc_rand(s));
 }
 
 /* clear part of the buffer after loading; returns 1 while still clearing */
@@ -276,20 +312,21 @@ SC_ALWAYS_INLINE(sc_process)
 static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
 {
     int i, rec = (P->mode == SC_MODE_LIVE);
-    float da, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin;
+    float daF, daB, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin;
 
-    if (!s->started) { s->D = P->Dt; s->started = 1; aC = sc_start_age(s, P); aO = aC; }
+    if (!s->started) { s->D = P->Dt; s->started = 1; s->bC = 0; aC = sc_new_voice(s, P); aO = aC; s->bO = s->bC; }
     s->D += P->c * (P->Dt - s->D);               /* the head glides; new voices start there */
-    da = rec ? 0.0f : -1.0f;                     /* frozen: the voices read forward */
+    daF = rec ? 0.0f : -1.0f;                    /* age change of a forward voice  */
+    daB = rec ? 2.0f : 1.0f;                     /* and of a backward one          */
 
     for (i = 0; i < n; i++) {
         float in = buf[i], q, g, wet;
         if (rec) sc_write(s, in);
         p += P->inc;
-        aO = sc_clamp_age(aO + da);
-        if (p >= 1.0f) { p -= 1.0f; aO = aC; aC = sc_start_age(s, P); }
-        else aC = sc_clamp_age(aC + da);
-        q = p * SC_XF_SCALE;
+        aO = sc_clamp_age(aO + (s->bO ? daB : daF));
+        if (p >= 1.0f) { p -= 1.0f; aO = aC; s->bO = s->bC; aC = sc_new_voice(s, P); }
+        else aC = sc_clamp_age(aC + (s->bC ? daB : daF));
+        q = p * P->xf;
         wet = sc_read(s->buf, s->wp, aC);
         if (q < 0.5f) {                          /* seam: old voice fades out */
             g = sc_hann(q);
@@ -309,8 +346,8 @@ static inline void sc_switched_on(ScState *s, const ScParams *P)
 {
     s->D = P->Dt;
     s->p = 0.25f;                                /* past the seam: one voice plays */
-    s->aC = sc_start_age(s, P);
-    s->aO = s->aC;
+    s->aC = sc_new_voice(s, P);
+    s->aO = s->aC; s->bO = s->bC;
     s->fin = 0.0f;
 }
 
@@ -381,6 +418,15 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
     return 5;
 }
 
+/* knob 4 Dir: 0 "FWD", 1 "REV", 2 "PING" */
+int ZDL_GetLabel_4(unsigned int value, char *out)
+{
+    if (value >= 2u) { out[0] = 'P'; out[1] = 'I'; out[2] = 'N'; out[3] = 'G'; out[4] = 0; return 4; }
+    if (value == 1u) { out[0] = 'R'; out[1] = 'E'; out[2] = 'V'; out[3] = 0; return 3; }
+    out[0] = 'F'; out[1] = 'W'; out[2] = 'D'; out[3] = 0;
+    return 3;
+}
+
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef SCRUB_HOST_TEST
 
@@ -405,7 +451,7 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ScState *s;
     ScParams P;
-    float u[6];
+    float u[7];
     int i;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -429,8 +475,9 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[1] = sc_ui(params[SCRUB_GRAIN_SLOT],  (float)SCRUB_GRAIN_UI_DEFAULT,  100.0f);
     u[2] = sc_ui(params[SCRUB_REC_SLOT],    (float)SCRUB_REC_UI_DEFAULT,    2.0f);
     u[3] = sc_ui(params[SCRUB_GLIDE_SLOT], (float)SCRUB_GLIDE_UI_DEFAULT, 100.0f);
-    u[4] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
-    u[5] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
+    u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    2.0f);
+    u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
+    u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
 
     if (s->magic != SC_MAGIC) sc_init(s);
     if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */
