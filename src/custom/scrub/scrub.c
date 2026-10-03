@@ -1,10 +1,10 @@
 /*
  * scrub.c - "Scrub": scrub through the recent past, freeze the grain where you stop, mono
  *
- * Everything that goes in is recorded into a 6 second buffer. A read head sits somewhere
+ * Everything that goes in is recorded into a 7.9 second buffer. A read head sits somewhere
  * in that buffer and plays a short GRAIN from there, over and over, each repeat
  * crossfading into the next so the loop has no seam. Position moves the head along the
- * last 4 seconds like a timeline, in 10 ms steps: 0 = 4 s ago, 400 = now. Turning Position
+ * last 6 seconds like a timeline, in 10 ms steps: 0 = 6 s ago, 600 = now. Turning Position
  * slides the head and the grains follow it through the audio, always at the original
  * pitch (as in Clouds: no tape bend); stop turning and the grain under the head keeps
  * looping: a freeze.
@@ -13,7 +13,7 @@
  *   LIVE   it keeps recording. Position is how far back the head reads, so the head moves
  *          with the music: a delay you can sweep (the pitch never bends), and with Spray a
  *          granular cloud of the last few seconds.
- *   HOLD   recording stops: the last 6 seconds are kept and Position scrubs through them.
+ *   HOLD   recording stops: the last 7.9 seconds are kept and Position scrubs through them.
  *          Stop on a note and it rings forever. Back to LIVE and recording carries on.
  *   STOMP  the footswitch does it: while the effect is OFF it records (you hear your
  *          sound untouched), the moment you switch it ON the buffer freezes and you
@@ -22,7 +22,7 @@
  *          checked on this pedal. If ON only gives silence, use LIVE and HOLD.
  *
  * THE HEAD
- *   The head's distance from "now" is D = (400 - Position) x 10 ms. D glides toward the
+ *   The head's distance from "now" is D = (600 - Position) x 10 ms. D glides toward the
  *   knob with a one-pole (Glide), once per 8-sample block, which also hides the knob's
  *   10 ms steps. Each grain starts 1.25 x Grain + D (+- Spray jitter) back and reads forward
  *   at normal speed, so the pitch stays put: a move of the head is heard as each new grain
@@ -63,28 +63,28 @@
  *   the buffer moves on under it).
  *
  * MEMORY
- *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 6 s = 264600 samples = 529 KB of
- *   the at least 705 KB arena. It is cleared 2048 samples per block after loading (about
- *   12 ms, the effect is dry meanwhile), so stale arena data is never played.
+ *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 7.9 s = 348000 samples = 696 KB of
+ *   the at least 705 KB arena (Luca asked for the most the arena holds, 2026-10-03; it was
+ *   6 s with Pos reaching 4 s). It is cleared 2048 samples per block after loading (about
+ *   31 ms, the effect is dry meanwhile), so stale arena data is never played.
  *   A voice reads back to D + Spray plus 1.25 x Grain (forward), 1.5 x Grain (backward in
  *   HOLD) or 2.75 x Grain (backward in LIVE, where the buffer moves on under it). The
- *   free range always fits with the head 4 s back (2.75 x 1 s + 4 s + 0.25 s = 7 s would
- *   not, so with Dir REV, PING or RAND in LIVE a grain over about 0.6 s pulls the head
- *   in a little); a long synced grain pulls the head in, and one that cannot fit even at
- *   now is shortened. No read reaches the end of the 6 s. The 2 s beyond Pos's 4 s are
- *   this headroom: you scrub the last 4 s, the buffer keeps 6.
+ *   free range fits with the head 6 s back forward or in HOLD (1.25 x 1 s + 6 s + 0.25 s
+ *   = 7.5 s); backward in LIVE a grain over about 0.6 s pulls the head in a little; a long
+ *   synced grain pulls the head in, and one that cannot fit even at now is shortened.
+ *   No read reaches the end of the 7.9 s. The 1.9 s beyond Pos's 6 s are this headroom.
  *
  * KNOBS (screen values)
- *   0 Pos    0..400  where the head reads, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD
- *                    the freeze moment); shown as the time back, "0ms", "990ms", "4.00s".
- *                    400 steps instead of 100 so no Range knob is needed (Luca, 2026-10-03).
+ *   0 Pos    0..600  where the head reads, 10 ms per step: 0 = 6 s ago, 600 = now (in HOLD
+ *                    the freeze moment); shown as the time back, "0ms", "990ms", "6.00s".
+ *                    600 steps instead of 100 so no Range knob is needed (Luca, 2026-10-03).
  *                    Read as raw x 100 always (the pedal passes screen / 100, so 4.00 here
  *                    means 400; the 3.05 guess in sc_ui would read it as 4)
  *   1 Grain  0..112  0..100 = grain length, 10 ms .. 1 s (log), shown in ms / s;
  *                    101..112 = a note value at Tempo (Luca, 2026-10-03): 1/64 1/32 1/16T
  *                    1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2, so the freeze loops in time.
  *                    A synced grain can reach 3 s (1/2 at 40 BPM); then the head cannot go
- *                    as far back as Pos asks (it stops where the grain still fits in 6 s),
+ *                    as far back as Pos asks (it stops where the grain still fits),
  *                    and a backward one in LIVE may be shortened (see MEMORY)
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
  *   3 Glide  0..100  how slowly the head follows Position: 0 = jumps, 40 = about 0.1 s,
@@ -115,9 +115,10 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435232u        /* "SCR2": change whenever ScState changes */
-#define SC_N          264600             /* buffer length: 6 s at 44.1 kHz              */
-#define SC_AGE_MAX    264597.0f          /* oldest age a read may use (SC_N - 3)        */
+#define SC_MAGIC      0x53435233u        /* "SCR3": change whenever ScState changes */
+#define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
+#define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
+#define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
 #define SC_TO16       16384.0f
 #define SC_FROM16     6.1035156e-5f      /* 1 / 16384 */
@@ -274,14 +275,14 @@ static inline float sc_grain_len(float g)
     return 441.0f * sc_exp2(g * 0.06643856f);              /* 6.643856 = log2(100) */
 }
 
-/* Pos knob: the pedal passes screen / 100 (0..4.00); always scale by 100, no guessing */
+/* Pos knob: the pedal passes screen / 100 (0..6.00); always scale by 100, no guessing */
 SC_ALWAYS_INLINE(sc_ui_pos)
 static inline float sc_ui_pos(float raw, float def_ui)
 {
     float ui;
-    if (!(raw >= 0.0f && raw <= 4.005f)) ui = def_ui;
+    if (!(raw >= 0.0f && raw <= 6.005f)) ui = def_ui;
     else ui = (float)(int)(raw * 100.0f + 0.5f);
-    if (ui > 400.0f) ui = 400.0f;
+    if (ui > (float)SC_POS_MAX) ui = (float)SC_POS_MAX;
     return ui;
 }
 
@@ -320,7 +321,7 @@ static inline void sc_prepare(ScParams *P, const float *u)
      * in HOLD (1.5 x Grain) or by 2 in LIVE, where the buffer moves on under it (2.75 x
      * Grain). A grain too long for the buffer even with the head at now (only synced ones,
      * e.g. 1/2 below about 55 BPM with REV in LIVE) is shortened to fit; otherwise the
-     * head is pulled in. Either way no read ever reaches the end of the 6 s. */
+     * head is pulled in. Either way no read ever reaches the end of the buffer. */
     reach = 1.25f; rinv = 0.8f;
     if (P->dir != SC_DIR_FWD) {
         if (P->mode == SC_MODE_LIVE) { reach = 2.75f; rinv = 0.36363637f; }
@@ -331,7 +332,7 @@ static inline void sc_prepare(ScParams *P, const float *u)
     lim -= reach * P->len;
     if (lim < 0.0f) lim = 0.0f;
     P->Dmax = lim;
-    P->Dt  = (400.0f - u[0]) * 441.0f;           /* 10 ms per step back from now */
+    P->Dt  = ((float)SC_POS_MAX - u[0]) * 441.0f;           /* 10 ms per step back from now */
     if (P->Dt > lim) P->Dt = lim;
     k = u[3] * 0.01f;
     e = 14.0f * k * (2.0f - k);                  /* 0..14: per-block coefficient 1 .. 2^-14 */
@@ -504,13 +505,13 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return 4;
 }
 
-/* knob 0 Pos: screen 0..400 -> how far back the head is: "4.00s".."1.00s", "990ms".."0ms"
+/* knob 0 Pos: screen 0..600 -> how far back the head is: "6.00s".."1.00s", "990ms".."0ms"
  * (0ms, not NOW: Luca, 2026-10-03) */
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     int cs, len, w = 0, t = 0;
-    if (value > 400u) value = 400u;
-    cs = 400 - (int)value;                       /* hundredths of a second back */
+    if (value > (unsigned)SC_POS_MAX) value = (unsigned)SC_POS_MAX;
+    cs = SC_POS_MAX - (int)value;                       /* hundredths of a second back */
     if (cs < 100) {
         len = sc_put_int(cs * 10, out);
         out[len] = 'm'; out[len + 1] = 's'; out[len + 2] = 0;

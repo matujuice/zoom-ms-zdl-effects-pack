@@ -34,11 +34,11 @@ int main(void)
     int i;
     float b[8];
     printf("state %u bytes (arena >= 705536)\n", (unsigned)sizeof(ScState));
-    CHECK(sizeof(ScState) < 705536u, "state too big");
+    CHECK(sizeof(ScState) + 3u <= 705536u, "state too big");
 
     /* 1. clearing: dry while clearing, then a HOLD with nothing recorded is silent */
     {
-        float u[8] = {400, 50, 1, 0, 0, 0, 100, 120};
+        float u[8] = {600, 50, 1, 0, 0, 0, 100, 120};
         long dry_blocks = 0; float mx = 0;
         fresh();
         for (t = 0; t < 44100; t += 8) {
@@ -54,7 +54,7 @@ int main(void)
 
     /* 2. LIVE, Pos 100, Spray 0, Mix 100: a delay of exactly one grain length */
     {
-        float u[8] = {400, 50, 0, 0, 0, 0, 100, 120};
+        float u[8] = {600, 50, 0, 0, 0, 0, 100, 120};
         static float in[44100 * 3 + 8];
         float len = 1.25f * sc_grain_len(50), err = 0;
         int L = (int)len;
@@ -78,7 +78,7 @@ int main(void)
 
     /* 3. HOLD: freeze a 220 Hz tone, then 10 s of silence in: the tone rings on, steady */
     {
-        float u[8] = {400, 50, 0, 40, 0, 0, 100, 120};
+        float u[8] = {600, 50, 0, 40, 0, 0, 100, 120};
         float lo = 9, hi = 0, step = 0, prev = 0;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -112,7 +112,7 @@ int main(void)
      * deep the level dips while the old and new voice cross, 5 ms RMS windows; FWD, REV,
      * PING (ping-pong turns round on the same sample, so it should hardly dip) and RAND */
     for (int dir = 0; dir < 4; dir++) {
-        float u[8] = {400, 50, 0, 40, 0, 0, 100, 120};
+        float u[8] = {600, 50, 0, 40, 0, 0, 100, 120};
         float lo = 9, hi = 0, step = 0, prev = 0;
         u[4] = (float)dir;
         fresh();
@@ -144,7 +144,7 @@ int main(void)
 
     /* 3b2. RAND: both directions turn up, about half each */
     {
-        float u[8] = {400, 0, 1, 0, 3, 0, 100, 120};
+        float u[8] = {600, 0, 1, 0, 3, 0, 100, 120};
         ScParams P;
         int fw = 0, bw = 0, turns = 0, prevb = 0;
         sc_init(&S);
@@ -156,7 +156,7 @@ int main(void)
 
     /* 3c. REV plays backward: freeze a rising ramp, the frozen output must mostly fall */
     {
-        float u[8] = {400, 60, 0, 0, 1, 0, 100, 120};
+        float u[8] = {600, 60, 0, 0, 1, 0, 100, 120};
         long up = 0, down = 0; float prev = 0;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -175,9 +175,9 @@ int main(void)
 
     /* 4. Position: 4 s of levels 0.0, 0.1 .. 0.7 (0.5 s each), HOLD, then park the head */
     {
-        float pos[5] = {400, 320, 240, 160, 40};
+        float pos[5] = {600, 520, 440, 360, 240};
         for (int k = 0; k < 5; k++) {
-            float u[8] = {400, 0, 0, 0, 0, 0, 100, 120};     /* 10 ms grain, no smoothing */
+            float u[8] = {600, 0, 0, 0, 0, 0, 100, 120};     /* 10 ms grain, no smoothing */
             double acc = 0; long n = 0;
             fresh();
             for (t = 0; t < 44100 * 4 + 4400; t += 8) {
@@ -196,7 +196,7 @@ int main(void)
             }
             /* head is (100 - Pos)% of 4 s back from the freeze; the loop plays the 12.5 ms before it */
             {
-                float back = (400.0f - pos[k]) * 0.01f + 0.006f;
+                float back = (600.0f - pos[k]) * 0.01f + 0.006f;
                 int seg = (int)((4.0f - back) * 2.0f);
                 float want = 0.1f * (float)seg, got = (float)(acc / n);
                 printf("Pos %3.0f: level %.3f, expected %.1f (%.2f s back)\n", pos[k], got, want, back);
@@ -207,7 +207,7 @@ int main(void)
 
     /* 4b. constant pitch: freeze a 440 Hz tone, sweep Pos fast, count zero crossings */
     {
-        float u[8] = {400, 20, 0, 50, 0, 0, 100, 120};
+        float u[8] = {600, 20, 0, 50, 0, 0, 100, 120};
         long zc = 0; float prev = 0;
         fresh();
         for (t = 0; t < 44100 * 5; t += 8) {
@@ -216,7 +216,7 @@ int main(void)
         }
         u[2] = 1;
         for (t = 0; t < 44100 * 2; t += 8) {
-            u[0] = (float)(int)(400 - 300.0f * t / (44100 * 2));     /* 3 s back in 2 s */
+            u[0] = (float)(int)(600 - 300.0f * t / (44100 * 2));     /* 3 s back in 2 s */
             for (i = 0; i < 8; i++) b[i] = 0.0f;
             block(u, 1, b);
             for (i = 0; i < 8; i++) { if ((prev < 0) != (b[i] < 0)) zc++; prev = b[i]; }
@@ -227,7 +227,7 @@ int main(void)
 
     /* 5. STOMP: play while switched off (recorded, untouched), switch on: frozen sound */
     {
-        float u[8] = {400, 70, 2, 40, 0, 0, 100, 120};
+        float u[8] = {600, 70, 2, 40, 0, 0, 100, 120};
         double e = 0; int untouched = 1;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -250,7 +250,7 @@ int main(void)
 
     /* 6. scrubbing: sweep Pos 100 -> 0 -> 100 with Glide, Spray, all modes; then random knobs */
     {
-        float u[8] = {400, 40, 0, 50, 0, 30, 100, 120};
+        float u[8] = {600, 40, 0, 50, 0, 30, 100, 120};
         unsigned int r = 12345u;
         float mx = 0;
         fresh();
@@ -260,7 +260,7 @@ int main(void)
                 else for (int k = 0; k < 8; k++) {
                     r = r * 1664525u + 1013904223u;
                     if ((r >> 28) < 4) {
-                        float mxk = (k == 2) ? 2.0f : (k == 4) ? 3.0f : (k == 0) ? 400.0f : (k == 1) ? 112.0f : (k == 7) ? 240.0f : 100.0f;
+                        float mxk = (k == 2) ? 2.0f : (k == 4) ? 3.0f : (k == 0) ? 600.0f : (k == 1) ? 112.0f : (k == 7) ? 240.0f : 100.0f;
                         r = r * 1664525u + 1013904223u;
                         u[k] = (float)(int)((r >> 8) % (unsigned)(mxk + 1));
                     }
@@ -279,7 +279,7 @@ int main(void)
     /* 6b. tempo sync: grain lengths, the head pulled in for long grains, a held 1/2 at 40 BPM */
     {
         ScParams P;
-        float u[8] = {400, 110, 1, 0, 0, 0, 100, 120};            /* 1/4 at 120 BPM */
+        float u[8] = {600, 110, 1, 0, 0, 0, 100, 120};            /* 1/4 at 120 BPM */
         sc_prepare(&P, u);
         printf("sync: 1/4 at 120 = %.1f samples (22050), inc*len %.6f", P.len, P.inc * P.len);
         CHECK(fabsf(P.len - 22050.0f) < 1.0f && fabsf(P.inc * P.len - 1.0f) < 1e-5f, "1/4 at 120");
@@ -294,12 +294,12 @@ int main(void)
         CHECK(fabsf(P.len - 132300.0f) < 2.0f, "1/2 at 40");
         CHECK(1.25f * P.len + P.Dt + P.spray < SC_AGE_MAX, "long grain does not fit");
         u[1] = 100; u[7] = 120; sc_prepare(&P, u);                 /* free range: untouched */
-        CHECK(P.Dt == 400.0f * 441.0f, "free grain moved the head");
+        CHECK(P.Dt == 600.0f * 441.0f, "free grain moved the head");
 
         /* a frozen 1/4 at 120 BPM repeats every 0.5 s: record a click every 0.5 s, freeze,
          * the loop's clicks must stay 22050 samples apart */
         {
-            float v[8] = {400, 110, 0, 0, 0, 0, 100, 120}, last = -1, gap = 0, maxd = 0;
+            float v[8] = {600, 110, 0, 0, 0, 0, 100, 120}, last = -1, gap = 0, maxd = 0;
             int ok = 1, clicks = 0;
             fresh();
             for (t = 0; t < 44100 * 6; t += 8) {
@@ -318,7 +318,7 @@ int main(void)
     }
 
     /* 6c. no voice may run off the end of the buffer (a read age stuck at SC_AGE_MAX turns
-     * into a 6 s delay or a stuck sample): Pos 4.00s, Spray 100, every Dir, LIVE and HOLD,
+     * into a 6 s delay or a stuck sample): Pos 6.00s, Spray 100, every Dir, LIVE and HOLD,
      * free grains and every synced grain at slow to fast tempos, for a voice's whole life */
     {
         const float bpms[5] = {40, 55, 80, 120, 240};
@@ -350,14 +350,14 @@ int main(void)
                 }
             }
         }
-        printf("buffer reach: %d runs (Pos 4.00s, Spray 100), %d hit the end of the buffer\n", runs, over);
+        printf("buffer reach: %d runs (Pos 6.00s, Spray 100), %d hit the end of the buffer\n", runs, over);
         CHECK(over == 0, "a voice ran off the end of the buffer");
     }
 
     /* 7. labels */
     {
         char o[8];
-        const unsigned int gv[3] = {0, 50, 100}, rv[4] = {0, 275, 399, 400};
+        const unsigned int gv[3] = {0, 50, 100}, rv[4] = {0, 475, 599, 600};
         printf("Grain:");
         for (i = 0; i < 3; i++) { ZDL_GetLabel_1(gv[i], o); printf(" %u=%s", gv[i], o); }
         printf("   Pos:");
@@ -371,7 +371,7 @@ int main(void)
             int n1 = ZDL_GetLabel_1(v, o);
             CHECK(n1 <= 5 && (int)strlen(o) == n1, "Grain label %u too long: %s", v, o);
         }
-        for (unsigned v = 0; v <= 400; v++) {
+        for (unsigned v = 0; v <= 600; v++) {
             int n0 = ZDL_GetLabel_0(v, o);
             CHECK(n0 <= 5 && (int)strlen(o) == n0, "Pos label %u too long: %s", v, o);
         }
@@ -399,13 +399,14 @@ int main(void)
         ZDL_GetLabel_5(100, o); CHECK(!strcmp(o, "+-250"), "Spray 100 = %s", o);
         ZDL_GetLabel_1(0, o);   CHECK(!strcmp(o, "10ms"), "Grain 0 = %s", o);
         ZDL_GetLabel_1(100, o); CHECK(!strcmp(o, "1.0s"), "Grain 100 = %s", o);
-        ZDL_GetLabel_0(0, o);   CHECK(!strcmp(o, "4.00s"), "Pos 0 = %s", o);
-        ZDL_GetLabel_0(275, o); CHECK(!strcmp(o, "1.25s"), "Pos 275 = %s", o);
-        ZDL_GetLabel_0(399, o); CHECK(!strcmp(o, "10ms"), "Pos 399 = %s", o);
-        ZDL_GetLabel_0(400, o); CHECK(!strcmp(o, "0ms"), "Pos 400 = %s", o);
+        ZDL_GetLabel_0(0, o);   CHECK(!strcmp(o, "6.00s"), "Pos 0 = %s", o);
+        ZDL_GetLabel_0(475, o); CHECK(!strcmp(o, "1.25s"), "Pos 475 = %s", o);
+        ZDL_GetLabel_0(599, o); CHECK(!strcmp(o, "10ms"), "Pos 599 = %s", o);
+        ZDL_GetLabel_0(600, o); CHECK(!strcmp(o, "0ms"), "Pos 600 = %s", o);
         /* the knob arrives as screen / 100: 2.75 must read as 275, not 3 */
         CHECK(sc_ui_pos(2.75f, 400.0f) == 275.0f, "Pos 2.75 read as %g", sc_ui_pos(2.75f, 400.0f));
         CHECK(sc_ui_pos(4.0f, 0.0f) == 400.0f, "Pos 4.00 read as %g", sc_ui_pos(4.0f, 0.0f));
+        CHECK(sc_ui_pos(6.0f, 0.0f) == 600.0f, "Pos 6.00 read as %g", sc_ui_pos(6.0f, 0.0f));
     }
 
     printf("%d failed checks\n", fails);
