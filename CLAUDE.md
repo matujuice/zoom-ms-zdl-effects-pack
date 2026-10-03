@@ -35,7 +35,7 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 
 - 128 x 64, 1 bit. Previews are black on white. The screen shows the first three knobs: labels at y=37, firmware number boxes at y=46..61 (about 20 wide at x=14, 55, 96), the dial drawn by `_VSquash` under them.
 - Pixels are 1.4 times taller than wide (`build/lcd_geometry.py`). Draw round things through `_VSquash` or divide y by 1.4, and check the preview stretched 1.4x.
-- No bottom rule on WaveFold, DualShft, Choral, EuGate. DubSiren's bottom edge belongs to its metal box and was left in.
+- No bottom rule on WaveFold, DualShft, Choral, EuGate. DubSiren's bottom edge belongs to its metal box and stays (Luca, 2026-10-03: DubSiren works differently from the others, so its framed cover stays as it is).
 - Use `Canvas` text helpers; knob labels come from the manifest names, so renaming a knob means re-running `make_cover.py` (EuGate's labels are set in its `LABELS`).
 
 ## How the effects were shaped (decisions the owner made)
@@ -58,4 +58,3 @@ The TI C6000 compiler only exists on the owner's Windows PC, so Claude cannot bu
 
 - Sound preview (audio or video) for the README and the Reddit post.
 - Ask owners of an unmodified MS-50G, MS-60B or MS-70CDR to report whether the effects load and work.
-- DubSiren cover: decide whether the box's bottom edge stays.
