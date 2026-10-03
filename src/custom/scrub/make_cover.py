@@ -12,7 +12,7 @@ letters inside solid and inverted, its sides dithered ramps (the crossfade).
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
 """
-import json, math, sys
+import json, math, os, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]        # src/custom/scrub/make_cover.py -> repo root
@@ -32,6 +32,7 @@ LGAP = 8
 TITLE = "SCRUB"
 TY = 6                       # title rows 6..20
 HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
+HEAD_LINE = os.environ.get("SCRUB_HEAD_LINE", "1") == "1"   # 0 = only the arrow on top
 LINE_Y = 28                  # timeline row
 LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
 SEL_HALF = 11                # the selection reaches 11 columns either side of the head
@@ -77,13 +78,14 @@ def build():
 
     # --- the playhead: 2 px with a 1 px clear gap either side, a cap on top ------------
     top, bot = 1, LINE_Y + 3
-    for x in (HEAD, HEAD + 1):
-        c.vline(x, top + 2, bot)
+    if HEAD_LINE:
+        for x in (HEAD, HEAD + 1):
+            c.vline(x, top + 2, bot)
     c.hline(HEAD - 2, HEAD + 3, top)
     c.hline(HEAD - 1, HEAD + 2, top + 1)
 
     # --- the timeline: solid behind, dotted ahead, the grain thick, arrows at the ends -
-    c.hline(LX0, HEAD - 2, LINE_Y)
+    c.hline(LX0, HEAD - 2 if HEAD_LINE else HEAD + 1, LINE_Y)
     for x in range(HEAD + 3, LX1 + 1, 2):
         c.px(x, LINE_Y)
     for k in range(4):
