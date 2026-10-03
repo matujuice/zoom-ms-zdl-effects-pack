@@ -4,14 +4,15 @@
  * Everything that goes in is recorded into a 6 second buffer. A read head sits somewhere
  * in that buffer and plays a short GRAIN from there, over and over, each repeat
  * crossfading into the next so the loop has no seam. Position moves the head along the
- * last 4 seconds like a timeline, in 10 ms steps: 0 = 4 s ago, 400 = now. Turning Position slides the head and you hear the audio go by
- * (faster turns = faster, like dragging tape: forward plays higher, backward plays
- * reversed); stop turning and the grain under the head keeps looping: a freeze.
+ * last 4 seconds like a timeline, in 10 ms steps: 0 = 4 s ago, 400 = now. Turning Position
+ * slides the head and the grains follow it through the audio, always at the original
+ * pitch (as in Clouds: no tape bend); stop turning and the grain under the head keeps
+ * looping: a freeze.
  *
  * REC (what the buffer does)
  *   LIVE   it keeps recording. Position is how far back the head reads, so the head moves
- *          with the music: a delay you can sweep (pitch bends while it moves, like a tape
- *          echo), and with Spray a granular cloud of the last few seconds.
+ *          with the music: a delay you can sweep (the pitch never bends), and with Spray a
+ *          granular cloud of the last few seconds.
  *   HOLD   recording stops: the last 6 seconds are kept and Position scrubs through them.
  *          Stop on a note and it rings forever. Back to LIVE and recording carries on.
  *   STOMP  the footswitch does it: while the effect is OFF it records (you hear your
@@ -23,9 +24,11 @@
  * THE HEAD
  *   The head's distance from "now" is D = (400 - Position) x 10 ms. D glides toward the
  *   knob with a one-pole (Glide), once per 8-sample block, which also hides the knob's
- *   10 ms steps. Each grain starts 1.25 x Grain + D (+ Spray jitter) back and reads forward;
- *   while D glides, each running grain is pushed along with it, so a move is heard at once
- *   and not only when the next grain starts. The push is limited to 3 samples per sample.
+ *   10 ms steps. Each grain starts 1.25 x Grain + D (+ Spray jitter) back and reads forward
+ *   at normal speed, so the pitch stays put: a move of the head is heard as each new grain
+ *   starts where the head now is. (An earlier version also pushed the running grains along
+ *   with the head, which bent the pitch with the turning speed like tape; Luca preferred
+ *   constant pitch after hearing both, 2026-10-03.)
  *   In LIVE the age of what a grain reads stays fixed while D does not move (it is a
  *   delay of 1.25 x Grain + D); in HOLD it drops by one per sample (the grain plays forward
  *   through frozen audio) and every new grain jumps back to the head.
@@ -38,7 +41,7 @@
  *   is heard as one piece with a short seam, instead of two copies always overlapping
  *   (which on a held tone beats at the overlap whenever the copies are out of phase).
  *   The fade is sin(pi q)^2 with sin(pi q) from a small polynomial in q(1-q) (max error
- *   0.1 %). Reads use linear interpolation (the push makes ages fractional).
+ *   0.1 %). Reads use linear interpolation (D, and so the ages, are fractional).
  *   Spray adds a random extra age to each new grain (up to 0.5 s), which turns a static
  *   loop into a moving cloud and breaks the buzz of very short frozen grains.
  *
@@ -85,7 +88,6 @@
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
 #define SC_TO16       16384.0f
 #define SC_FROM16     6.1035156e-5f      /* 1 / 16384 */
-#define SC_PUSH_MAX   3.0f               /* max head push, samples per sample           */
 #define SC_FIN_STEP   0.0022675737f      /* wet fade-in after switching on: 10 ms       */
 #define SC_XF_SCALE   2.0f               /* fade over the first 1/4 cycle: q = 2p, 0..0.5 */
 
@@ -274,15 +276,11 @@ SC_ALWAYS_INLINE(sc_process)
 static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
 {
     int i, rec = (P->mode == SC_MODE_LIVE);
-    float Dold, push, da, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin;
+    float da, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin;
 
     if (!s->started) { s->D = P->Dt; s->started = 1; aC = sc_start_age(s, P); aO = aC; }
-    Dold = s->D;
-    s->D += P->c * (P->Dt - s->D);
-    push = (s->D - Dold) * 0.125f;               /* head movement per sample */
-    if (push > SC_PUSH_MAX) push = SC_PUSH_MAX;
-    if (push < -SC_PUSH_MAX) push = -SC_PUSH_MAX;
-    da = rec ? push : push - 1.0f;               /* frozen: the voices read forward */
+    s->D += P->c * (P->Dt - s->D);               /* the head glides; new voices start there */
+    da = rec ? 0.0f : -1.0f;                     /* frozen: the voices read forward */
 
     for (i = 0; i < n; i++) {
         float in = buf[i], q, g, wet;

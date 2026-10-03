@@ -165,6 +165,26 @@ int main(void)
         }
     }
 
+    /* 4b. constant pitch: freeze a 440 Hz tone, sweep Pos fast, count zero crossings */
+    {
+        float u[6] = {400, 20, 0, 50, 0, 100};
+        long zc = 0; float prev = 0;
+        fresh();
+        for (t = 0; t < 44100 * 5; t += 8) {
+            for (i = 0; i < 8; i++) b[i] = 0.5f * sinf(2 * 3.14159265f * 440.0f * (t + i) / 44100.0f);
+            block(u, 1, b);
+        }
+        u[2] = 1;
+        for (t = 0; t < 44100 * 2; t += 8) {
+            u[0] = (float)(int)(400 - 300.0f * t / (44100 * 2));     /* 3 s back in 2 s */
+            for (i = 0; i < 8; i++) b[i] = 0.0f;
+            block(u, 1, b);
+            for (i = 0; i < 8; i++) { if ((prev < 0) != (b[i] < 0)) zc++; prev = b[i]; }
+        }
+        printf("constant pitch: 440 Hz frozen and swept 3 s back in 2 s plays at %.0f Hz\n", zc / 4.0);
+        CHECK(fabsf(zc / 4.0f - 440.0f) < 15.0f, "the sweep bends the pitch");
+    }
+
     /* 5. STOMP: play while switched off (recorded, untouched), switch on: frozen sound */
     {
         float u[6] = {400, 70, 2, 40, 0, 100};
