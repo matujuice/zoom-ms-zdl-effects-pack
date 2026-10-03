@@ -24,7 +24,7 @@
  * THE HEAD
  *   The head's distance from "now" is D = (400 - Position) x 10 ms. D glides toward the
  *   knob with a one-pole (Glide), once per 8-sample block, which also hides the knob's
- *   10 ms steps. Each grain starts 1.25 x Grain + D (+ Spray jitter) back and reads forward
+ *   10 ms steps. Each grain starts 1.25 x Grain + D (+- Spray jitter) back and reads forward
  *   at normal speed, so the pitch stays put: a move of the head is heard as each new grain
  *   starts where the head now is. (An earlier version also pushed the running grains along
  *   with the head, which bent the pitch with the turning speed like tape; Luca preferred
@@ -42,7 +42,8 @@
  *   (which on a held tone beats at the overlap whenever the copies are out of phase).
  *   The fade is sin(pi q)^2 with sin(pi q) from a small polynomial in q(1-q) (max error
  *   0.1 %). Reads use linear interpolation (D, and so the ages, are fractional).
- *   Spray adds a random extra age to each new grain (up to 0.5 s), which turns a static
+ *   Spray moves each new grain a random amount either side of the head (up to +-250 ms,
+ *   never ahead of now; Luca asked for a +-ms readout, 2026-10-03), which turns a static
  *   loop into a moving cloud and breaks the buzz of very short frozen grains.
  *
  * DIR (which way each voice plays)
@@ -55,6 +56,9 @@
  *         playing: no jump at the seam, a smoother, more tonal loop. Its crossfade is
  *         only 1 ms (a longer one would mix the turn with its own mirror image, which
  *         cancels on held tones); a moving head or Spray can still make a small jump.
+ *   RAND  each new voice flips a coin: forward or backward. Where it turns round it gets
+ *         PING's 1 ms seam, where it keeps going the usual quarter-grain one
+ *         (Luca, 2026-10-03).
  *   A backward voice reads older audio by one sample per sample (by two in LIVE, where
  *   the buffer moves on under it).
  *
@@ -62,7 +66,8 @@
  *   The buffer is 16-bit (scale 16384, so +-2.0 fits), 6 s = 264600 samples = 529 KB of
  *   the at least 705 KB arena. It is cleared 2048 samples per block after loading (about
  *   12 ms, the effect is dry meanwhile), so stale arena data is never played.
- *   The longest reach is 1.25 x Grain 1 s + Position 4 s + Spray 0.5 s = 5.75 s, inside the 6 s.
+ *   The longest reach is 1.25 x Grain 1 s + Position 4 s + Spray 0.25 s = 5.5 s, inside the 6 s.
+ *   A longer synced grain pulls the head in instead (see Grain).
  *
  * KNOBS (screen values)
  *   0 Pos    0..400  where the head reads, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD
@@ -70,14 +75,22 @@
  *                    400 steps instead of 100 so no Range knob is needed (Luca, 2026-10-03).
  *                    Read as raw x 100 always (the pedal passes screen / 100, so 4.00 here
  *                    means 400; the 3.05 guess in sc_ui would read it as 4)
- *   1 Grain  0..100  grain length, 10 ms .. 1 s (log); shown in ms / s
+ *   1 Grain  0..112  0..100 = grain length, 10 ms .. 1 s (log), shown in ms / s;
+ *                    101..112 = a note value at Tempo (Luca, 2026-10-03): 1/64 1/32 1/16T
+ *                    1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2, so the freeze loops in time.
+ *                    A synced grain can reach 3 s (1/2 at 40 BPM); then the head cannot go
+ *                    as far back as Pos asks (it stops where the grain still fits in 6 s)
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
  *   3 Glide  0..100  how slowly the head follows Position: 0 = jumps, 40 = about 0.1 s,
  *                    70 = about 1 s, 100 = about 3 s
- *   4 Dir    0..2    FWD / REV / PING: which way the grain plays (see DIR)
- *   5 Spray  0..100  random offset of each grain, up to 0.5 s (squared curve)
+ *   4 Dir    0..3    FWD / REV / PING / RAND: which way the grain plays (see DIR)
+ *   5 Spray  0..100  random offset of each grain either side of the head, up to +-250 ms
+ *                    (squared curve); shown as "OFF", "+-1" .. "+-250" (ms; 5 characters)
  *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
+ *   7 Tempo  40..240 BPM (the pedal's own number, below 40 reads as 40); only used when
+ *                    Grain is a note value. The pedal gives effects no clock, so it is
+ *                    dialled in, as on DubSiren and DualShft
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -112,6 +125,7 @@
 #define SC_DIR_FWD    0
 #define SC_DIR_REV    1
 #define SC_DIR_PING   2
+#define SC_DIR_RAND   3
 
 typedef struct {
     unsigned int magic;
@@ -133,11 +147,12 @@ typedef struct {
     float len;             /* grain length, samples                           */
     float Dt;              /* head distance target, samples                   */
     float c;               /* Glide: one-pole coefficient per block          */
-    float spray;           /* max random extra age, samples                   */
+    float spray;           /* Spray: grains land up to this far either side   */
     float dryG, wetG;      /* Mix: DJ crossfade gains                         */
     int   mode;            /* SC_MODE_*                                       */
     int   dir;             /* SC_DIR_*                                        */
     float xf;              /* seam: crossfade over the first 1/(2 xf) of a cycle */
+    float xft;             /* the same where the voice turns round: 1 ms         */
 } ScParams;
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
@@ -167,6 +182,31 @@ static inline float sc_exp2(float x)
     r = 1.0f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
     c.u = ((unsigned int)(n + 127)) << 23;
     return r * c.f;
+}
+
+/* 1 / x for x > 0: a first guess from the float bits, then three Newton steps (no divide) */
+SC_ALWAYS_INLINE(sc_recip)
+static inline float sc_recip(float x)
+{
+    union { float f; unsigned int u; } c;
+    float y;
+    c.f = x;
+    c.u = 0x7EF311C7u - c.u;
+    y = c.f;
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    return y;
+}
+
+/* synced Grain (knob 101..112): the grain as a note value, in beats (quarter notes):
+ * 1/64 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 */
+SC_ALWAYS_INLINE(sc_note_beats)
+static inline float sc_note_beats(int d)
+{
+    return (d == 0) ? 0.0625f : (d == 1) ? 0.125f : (d == 2) ? 0.16666667f : (d == 3) ? 0.25f
+         : (d == 4) ? 0.33333334f : (d == 5) ? 0.375f : (d == 6) ? 0.5f : (d == 7) ? 0.6666667f
+         : (d == 8) ? 0.75f : (d == 9) ? 1.0f : (d == 10) ? 1.5f : 2.0f;
 }
 
 /* Hann window sin(pi p)^2 for p in 0..1, no libm */
@@ -252,40 +292,56 @@ static inline void sc_init(ScState *s)
 SC_ALWAYS_INLINE(sc_prepare)
 static inline void sc_prepare(ScParams *P, const float *u)
 {
-    float k, e, sp, m;
-    P->len = sc_grain_len(u[1]);
-    P->inc = 0.0022675737f * sc_exp2(-u[1] * 0.06643856f);  /* 1 / len */
-    P->Dt  = (400.0f - u[0]) * 441.0f;           /* 10 ms per step back from now */
+    float k, e, sp, m, bpm, lim;
+    int g = (int)(u[1] + 0.5f);
+    if (g > 100) {                               /* synced: the grain is a note at Tempo */
+        bpm = u[7];
+        if (bpm < 40.0f) bpm = 40.0f;
+        if (bpm > 240.0f) bpm = 240.0f;
+        P->len = sc_note_beats(g - 101) * 2646000.0f * sc_recip(bpm);   /* 60 x 44100 */
+        P->inc = sc_recip(P->len);
+    } else {
+        P->len = sc_grain_len(u[1]);
+        P->inc = 0.0022675737f * sc_exp2(-u[1] * 0.06643856f);  /* 1 / len */
+    }
+    sp = u[5] * 0.01f;
+    P->spray = sp * sp * 11025.0f;               /* up to +-250 ms */
+    /* 10 ms per step back from now; a long synced grain (up to 3 s, 1/2 at 40 BPM) pulls
+     * the head in so the whole grain still fits in the 6 s (the free range never needs it) */
+    P->Dt  = (400.0f - u[0]) * 441.0f;
+    lim = SC_AGE_MAX - 2.0f - 1.25f * P->len - P->spray;
+    if (P->Dt > lim) P->Dt = lim;
+    if (P->Dt < 0.0f) P->Dt = 0.0f;
     P->mode = (int)(u[2] + 0.5f);
     k = u[3] * 0.01f;
     e = 14.0f * k * (2.0f - k);                  /* 0..14: per-block coefficient 1 .. 2^-14 */
     P->c = sc_exp2(-e);
     P->dir = (int)(u[4] + 0.5f);
-    /* FWD / REV: the seam crossfade is the first quarter of the cycle. PING turns round on
-     * the sample the last voice was playing, so a long crossfade would only mix the sound
-     * with its own mirror image (which cancels on held tones): 1 ms is enough there. */
+    /* Two voices playing the same way crossfade over the first quarter of the cycle. Where
+     * the new voice turns round (PING always, RAND when the coin flips) it starts on the
+     * sample the last voice was playing, so a long crossfade would only mix the sound with
+     * its own mirror image (which cancels on held tones): 1 ms is enough there. */
     P->xf = SC_XF_SCALE;
-    if (P->dir == SC_DIR_PING) {
-        P->xf = P->len * 0.0113379f;             /* len / (2 x 44.1): 1 ms */
-        if (P->xf < SC_XF_SCALE) P->xf = SC_XF_SCALE;
-    }
-    sp = u[5] * 0.01f;
-    P->spray = sp * sp * 22050.0f;
+    P->xft = P->len * 0.0113379f;                /* len / (2 x 44.1): 1 ms */
+    if (P->xft < SC_XF_SCALE) P->xft = SC_XF_SCALE;
     m = u[6] * 0.01f;
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
 /* a new voice: picks its direction (Dir), then its start: forward 1.25 x Grain + D back,
- * backward 0.25 x Grain + D back, plus Spray. Sets s->bC, returns the start age. */
+ * backward 0.25 x Grain + D back, plus or minus Spray. Sets s->bC, returns the start age. */
 SC_ALWAYS_INLINE(sc_new_voice)
 static inline float sc_new_voice(ScState *s, const ScParams *P)
 {
     int b = 0;
+    float off = P->spray * (2.0f * sc_rand(s) - 1.0f);  /* Spray: either side of the head */
+    if (off < -s->D) off = -s->D;                /* but never ahead of now        */
     if (P->dir == SC_DIR_REV) b = 1;
     if (P->dir == SC_DIR_PING) b = !s->bC;
+    if (P->dir == SC_DIR_RAND) b = (sc_rand(s) >= 0.5f);
     s->bC = b;
-    return sc_clamp_age((b ? 0.25f : 1.25f) * P->len + s->D + 1.0f + P->spray * sc_rand(s));
+    return sc_clamp_age((b ? 0.25f : 1.25f) * P->len + s->D + 1.0f + off);
 }
 
 /* clear part of the buffer after loading; returns 1 while still clearing */
@@ -326,7 +382,7 @@ static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
         aO = sc_clamp_age(aO + (s->bO ? daB : daF));
         if (p >= 1.0f) { p -= 1.0f; aO = aC; s->bO = s->bC; aC = sc_new_voice(s, P); }
         else aC = sc_clamp_age(aC + (s->bC ? daB : daF));
-        q = p * P->xf;
+        q = p * ((s->bC != s->bO) ? P->xft : P->xf);
         wet = sc_read(s->buf, s->wp, aC);
         if (q < 0.5f) {                          /* seam: old voice fades out */
             g = sc_hann(q);
@@ -380,10 +436,39 @@ static inline int sc_put_time(int ms, char *out)
     return 4;
 }
 
-/* knob 1 Grain: screen 0..100 -> "10ms".."1.0s" */
+/* one note value as text, five characters at most */
+SC_ALWAYS_INLINE(sc_note_text)
+static inline int sc_note_text(char *out, int c2, int c3, int c4)
+{
+    int n = 3;
+    out[0] = '1'; out[1] = '/'; out[2] = (char)c2;
+    if (c3) { out[3] = (char)c3; n = 4; }
+    if (c4) { out[4] = (char)c4; n = 5; }
+    out[n] = 0;
+    return n;
+}
+
+/* knob 1 Grain: screen 0..100 -> "10ms".."1.0s", then 101..112 = note values synced to
+ * Tempo: 1/64 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 */
 int ZDL_GetLabel_1(unsigned int value, char *out)
 {
-    if (value > 100u) value = 100u;
+    int n;
+    if (value > 112u) value = 112u;
+    if (value > 100u) {
+        n = (int)value - 101;
+        if (n == 0)  return sc_note_text(out, '6', '4', 0);
+        if (n == 1)  return sc_note_text(out, '3', '2', 0);
+        if (n == 2)  return sc_note_text(out, '1', '6', 'T');
+        if (n == 3)  return sc_note_text(out, '1', '6', 0);
+        if (n == 4)  return sc_note_text(out, '8', 'T', 0);
+        if (n == 5)  return sc_note_text(out, '1', '6', '.');
+        if (n == 6)  return sc_note_text(out, '8', 0, 0);
+        if (n == 7)  return sc_note_text(out, '4', 'T', 0);
+        if (n == 8)  return sc_note_text(out, '8', '.', 0);
+        if (n == 9)  return sc_note_text(out, '4', 0, 0);
+        if (n == 10) return sc_note_text(out, '4', '.', 0);
+        return sc_note_text(out, '2', 0, 0);
+    }
     return sc_put_time((int)(sc_grain_len((float)(int)value) * 0.022675737f + 0.5f), out);
 }
 
@@ -418,13 +503,29 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
     return 5;
 }
 
-/* knob 4 Dir: 0 "FWD", 1 "REV", 2 "PING" */
+/* knob 4 Dir: 0 "FWD", 1 "REV", 2 "PING", 3 "RAND" */
 int ZDL_GetLabel_4(unsigned int value, char *out)
 {
+    if (value >= 3u) { out[0] = 'R'; out[1] = 'A'; out[2] = 'N'; out[3] = 'D'; out[4] = 0; return 4; }
     if (value >= 2u) { out[0] = 'P'; out[1] = 'I'; out[2] = 'N'; out[3] = 'G'; out[4] = 0; return 4; }
     if (value == 1u) { out[0] = 'R'; out[1] = 'E'; out[2] = 'V'; out[3] = 0; return 3; }
     out[0] = 'F'; out[1] = 'W'; out[2] = 'D'; out[3] = 0;
     return 3;
+}
+
+/* knob 5 Spray: 0 "OFF", else how far either side of the head a grain may land, in ms:
+ * "+-1" .. "+-250" (the unit does not fit in 5 characters) */
+int ZDL_GetLabel_5(unsigned int value, char *out)
+{
+    int ms;
+    if (value > 100u) value = 100u;
+    if (value == 0u) { out[0] = 'O'; out[1] = 'F'; out[2] = 'F'; out[3] = 0; return 3; }
+    ms = (int)((float)(int)(value * value) * 0.025f + 0.5f);     /* 250 x (v/100)^2 */
+    if (ms < 1) ms = 1;
+    out[0] = '+'; out[1] = '-';
+    ms = 2 + sc_put_int(ms, out + 2);
+    out[ms] = 0;
+    return ms;
 }
 
 /* ---- pedal entry point ---------------------------------------------------- */
@@ -451,7 +552,7 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ScState *s;
     ScParams P;
-    float u[7];
+    float u[8];
     int i;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -472,12 +573,13 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     s = (ScState *)stateBase;
 
     u[0] = sc_ui_pos(params[SCRUB_POS_SLOT], (float)SCRUB_POS_UI_DEFAULT);
-    u[1] = sc_ui(params[SCRUB_GRAIN_SLOT],  (float)SCRUB_GRAIN_UI_DEFAULT,  100.0f);
+    u[1] = sc_ui(params[SCRUB_GRAIN_SLOT],  (float)SCRUB_GRAIN_UI_DEFAULT,  112.0f);
     u[2] = sc_ui(params[SCRUB_REC_SLOT],    (float)SCRUB_REC_UI_DEFAULT,    2.0f);
     u[3] = sc_ui(params[SCRUB_GLIDE_SLOT], (float)SCRUB_GLIDE_UI_DEFAULT, 100.0f);
-    u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    2.0f);
+    u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    3.0f);
     u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
     u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
+    u[7] = sc_ui(params[SCRUB_TEMPO_SLOT],  (float)SCRUB_TEMPO_UI_DEFAULT,  240.0f);
 
     if (s->magic != SC_MAGIC) sc_init(s);
     if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */

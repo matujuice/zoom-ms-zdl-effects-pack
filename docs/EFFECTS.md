@@ -79,11 +79,12 @@ New, not yet tested on the pedal. Everything you play is recorded into a 6 secon
 | Knob | Range | What it does |
 |---|---|---|
 | Pos | 4.00 s..0 ms back | Where the head is in the last 4 seconds, in 10 ms steps (400 steps). The screen shows how far back it is; 0ms is the present (in HOLD, the moment you froze). |
-| Grain | 10 ms..1 s | Length of the loop. Short = a buzzing tone made of the sound, long = a whole hit or chord repeating. |
+| Grain | 10 ms..1 s, then 1/64..1/2 | Length of the loop. Short = a buzzing tone made of the sound, long = a whole hit or chord repeating. Past 1 s come note values synced to Tempo (1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2), so the freeze loops in time with the song. A synced grain longer than about 1 s (slow tempos) pulls the head in so it still fits in the 6 s. |
 | Rec | LIVE, HOLD, STOMP | LIVE keeps recording, so Pos is how far back you listen: a delay you can sweep. HOLD stops recording and Pos scrubs the last 6 seconds. STOMP records while the effect is switched off and freezes the moment you switch it on (needs the pedal to pass the sound through a switched-off effect; if ON gives silence, use LIVE and HOLD). |
 | Glide | 0..100 | How slowly the head follows Pos. 0 = it jumps, 40 = about 0.1 s, 100 = about 3 s, a slow glide. It also hides the knob's steps. |
-| Dir | FWD, REV, PING | Which way the grain plays: forward, backward, or ping-pong (forward then backward in turns). PING turns round on itself, so the loop has no jump and sounds smoother and more tonal. |
-| Spray | 0..100 | Random offset for each new grain, up to 0.5 s: a moving cloud instead of a steady loop. |
+| Dir | FWD, REV, PING, RAND | Which way the grain plays: forward, backward, ping-pong (forward then backward in turns) or random (each grain flips a coin). PING turns round on itself, so the loop has no jump and sounds smoother and more tonal. |
+| Spray | OFF, +-1..+-250 | Random offset for each new grain, either side of the head, shown in ms (+-250 = up to 250 ms before or after; never ahead of now): a moving cloud instead of a steady loop. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
+| Tempo | 40..240 BPM | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
