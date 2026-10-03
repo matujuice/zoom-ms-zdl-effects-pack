@@ -5,7 +5,8 @@ and a playhead scrubbing through it. Left of the head the letters are solid (alr
 played), right of the head they are dithered (still to come). The head is a 2 px line
 with a cap on top that runs down onto a timeline under the title: solid behind the
 head, dotted ahead of it, arrows at both ends (you drag it both ways), and the grain
-just before the head drawn thick (the slice that loops when you stop).
+just before the head drawn thick (the slice that loops when you stop), with copies of
+it ahead of the head fading out like echoes: the grain repeating.
 
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
@@ -79,10 +80,20 @@ def build():
 
     # --- the timeline: solid behind, dotted ahead, the grain thick, arrows at the ends -
     c.hline(LX0, HEAD - 2, LINE_Y)
-    for x in range(HEAD + 3, LX1 + 1, 2):
-        c.px(x, LINE_Y)
     for y in (LINE_Y - 1, LINE_Y + 1):
         c.hline(HEAD - 1 - GRAIN, HEAD - 2, y)
+    # the grain repeating: copies of it ahead of the head, fading out like echoes
+    # (solid, then hollow, then a dotted outline, then only its ends)
+    for k in range(4):
+        x0 = HEAD + 4 + k * (GRAIN + 3)
+        x1 = min(x0 + GRAIN - 1, LX1)
+        for x in range(x0, x1 + 1):
+            edge = x in (x0, x1)
+            for y in (LINE_Y - 1, LINE_Y, LINE_Y + 1):
+                rim = edge or y != LINE_Y
+                if k == 0 or (k == 1 and rim) or (k == 2 and rim and (x + y) % 2 == 0) \
+                        or (k == 3 and edge and y == LINE_Y):
+                    c.px(x, y)
     for k in range(4):
         c.vline(LX0 - 6 + k, LINE_Y - k, LINE_Y + k)          # left arrow
         c.vline(LX1 + 6 - k, LINE_Y - k, LINE_Y + k)          # right arrow
