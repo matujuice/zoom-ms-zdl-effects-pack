@@ -1,6 +1,6 @@
 """Pack the seven effects for sharing: py make_release.py
 Needs the .ZDL files in dist\\ (run the build_*.bat files first).
-Writes release\\Matujuice_ZoomMS_pack.zip with the ZDLs, README.md, LICENSE and the cover sheet."""
+Writes release\\Matujuice_ZoomMS_pack.zip with the ZDLs, README.md, LICENSE (from the repo root) and the cover sheet."""
 import sys, zipfile
 from pathlib import Path
 
@@ -13,7 +13,7 @@ out = ROOT / "release" / "Matujuice_ZoomMS_pack.zip"
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for n in NAMES:
         z.write(ROOT / "dist" / (n + ".ZDL"), n + ".ZDL")
-    for f in ("README.md", "LICENSE", "covers.png"):
-        if (ROOT / "release" / f).exists():
-            z.write(ROOT / "release" / f, f)
+    for f in (ROOT / "release" / "README.md", ROOT / "LICENSE", ROOT / "release" / "covers.png"):
+        if f.exists():
+            z.write(f, f.name)
 print("wrote", out)
