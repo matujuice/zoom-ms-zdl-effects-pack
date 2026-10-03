@@ -1,11 +1,11 @@
 """Generate src/airwindows/common/covers/Scrub.json (128x64 cover override).
 
-Concept, in the WaveFold layout (two equal rectangles mirrored around the middle of the
-screen, 2 px strokes, rounded corners): on the left a sample-editor view of the buffer,
-three evenly spaced drum hits drawn as a waveform, centred, with a 2 px playhead in the
-middle; the grain just before the head is the frozen loop, in a dotted frame. On the right SCRUB in the
-top half, and in the bottom half a black block with a white scrub bar: a timeline, the
-head on it and arrows either side (you drag it both ways).
+Concept (after DualShft: the big title is the art): SCRUB across the screen, centred,
+and a playhead scrubbing through it. Left of the head the letters are solid (already
+played), right of the head they are dithered (still to come). The head is a 2 px line
+with a cap on top that runs down onto a timeline under the title: solid behind the
+head, dotted ahead of it, arrows at both ends (you drag it both ways), and the grain
+just before the head drawn thick (the slice that loops when you stop).
 
 Run from anywhere:  py src\\custom\\scrub\\make_cover.py
 Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
@@ -23,20 +23,15 @@ from custom_covers import _VSquash
 NAME = "Scrub"
 LABELS = ("POS", "GRAIN", "REC")
 W, H = 128, 64
-ART_TOP, ART_BOTTOM = 0, 34  # the art lives in rows 0..34, labels start at 37
-RECT_W = 61                  # box x 0..60, gap 61..66, title x 67..127: mirrored around 63.5
-BOX_X0, BOX_X1 = 0, RECT_W - 1
-TXT_X0 = W - RECT_W
-COLS = (2, 4, 2)             # font column -> px: 2 px stems, letters 8 wide
-ROWS = (3, 2, 3, 2, 3)       # font row -> px: letters 13 tall, as WaveFold
-LGAP = 2
-SPLIT = (ART_TOP + ART_BOTTOM) // 2                   # row 17: SCRUB in rows 0..16, block 18..34
-WX0, WX1 = 6, 54             # waveform columns: equal margins in the box (0..60)
-HITS = (6, 22, 38)           # drum hits, evenly spaced
-HEAD = 29                    # playhead x (2 px: 29, 30), the middle of the box
-GRAIN = 10                   # frozen grain: the 10 columns before the head
-WCY = (ART_TOP + ART_BOTTOM) // 2   # waveform centre row, the middle of the box
-WAMP = 9                     # waveform peak, px
+COLS = (3, 9, 3)             # font column -> px: 3 px stems, letters 15 wide
+ROWS = (3, 3, 3, 3, 3)       # font row -> px: letters 15 tall, as DualShft
+LGAP = 8
+TITLE = "SCRUB"
+TY = 6                       # title rows 6..20
+HEAD = 63                    # playhead x (2 px: 63, 64), the middle of the screen
+LINE_Y = 28                  # timeline row
+LX0, LX1 = 10, 117           # timeline ends (arrows outside them)
+GRAIN = 10                   # thick grain on the timeline, just before the head
 
 
 def big_text(c, text, x, y, v=1):
@@ -59,67 +54,38 @@ def text_w(text):
     return len(text) * sum(COLS) + (len(text) - 1) * LGAP
 
 
-def env(x):
-    """Waveform height at column x: each hit jumps up and decays."""
-    a = 0.0
-    for h in HITS:
-        if x >= h:
-            a = max(a, math.exp(-(x - h) / 6.0))
-    return a
-
-
-def round_corners(c, x0, x1, y0, y1):
-    for x, y in ((x0, y0), (x1, y0), (x0, y1), (x1, y1)):
-        c.px(x, y, 0)
-    c.px(x0 + 1, y0 + 1); c.px(x1 - 1, y0 + 1)
-    c.px(x0 + 1, y1 - 1); c.px(x1 - 1, y1 - 1)
-
-
 def build():
     c = Canvas()
 
-    # --- left box: the buffer and the head, centred ------------------------------------
-    c.rect(BOX_X0, ART_TOP, BOX_X1, ART_BOTTOM)
-    for x in range(WX0, WX1 + 1):
-        a = env(x)
-        # uneven column heights so it reads as a waveform, not a solid shape
-        h = round(WAMP * a * (0.45, 1.0, 0.7, 0.9, 0.55)[(x - WX0) % 5])
-        if h < 1:
-            c.px(x, WCY)                          # silence: a flat line
-        else:
-            c.vline(x, WCY - h, WCY + h)
-    # the frozen grain: a dotted frame over the columns just before the head
-    g0 = HEAD - GRAIN
-    fy0, fy1 = WCY - WAMP - 2, WCY + WAMP + 2
-    for x in range(g0, HEAD, 2):
-        c.px(x, fy0); c.px(x, fy1)
-    for y in range(fy0, fy1 + 1, 2):
-        c.px(g0, y)
-    # the playhead: 2 px in the middle of the box, a small triangle at each end
-    for x in (HEAD, HEAD + 1):
-        c.vline(x, fy0 - 1, fy1 + 1)
-    c.hline(HEAD - 1, HEAD + 2, fy0 - 2); c.hline(HEAD - 2, HEAD + 3, fy0 - 3)
-    c.hline(HEAD - 1, HEAD + 2, fy1 + 2); c.hline(HEAD - 2, HEAD + 3, fy1 + 3)
+    # --- the title, centred: solid behind the head, dithered ahead of it ---------------
+    m = Canvas()
+    tx = (W - text_w(TITLE)) // 2
+    big_text(m, TITLE, tx, TY)
+    for y in range(H):
+        for x in range(W):
+            if not m.pixels[y][x]:
+                continue
+            if x < HEAD - 1:
+                c.px(x, y)
+            elif x > HEAD + 2 and (x + y) % 2 == 0:
+                c.px(x, y)
 
-    # --- right box: SCRUB on top, a white scrub bar in a black block under it ----------
-    c.rect(TXT_X0, ART_TOP, W - 1, ART_BOTTOM)
-    ty = (SPLIT - ART_TOP - sum(ROWS)) // 2 + 1
-    big_text(c, "SCRUB", TXT_X0 + (RECT_W - text_w("SCRUB")) // 2, ART_TOP + ty)
-    for y in range(SPLIT + 1, ART_BOTTOM + 1):
-        c.hline(TXT_X0, W - 1, y)
-    by = (SPLIT + 1 + ART_BOTTOM) // 2            # bar row
-    bx0, bx1 = TXT_X0 + 12, W - 13
-    for x in range(bx0, bx1 + 1, 2):              # the timeline, dotted
-        c.px(x, by, 0)
-    hx = (TXT_X0 + W - 1) // 2                    # the head on the bar: a 2 px post, centred
-    c.hline(bx0, hx - 1, by, 0)                   # the part already played, solid
-    for x in (hx, hx + 1):
-        c.vline(x, by - 5, by + 5, 0)
-    for k in range(4):                            # arrows both ways at the ends
-        c.vline(TXT_X0 + 4 + k, by - k, by + k, 0)
-        c.vline(W - 5 - k, by - k, by + k, 0)
-    round_corners(c, BOX_X0, BOX_X1, ART_TOP, ART_BOTTOM)
-    round_corners(c, TXT_X0, W - 1, ART_TOP, ART_BOTTOM)
+    # --- the playhead: 2 px with a 1 px clear gap either side, a cap on top ------------
+    top, bot = 1, LINE_Y + 3
+    for x in (HEAD, HEAD + 1):
+        c.vline(x, top + 2, bot)
+    c.hline(HEAD - 2, HEAD + 3, top)
+    c.hline(HEAD - 1, HEAD + 2, top + 1)
+
+    # --- the timeline: solid behind, dotted ahead, the grain thick, arrows at the ends -
+    c.hline(LX0, HEAD - 2, LINE_Y)
+    for x in range(HEAD + 3, LX1 + 1, 2):
+        c.px(x, LINE_Y)
+    for y in (LINE_Y - 1, LINE_Y + 1):
+        c.hline(HEAD - 1 - GRAIN, HEAD - 2, y)
+    for k in range(4):
+        c.vline(LX0 - 6 + k, LINE_Y - k, LINE_Y + k)          # left arrow
+        c.vline(LX1 + 6 - k, LINE_Y - k, LINE_Y + k)          # right arrow
 
     # --- labels and dials under the firmware value boxes (page 1 knobs) --------
     for (kid, kx, ky), label in zip(cc.knob_layout(3), LABELS):
