@@ -109,7 +109,7 @@ Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with 
 ### Segue: transition looper for a drum-machine mix
 Made for playing a set with one sequencer: the whole mix goes through the pedal. Segue follows the kick to know where every bar and phrase starts (the first kick it hears after loading is bar 1). Press the footswitch before the phrase ends and it records the next phrase. At the end of that phrase the output jumps to 100 % loop, so the sequencer can change pattern underneath without anyone hearing it. Then turn XFade fully right (the loop picks up the knob) and back left to fade the live mix in and the loop out. That is Mode JUMP; Mode AUTO does the fade back by itself, and MANU leaves everything to XFade. The loop keeps running, inaudible, until the next press records a new one over it.
 
-Any press counts, whichever way the switch goes: the LED means nothing on this effect. Three quick presses (each within half a second) reset bar 1 to the next kick and cancel an armed recording; the loop stays. The loop is mono, 8-bit mu-law (a slight lo-fi hiss), up to 16 seconds, so 8 bars fit down to about 121 BPM. Nothing records before the first kick has been heard.
+Any press counts, whichever way the switch goes: the LED means nothing on this effect. Three quick presses (each within half a second) reset bar 1 to the next kick and cancel an armed recording; the loop stays. The loop is mono, 8-bit block floating point with pre-emphasis (about 46 dB below the signal, a faint hiss only on the loop; the live mix is never processed), up to 15.5 seconds, so 8 bars fit down to about 127 BPM. Nothing records before the first kick has been heard.
 
 | Knob | Range | What it does |
 |---|---|---|

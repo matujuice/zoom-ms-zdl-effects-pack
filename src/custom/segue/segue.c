@@ -61,9 +61,12 @@
  *   the quiet before the kick, never on it.
  *
  * LOOP
- *   One buffer of 704000 8-bit samples (15.96 s, 704 KB of the at least 705536-byte arena),
- *   G.711 mu-law (about 38 dB signal to noise at full level, more on quiet parts: a slight
- *   lo-fi hiss). 8 bars fit down to about 121 BPM. If Bars do not fit at the tempo being
+ *   One buffer of 682656 8-bit samples (15.48 s) plus one scale byte per 32 samples, 704 KB
+ *   of the at least 705536-byte arena: block floating point (as in NICAM) of the signal
+ *   with a pre-emphasis, de-emphasised on playback (about 48 dB signal to noise at any
+ *   level, ~57 dB in the highs where hiss is heard; never clips). The live input is never
+ *   stored or changed: only the loop goes through this format. 8 bars fit down to about
+ *   127 BPM (with 2 % room for drift). If Bars do not fit at the tempo being
  *   tracked when you press, it records the longest part of the phrase that does and still
  *   divides it (8 -> 4 -> 2 -> 1 bars: the last ones of the phrase, so the jump still lands
  *   on the phrase end) and plays a double beep. Nothing is ever read from the buffer before
@@ -113,8 +116,11 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define SE_MAGIC      0x53455132u        /* "SEQ2": change whenever SeState changes */
-#define SE_N          704000             /* loop buffer, 8-bit mu-law: 15.96 s           */
+#define SE_MAGIC      0x53455133u        /* "SEQ3": change whenever SeState changes */
+#define SE_N          682656             /* loop buffer, 8-bit samples: 15.48 s           */
+#define SE_NB         21333              /* one scale byte per 32 samples (SE_N / 32)     */
+#define SE_PRE        0.85f              /* pre-emphasis: stored d = x - 0.85 x[-1]       */
+#define SE_WARM       64                 /* samples decoded to settle a voice at a jump   */
 #define SE_X          128                /* seam crossfade, samples (2.9 ms)             */
 #define SE_XINV       0.0078125f         /* 1 / SE_X                                     */
 #define SE_WMAX       (SE_N - SE_X - 2)  /* a recording stops here at the latest         */
@@ -185,7 +191,11 @@ typedef struct {
     float F;               /* LoCut: tan(pi f / fs), gliding                  */
     int   beep;            /* samples of the double beep left                 */
     float bs, bc;          /* beep oscillator                                 */
-    unsigned char buf[SE_N];
+    float zm, zo;          /* de-emphasis state of the playhead and fade voice */
+    float xp;              /* previous input (pre-emphasis)                   */
+    float stg[32];         /* the block being recorded, before it is scaled   */
+    unsigned char buf[SE_N];   /* 8-bit mantissas                             */
+    signed char   bex[SE_NB];  /* each 32-sample block's scale: 2^bex         */
 } SeState;
 
 typedef struct {
@@ -257,26 +267,74 @@ static inline int se_mod(int x, int m)
     return r;
 }
 
-/* G.711 mu-law, 14-bit: 4096 = 1.0, so +-2.0 fits. Code 0 (and 0x80) decode to 0. */
-SE_ALWAYS_INLINE(se_enc)
-static inline unsigned char se_enc(float x)
+/* 2^n as a float, n in -100..100, from the exponent bits */
+SE_ALWAYS_INLINE(se_pow2i)
+static inline float se_pow2i(int n)
 {
-    int v, s = 0, seg = 0, m;
-    if (x < 0.0f) { x = -x; s = 0x80; }
-    x = x * 4096.0f + 0.5f;
-    if (x > 8158.0f) x = 8158.0f;
-    v = (int)x + 33;
-    m = v >> 6;
-    while (m) { seg++; m >>= 1; }                /* 0..7: v is below 8192 */
-    return (unsigned char)(s | (seg << 4) | ((v >> (seg + 1)) & 15));
+    union { float f; unsigned int u; } c;
+    c.u = ((unsigned int)(n + 127)) << 23;
+    return c.f;
 }
 
-SE_ALWAYS_INLINE(se_dec)
-static inline float se_dec(unsigned char c)
+/* the loop's format: 8-bit samples with one scale per 32 (block floating point, as in
+ * NICAM), of the pre-emphasised signal d = x - 0.85 x[-1]. Each block is scaled so its
+ * peak sits in the top octave of the 8 bits: about 48 dB signal to noise whatever the
+ * level, and the de-emphasis on playback (y = d + 0.85 y[-1]) takes the noise down
+ * another ~10 dB in the highs, where hiss is heard. Nothing clips: the scale covers any
+ * level. Samples are staged as floats until their block is complete, then scaled. */
+SE_ALWAYS_INLINE(se_flush)
+static inline void se_flush(SeState *s, int base, int n)
 {
-    int seg = (c >> 4) & 7;
-    float v = (float)(((((int)c & 15) << 1) + 33) << seg) - 33.0f;
-    return ((c & 0x80) ? -v : v) * 2.4414062e-4f;      /* / 4096 */
+    union { float f; unsigned int u; } c;
+    float m = 0.0f, a, sc;
+    int k, e, q;
+    for (k = 0; k < n; k++) { a = s->stg[k]; if (a < 0.0f) a = -a; if (a > m) m = a; }
+    c.f = m;
+    e = -(int)((c.u >> 23) & 255u) + 126;        /* m x 2^e in 0.5..1 */
+    if (m < 1e-12f || e > 60) e = 60;
+    if (e < -60) e = -60;
+    sc = 127.0f * se_pow2i(e);
+    for (k = 0; k < n; k++) {
+        a = s->stg[k] * sc;
+        q = (int)(a + ((a >= 0.0f) ? 0.5f : -0.5f));
+        if (q > 127) q = 127;
+        if (q < -127) q = -127;
+        s->buf[base + k] = (unsigned char)(q & 255);
+    }
+    s->bex[base >> 5] = (signed char)e;
+}
+
+/* the stored (pre-emphasised) value at idx: from the staged block if it was recorded
+ * there and not yet scaled, else from the buffer */
+SE_ALWAYS_INLINE(se_rd)
+static inline float se_rd(const SeState *s, int idx)
+{
+    int q;
+    if ((s->rec || s->tail > 0) && (idx & ~31) == (s->wi & ~31) && idx < s->wi)
+        return s->stg[idx & 31];
+    q = (int)s->buf[idx];
+    if (q > 127) q -= 256;
+    return (float)q * 0.007874016f * se_pow2i(-(int)s->bex[idx >> 5]);
+}
+
+/* record one input sample */
+SE_ALWAYS_INLINE(se_wr)
+static inline void se_wr(SeState *s, float in)
+{
+    s->stg[s->wi & 31] = in - SE_PRE * s->xp;
+    s->wi++;
+    if ((s->wi & 31) == 0) se_flush(s, s->wi - 32, 32);
+}
+
+/* de-emphasis state for a voice about to read idx: decode the samples just before it */
+SE_ALWAYS_INLINE(se_warm)
+static inline float se_warm(const SeState *s, int idx)
+{
+    int j = idx - SE_WARM;
+    float z = 0.0f;
+    if (j < 0) j = 0;
+    for (; j < idx; j++) z = se_rd(s, j) + SE_PRE * z;
+    return z;
 }
 
 SE_ALWAYS_INLINE(se_init)
@@ -295,6 +353,7 @@ static inline void se_init(SeState *s, float T0)
     s->gd = 1.0f; s->gw = 0.0f;
     s->s1b = 0.0f; s->s1l = 0.0f; s->s2b = 0.0f; s->s2l = 0.0f; s->F = 0.0014248f;
     s->beep = 0; s->bs = 0.0f; s->bc = 1.0f;
+    s->zm = 0.0f; s->zo = 0.0f; s->xp = 0.0f;
     s->magic = SE_MAGIC;
 }
 
@@ -338,6 +397,8 @@ static inline void se_jump(SeState *s, int from, int to)
     s->po = from;
     s->fade = SE_X;
     s->pi = to;
+    s->zo = se_warm(s, from);
+    s->zm = se_warm(s, to);
 }
 
 /* Roll window: start and the next point the playhead jumps back to it */
@@ -545,17 +606,21 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
 
         /* loop: read the playhead, record, then the voice fading out (it may read the
          * sample just recorded: the tail at the loop's first seam) */
-        if (s->has_loop) wet = se_dec(s->buf[s->pi]);
+        if (s->has_loop) { s->zm = se_rd(s, s->pi) + SE_PRE * s->zm; wet = s->zm; }
         if (s->rec || s->tail > 0) {
-            s->buf[s->wi] = se_enc(in);
-            s->wi++;
-            if (s->tail > 0) s->tail--;
-            else if (s->wi >= SE_WMAX) se_finish(s);
+            se_wr(s, in);
+            if (s->tail > 0) {
+                s->tail--;
+                if (s->tail == 0 && (s->wi & 31) != 0)          /* scale the last block */
+                    se_flush(s, s->wi & ~31, s->wi & 31);
+            } else if (s->wi >= SE_WMAX) se_finish(s);
         }
+        s->xp = in;
         if (s->has_loop) {
             if (s->fade > 0) {
                 float g = (float)s->fade * SE_XINV;
-                wet += g * (se_dec(s->buf[s->po]) - wet);
+                s->zo = se_rd(s, s->po) + SE_PRE * s->zo;
+                wet += g * (s->zo - wet);
                 s->po++;
                 s->fade--;
             }

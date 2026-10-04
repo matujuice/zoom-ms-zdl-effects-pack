@@ -1,6 +1,6 @@
 {
   "effect_name": "Segue",
-  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit mu-law, about 16 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (play only the last 4/2/1 bars or beat). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3: Thrsh, Listn (tracking only, no effect on the sound), Mode (JUMP / AUTO / MANUAL: what the output does when a loop is ready).",
+  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit block floating point, about 15.5 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (play only the last 4/2/1 bars or beat). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3: Thrsh, Listn (tracking only, no effect on the sound), Mode (JUMP / AUTO / MANUAL: what the output does when a loop is ready).",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
@@ -30,7 +30,7 @@
       "name": "Bars",
       "max": 7,
       "default": 7,
-      "comment": "Phrase and loop length, shown as 1 to 8 bars (screen value + 1). A press waits for the next phrase start (counted in Bars from bar 1). If the bars do not fit in the 16 s buffer at the tempo being tracked (8 bars need at least 121 BPM), it records the last 4, 2 or 1 bars of the phrase instead and beeps twice. Default 8."
+      "comment": "Phrase and loop length, shown as 1 to 8 bars (screen value + 1). A press waits for the next phrase start (counted in Bars from bar 1). If the bars do not fit in the 15.5 s buffer at the tempo being tracked (8 bars need at least 127 BPM), it records the last 4, 2 or 1 bars of the phrase instead and beeps twice. Default 8."
     },
     {
       "name": "LoBPM",

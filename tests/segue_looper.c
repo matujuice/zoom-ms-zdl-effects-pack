@@ -1,7 +1,7 @@
 /* Segue: kick tracking on a synthetic drum-machine mix (drift, breakdown, rolling bass),
  * the transition workflow (arm, record, jump, pickup, fade back), the loop matching what
  * was recorded, seams without clicks, reset taps, the Bars-do-not-fit beep, Roll, LoCut,
- * mu-law, labels, and a long random-knob run (no NaN, bounded, indices in range). */
+ * the loop format, labels, and a long random-knob run (no NaN, bounded, indices in range). */
 #define SEGUE_HOST_TEST
 #include <stdio.h>
 #include <string.h>
@@ -124,16 +124,53 @@ int main(void)
     printf("state %u bytes (arena >= 705536)\n", (unsigned)sizeof(SeState));
     CHECK(sizeof(SeState) < 705536u, "state too big");
 
-    /* 1. mu-law: round trip within 3.2 % (+ a small floor), 0 stays 0 */
+    /* 1. the loop format (block float + pre-emphasis; mu-law gave 37.8 / 24.8 dB on this
+     *    signal): a mix-like signal (saw bass, chords,
+     *    noisy hats) round trip at three levels, including one far over full scale; then a
+     *    voice that starts mid-buffer (warm-up) matches one that played from the start */
     {
-        float x, worst = 0;
-        for (x = -1.9f; x < 1.9f; x += 0.0003f) {
-            float y = se_dec(se_enc(x)), e = fabsf(y - x) / (fabsf(x) + 0.016f);
-            if (e > worst) worst = e;
+        static float x[44100];
+        float lv[3] = { 1.0f, 0.03f, 4.0f };
+        int li, k;
+        unsigned int r = 12345u;
+        for (k = 0; k < 44100; k++) {
+            float t = (float)k / FS, h;
+            r = r * 1664525u + 1013904223u;
+            h = ((float)(r >> 9) / 8388608.0f - 0.5f) * ((k % 5512) < 800 ? 0.5f : 0.0f);
+            x[k] = 0.4f * (2.0f * (55.0f * t - floorf(55.0f * t)) - 1.0f)
+                 + 0.15f * sinf(6.2832f * 440.0f * t) + 0.15f * sinf(6.2832f * 554.4f * t)
+                 + 0.1f * sinf(6.2832f * 3520.0f * t) + h;
         }
-        printf("mu-law: worst relative error %.3f, enc(0) = %d, dec(0) = %g\n", worst, se_enc(0.0f), se_dec(0));
-        CHECK(worst < 0.035f, "mu-law error");
-        CHECK(se_dec(se_enc(0.0f)) == 0.0f, "mu-law zero");
+        for (li = 0; li < 3; li++) {
+            double se = 0, ss = 0, sh = 0, eh = 0, ep = 0, xp = 0;
+            float z = 0, worst = 0;
+            se_init(&S, 16537.5f);
+            S.rec = 1;
+            for (k = 0; k < 44100; k++) { se_wr(&S, lv[li] * x[k]); S.xp = lv[li] * x[k]; }
+            se_flush(&S, 44100 & ~31, 44100 & 31);
+            S.rec = 0;
+            for (k = 0; k < 44100; k++) {
+                double e, d;
+                z = se_rd(&S, k) + SE_PRE * z;
+                e = z - lv[li] * x[k];
+                se += e * e; ss += (double)lv[li] * x[k] * lv[li] * x[k];
+                d = e - ep; sh += (lv[li] * x[k] - xp) * (lv[li] * x[k] - xp); eh += d * d;
+                ep = e; xp = lv[li] * x[k];
+            }
+            for (k = 1000; k < 44000; k += 977) {   /* warm-up from mid-buffer */
+                float w = se_warm(&S, k), zc = 0, ww;
+                int j;
+                for (j = 0; j <= k; j++) zc = se_rd(&S, j) + SE_PRE * zc;
+                ww = fabsf(se_rd(&S, k) + SE_PRE * w - zc);
+                if (ww > worst) worst = ww;
+            }
+            printf("loop format at level %.2f: SNR %.1f dB, highs (first difference) %.1f dB, warm-up error %.1e\n",
+                   lv[li], 10 * log10(ss / se), 10 * log10(sh / eh), worst);
+            CHECK(10 * log10(ss / se) > 44.0, "loop format SNR");
+            CHECK(10 * log10(sh / eh) > 39.0, "loop format SNR in the highs");
+            CHECK(worst < 0.002f * lv[li], "warm-up differs from continuous playback");
+        }
+        S.magic = 0;
     }
 
     /* 2. tracking: 160 BPM four on the floor, machine clock 200 ppm slow (twice the worst
@@ -258,7 +295,7 @@ int main(void)
                 if (e > err) err = e;
                 if (fabsf(in[k - S.L]) > pk) pk = fabsf(in[k - S.L]);
             }
-            printf("  loop vs the recorded input: max error %.4f (peak %.2f, mu-law steps)\n", err, pk);
+            printf("  loop vs the recorded input: max error %.4f (peak %.2f, 8-bit steps)\n", err, pk);
             CHECK(err < 0.04f * pk + 0.002f, "loop differs from the recording");
         }
         {
