@@ -13,7 +13,7 @@
  *   after loading is bar 1, the tempo locks after four agreeing kicks, and every beat sits
  *   15 ms before the kick is detected, a few ms before the kick starts. So a click lands a
  *   hair before the kick, where Segue cuts.
- *   Four fixes found with Metro (2026-10-04), to be ported into segue.c:
+ *   Five fixes found with Metro (2026-10-04), to be ported into segue.c:
  *   - AUTO threshold hunts. A boomy kick on every beat (long tail, as Digitakt kicks
  *     often are) is still loud when the next one hits, so the next kick only jumps about
  *     1.5..1.9 x over the band's recent level, under the fixed 2 x: after the first kick
@@ -27,6 +27,10 @@
  *   - The beat count while finding the tempo. Halving only counts 1, 2, 4.. beats between
  *     kicks; once two intervals agree, the beats since bar 1 are counted from the time.
  *   - The Thrsh knob: 1..100 = 1.02..3 x (was 1.3..20 x: above about 10 nothing counted).
+ *   - With a fixed tempo (LoBPM = HiBPM) the locked grid follows only kicks within 6 % of
+ *     a beat, by a tenth of the error (free tempo: 12 %, a quarter). Luca's tribe loops
+ *     push kicks 10..20 % off the beat; the wide window let them drag the grid off. On
+ *     his recording (Digitakt, 160 BPM, 148 s of loops) this holds the beat all the way.
  *
  * WHAT YOU HEAR
  *   Nothing is clicked until the tempo is locked: the first click means "locked".
@@ -54,7 +58,8 @@
  *   1 Click 0..2    BEAT / BAR / KICK
  *   2 Bars  0..7    phrase length for the phrase click, shown as 1..8 bars
  *   3 LoBPM 0..240  as Segue: slowest tempo the tracker may lock to (below 40 reads 40)
- *   4 HiBPM 0..240  as Segue: fastest; LoBPM = HiBPM fixes the tempo
+ *   4 HiBPM 0..240  as Segue: fastest; LoBPM = HiBPM fixes the tempo (default both 160,
+ *                   Luca's tempo: the surest setting, needed for syncopated kicks)
  *   5 Thrsh 0..100  0 AUTO (hunts 2, 1.7, 1.5, 1.3 x until it locks), else how far the
  *                   kick band must jump over its recent level: 1 = 1.02 x (anything) ..
  *                   50 = 2 x .. 100 = 3 x (only hard kicks)
@@ -161,20 +166,6 @@ static inline float se_ui(float raw, float def_ui, float max_ui)
     return ui;
 }
 
-/* 2^x for x in about -30..30: the fraction by a polynomial, the whole part in the exponent */
-SE_ALWAYS_INLINE(se_exp2)
-static inline float se_exp2(float x)
-{
-    union { float f; unsigned int u; } c;
-    int   n = (int)x;
-    float f, r;
-    if ((float)n > x) n--;
-    f = x - (float)n;
-    r = 1.0f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * 0.0096181f)));
-    c.u = ((unsigned int)(n + 127)) << 23;
-    return r * c.f;
-}
-
 /* 1 / x for x > 0: a first guess from the float bits, then three Newton steps (no divide) */
 SE_ALWAYS_INLINE(se_recip)
 static inline float se_recip(float x)
@@ -229,8 +220,12 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
     if (e > 0.5f * T) { e -= T; nb++; }
     if (e < -0.5f * T) { e += T; nb--; }
     if (s->cs == SE_LOCK) {
-        if (e < 0.12f * T && e > -0.12f * T) {   /* on the grid: follow it      */
-            s->ph -= 0.25f * e;
+        /* on the grid: follow it. With a fixed tempo only the two clocks' drift has to
+         * be followed, so the window is narrow and the step small: a syncopated kick
+         * pushed just off the beat (tribe, tekno) can not drag the grid along. */
+        float win = P->fixed ? 0.06f : 0.12f;
+        if (e < win * T && e > -win * T) {
+            s->ph -= (P->fixed ? 0.1f : 0.25f) * e;
             if (!P->fixed) s->T = T + 0.02f * e;
             s->kb = nb; s->misses = 0; s->sk = back;
         } else if (!P->fixed && se_fold((float)(s->sk - back), P, &f)) {

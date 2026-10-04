@@ -29,14 +29,14 @@
     {
       "name": "LoBPM",
       "max": 240,
-      "default": 140,
-      "comment": "As Segue: slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). Default 140."
+      "default": 160,
+      "comment": "As Segue: slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). Set LoBPM and HiBPM both to the sequencer's tempo for syncopated kicks (tribe, tekno): with a fixed tempo the grid only follows kicks within 6 % of a beat, so pushed kicks can not drag it. Default 160."
     },
     {
       "name": "HiBPM",
       "max": 240,
-      "default": 170,
-      "comment": "As Segue: fastest tempo the tracker may lock to, 40 to 240 BPM. LoBPM = HiBPM fixes the tempo. Default 170."
+      "default": 160,
+      "comment": "As Segue: fastest tempo the tracker may lock to, 40 to 240 BPM. LoBPM = HiBPM fixes the tempo (the surest setting). Default 160."
     },
     {
       "name": "Thrsh",
