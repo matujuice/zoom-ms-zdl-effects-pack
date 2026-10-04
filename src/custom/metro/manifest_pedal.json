@@ -1,0 +1,57 @@
+{
+  "effect_name": "Metro",
+  "comment": "Metro - test tool, not part of the pack: a metronome click on Segue's beat grid, to hear whether Segue's kick tracker locks to the sequencer. The tracker is copied unchanged from Segue (first kick after loading is bar 1; LoBPM, HiBPM, Thrsh, Listn as there). The input passes through; once the tempo is locked a click is mixed in on every beat: 800 Hz beats, 1.6 kHz bar starts, 2.4 kHz phrase starts (every Bars bars, where Segue would start recording). Click KICK instead clicks on every onset the detector takes for a kick (about 20 ms late, locked or not). Any footswitch press (on or off) resets bar 1 to the next kick. Page 1: Mix (DJ-style: 50 = both full, 100 = clicks only), Click (BEAT / BAR / KICK), Bars. Page 2: LoBPM, HiBPM, Thrsh. Page 3: Listn.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 492,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 Segue, 492 Metro (this repo). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 50,
+      "comment": "DJ-style crossfade between the input and the clicks: input full from 0 to 50, clicks full from 50 to 100, both full at 50. 100 = clicks only. Default 50."
+    },
+    {
+      "name": "Click",
+      "max": 2,
+      "default": 0,
+      "comment": "BEAT = a click on every beat (800 Hz), higher on bar starts (1.6 kHz) and phrase starts (2.4 kHz). BAR = only the bar and phrase clicks. KICK = no grid: a 1 kHz click on every onset the detector accepts as a kick, about 20 ms after it starts, locked or not. BEAT and BAR click only once the tempo is locked. Default BEAT."
+    },
+    {
+      "name": "Bars",
+      "max": 7,
+      "default": 7,
+      "comment": "Phrase length for the phrase click, shown as 1 to 8 bars (screen value + 1), counted from bar 1 as Segue counts them. Default 8."
+    },
+    {
+      "name": "LoBPM",
+      "max": 240,
+      "default": 140,
+      "comment": "As Segue: slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). Default 140."
+    },
+    {
+      "name": "HiBPM",
+      "max": 240,
+      "default": 170,
+      "comment": "As Segue: fastest tempo the tracker may lock to, 40 to 240 BPM. LoBPM = HiBPM fixes the tempo. Default 170."
+    },
+    {
+      "name": "Thrsh",
+      "max": 100,
+      "default": 0,
+      "comment": "As Segue: how sudden a jump in the kick band must be to count as a kick: AUTO (2 x), or 1 (1.3 x) to 100 (20 x). Default AUTO."
+    },
+    {
+      "name": "Listn",
+      "max": 101,
+      "default": 0,
+      "comment": "As Segue: the kick detector's low-pass, AUTO (100 Hz) or 50 to 150 Hz. Default AUTO."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_Metro",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

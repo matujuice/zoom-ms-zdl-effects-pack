@@ -105,3 +105,17 @@ Everything you play is recorded into a 6 second buffer. Pos moves a read head th
 | Tempo | 40..240 BPM | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+## Test tools (not in the pack)
+
+### Metro: a click on Segue's beat grid
+Built only to check, by ear, whether Segue's kick tracker locks to the sequencer. The input passes through and a metronome click is mixed in on every beat the tracker counts. The tracker is a copy of Segue's (same knobs, same behaviour), so what Metro hears is what Segue would hear. Nothing clicks until the tempo is locked. The clicks sit about 13 ms ahead of the kick by design: that is where Segue's beats (and its cuts) are, in the quiet just before the kick. A steady, tiny flam is right; clicks that drift or wander are the problem to report.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Mix | 0..100 | DJ-style crossfade: input full up to 50, clicks full from 50, both full at 50. 100 = clicks only. |
+| Click | BEAT, BAR, KICK | BEAT: every beat (800 Hz), bar starts higher (1.6 kHz), phrase starts highest (2.4 kHz). BAR: only bar and phrase starts. KICK: no grid, a 1 kHz click on every sound the detector takes for a kick, about 20 ms late, locked or not (missing clicks = kicks it misses, extra clicks = bass or toms it takes for kicks). |
+| Bars | 1..8 | Phrase length for the phrase click, counted from bar 1 as Segue counts it. |
+| LoBPM, HiBPM, Thrsh, Listn | as Segue | The tracker's settings, exactly as on Segue. |
+
+Any footswitch press resets bar 1 to the next kick. That bar 1's click comes about 20 ms late (the kick has to be heard first); the following clicks are on time.

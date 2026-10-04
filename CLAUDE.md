@@ -12,7 +12,8 @@ Seven custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scru
 - `src/airwindows/common/covers/*.json`: generated covers. `make_cover.py` writes them; `custom_covers.py` loads them.
 - `tests/`: host tests (`python3 tests/run.py [name]`).
 - `release/`: pack README, cover sheet. `make_release.py` zips `dist/*.ZDL` with them.
-- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489, Scrub 490.
+- fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489, Scrub 490, Metro 492 (491 is Segue's, PR #8).
+- Metro (`src/custom/metro/`) is a test tool, not in the pack or make_release.py: a metronome click on Segue's beat grid. Its kick detector and bar clock are copied unchanged from segue.c (5518a31); when Segue's tracker changes, copy it again.
 - S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name).
 
 ## Building and testing
