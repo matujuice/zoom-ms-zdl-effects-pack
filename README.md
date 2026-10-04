@@ -12,7 +12,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | **EuGate** | Euclidean rhythm gate. Steps and Notes up to 64 each, so polymeters are possible. Swing, Gap and Soft too. |
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
-| **Scrub** | Records the last 6 seconds; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
+| **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 

@@ -1,6 +1,6 @@
 {
   "effect_name": "Scrub",
-  "comment": "Scrub - records the last 6 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 4 s, 10 ms per step, 0 = 4 s ago, 400 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop, or a note value synced to Tempo); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV, PING (ping-pong) or RAND (random direction) grains; Spray = random offset per grain (+- ms), a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade; Tempo = BPM for the synced Grain values.",
+  "comment": "Scrub - records the last 7.9 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 6 s, 10 ms per step, 0 = 6 s ago, 600 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop, or a note value synced to Tempo); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV, PING (ping-pong) or RAND (random direction) grains; Spray = random offset per grain (+- ms), a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade; Tempo = BPM for the synced Grain values.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 490,
@@ -10,21 +10,21 @@
   "params": [
     {
       "name": "Pos",
-      "max": 400,
-      "default": 400,
-      "comment": "Where the read head is in the last 4 seconds, 10 ms per step: 0 = 4 s ago, 400 = now (in HOLD: the moment you froze). Shown as how far back the head is (0ms, 990ms, 2.50s). Turn it to scrub; stop and the grain there loops. Default 400 = now."
+      "max": 600,
+      "default": 600,
+      "comment": "Where the read head is in the last 6 seconds, 10 ms per step: 0 = 6 s ago, 600 = now (in HOLD: the moment you froze). Shown as how far back the head is (0ms, 990ms, 4.50s). Turn it to scrub; stop and the grain there loops. Default 600 = now."
     },
     {
       "name": "Grain",
       "max": 112,
       "default": 50,
-      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. Long grains pull the head in so they still fit in the 6 s buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
+      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. Long grains pull the head in so they still fit in the buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
     },
     {
       "name": "Rec",
       "max": 2,
       "default": 0,
-      "comment": "LIVE = the buffer keeps recording, Pos is how far back you listen (a delay you can sweep). HOLD = recording stops, Pos scrubs through the last 6 seconds. STOMP = records while the effect is switched off, freezes the moment you switch it on (untested on the pedal). Default LIVE."
+      "comment": "LIVE = the buffer keeps recording, Pos is how far back you listen (a delay you can sweep). HOLD = recording stops, Pos scrubs through the last 6 of the 7.9 seconds kept. STOMP = records while the effect is switched off, freezes the moment you switch it on (untested on the pedal). Default LIVE."
     },
     {
       "name": "Glide",
