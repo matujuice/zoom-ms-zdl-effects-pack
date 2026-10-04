@@ -1,6 +1,6 @@
 {
   "effect_name": "Segue",
-  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit block floating point, about 15.5 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (play only the last 4/2/1 bars or beat). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3: Thrsh, Listn (tracking only, no effect on the sound), Mode (JUMP / AUTO / MANUAL: what the output does when a loop is ready).",
+  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit block floating point, about 15.5 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (beat roll: repeat the current bar, half bar, beat or half beat, in time). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3: Thrsh, Listn (tracking only, no effect on the sound), Mode (JUMP / AUTO / MANUAL: what the output does when a loop is ready).",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
@@ -24,7 +24,7 @@
       "name": "Roll",
       "max": 4,
       "default": 0,
-      "comment": "OFF, 4BAR, 2BAR, 1BAR, 1BEAT: play only the last 4, 2 or 1 bars or the last beat of the loop, over and over, for a build-up. It joins in time. Default OFF."
+      "comment": "OFF, 1BAR, 2BEAT (half a bar), 1BEAT, 1/2BT (half a beat): repeat the slice of the loop that is playing, in time, like a DJ beat roll. The loop runs on underneath, so turning Roll OFF lands where the loop would have been: bars and phrase never move. Default OFF."
     },
     {
       "name": "Bars",

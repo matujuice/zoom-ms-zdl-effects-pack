@@ -115,7 +115,7 @@ Any press counts, whichever way the switch goes: the LED means nothing on this e
 |---|---|---|
 | XFade | LIVE, 1..99, LOOP | Crossfade, DJ style: the live mix stays full up to 50, the loop is full from 50. In Mode JUMP and AUTO the output moves by itself when a loop starts, and XFade takes over as soon as you turn it to where the output is (fully right in JUMP). Before the first loop you hear the live mix. |
 | LoCut | OFF, 21 Hz..2.0k | High-pass on the loop only (24 dB per octave): take its kick and bass out while the live mix comes back. |
-| Roll | OFF, 4BAR, 2BAR, 1BAR, 1BEAT | Plays only the last 4, 2 or 1 bars or the last beat of the loop, over and over, for a build-up. It joins in time. |
+| Roll | OFF, 1BAR, 2BEAT, 1BEAT, 1/2BT | A beat roll: repeats the slice of the loop that is playing (a bar, half a bar, a beat or half a beat), in time. The loop runs on underneath, so turning Roll OFF lands exactly where the loop would have been: the bars and the phrase never move. |
 | Bars | 1..8 | Phrase and loop length. A press waits for the next phrase start, counted in Bars from bar 1. If the bars don't fit at the tempo being tracked, it records the last 4, 2 or 1 bars of the phrase instead (so the jump still lands on the phrase end) and beeps twice. |
 | LoBPM | 40..240 | Slowest tempo the tracker may lock to. |
 | HiBPM | 40..240 | Fastest. The range stops hats, double time and half time from fooling it; set both equal to fix the tempo. |

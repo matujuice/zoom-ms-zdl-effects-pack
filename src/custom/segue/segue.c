@@ -91,9 +91,11 @@
  *                   Gains glide ~5 ms.
  *   1 LoCut 0..100  high-pass on the loop only (24 dB/octave), to take its kick and bass out
  *                   under the live mix: 0 OFF, 1..100 = 21 Hz..2 kHz (log); shown in Hz
- *   2 Roll  0..4    OFF / 4BAR / 2BAR / 1BAR / 1BEAT: plays only the last 4, 2 or 1 bars or
- *                   the last beat of the loop, for a build-up. It joins in time: at the next
- *                   point that is a whole number of those lengths before the loop end.
+ *   2 Roll  0..4    OFF / 1BAR / 2BEAT (half a bar) / 1BEAT / 1/2BT (half a beat):
+ *                   repeats the slice of the loop the playhead is in (slices counted from the
+ *                   loop start), in time, like a DJ beat roll. The loop itself runs on
+ *                   underneath, so turning Roll OFF lands where the loop would have been:
+ *                   the bars and the phrase never move.
  *   3 Bars  0..7    phrase and loop length, shown as 1..8 bars
  *   4 LoBPM 0..240  slowest tempo the tracker may lock to (below 40 reads as 40)
  *   5 HiBPM 0..240  fastest; LoBPM = HiBPM fixes the tempo (swapped if Lo > Hi)
@@ -121,7 +123,7 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define SE_MAGIC      0x53455134u        /* "SEQ4": change whenever SeState changes */
+#define SE_MAGIC      0x53455135u        /* "SEQ5": change whenever SeState changes */
 #define SE_N          682656             /* loop buffer, 8-bit samples: 15.48 s           */
 #define SE_NB         21333              /* one scale byte per 32 samples (SE_N / 32)     */
 #define SE_PRE        0.85f              /* pre-emphasis: stored d = x - 0.85 x[-1]       */
@@ -185,10 +187,15 @@ typedef struct {
     int   has_loop;
     int   L;               /* loop length, samples                            */
     int   lbars;           /* bars in the loop                                */
-    int   pi;              /* playhead                                        */
+    int   pi;              /* playhead (what is heard)                        */
+    int   pm;              /* the loop's own position: always runs on, so Roll
+                              never moves the loop or its bars              */
     int   po, fade;        /* the voice fading out at a seam, samples left    */
-    int   rs, nj;          /* Roll window start, next jump point              */
-    int   roll;            /* Roll setting the window was set for             */
+    int   rs;              /* Roll: start of the slice being repeated         */
+    int   rk;              /* Roll: slice of the grid pm is in                */
+    int   nj;              /* next grid line of pm (L: the loop end)          */
+    float rlen;            /* Roll slice length, samples (0 = off)            */
+    int   roll;            /* Roll setting the slice was taken for            */
     int   pickup;          /* 1 = the output follows pa until XFade meets it  */
     float pa;              /* that automatic XFade position, 0..1 (1 = LOOP)  */
     int   ahold;           /* AUTO: samples left at 100 % loop, -1 = no ramp  */
@@ -359,7 +366,7 @@ static inline void se_init(SeState *s, float T0)
     s->hits = 0; s->misses = 0; s->tm = T0;
     s->armed = 0; s->rb = 8; s->rd = 8; s->rec = 0; s->rec_end = 0; s->wi = 0; s->tail = 0;
     s->has_loop = 0; s->L = 0; s->lbars = 1; s->pi = 0; s->po = 0; s->fade = 0;
-    s->rs = 0; s->nj = 0; s->roll = 0; s->pickup = 0;
+    s->pm = 0; s->rs = 0; s->rk = 0; s->nj = 0; s->rlen = 0.0f; s->roll = 0; s->pickup = 0;
     s->pa = 0.0f; s->ahold = -1; s->astep = 0.0f; s->dsign = 0; s->mode = 0;
     s->gd = 1.0f; s->gw = 0.0f;
     s->s1b = 0.0f; s->s1l = 0.0f; s->s2b = 0.0f; s->s2l = 0.0f; s->F = 0.0014248f;
@@ -413,24 +420,26 @@ static inline void se_jump(SeState *s, int from, int to)
     s->zm = se_warm(s, to);
 }
 
-/* Roll window: start and the next point the playhead jumps back to it */
+/* Roll: take the slice of the loop's grid that pm is in (OFF: none). The playhead stays
+ * where it is (on pm), so the slice starts playing in time; at every grid line pm passes
+ * it jumps back to the slice start (se_process). */
 SE_ALWAYS_INLINE(se_window)
 static inline void se_window(SeState *s)
 {
-    int len = 0, k, nj;
-    float beat = (float)s->L * se_recip((float)(4 * s->lbars));
-    if (s->roll == 1) len = (int)(16.0f * beat + 0.5f);
-    if (s->roll == 2) len = (int)(8.0f * beat + 0.5f);
-    if (s->roll == 3) len = (int)(4.0f * beat + 0.5f);
-    if (s->roll >= 4) len = (int)(beat + 0.5f);
-    if (len <= 0 || len >= s->L) { s->rs = 0; s->nj = s->L; return; }
-    s->rs = s->L - len;
-    k = (int)((float)(s->L - s->pi) * se_recip((float)len));
-    nj = s->L - k * len;
-    while (nj <= s->pi) nj += len;               /* the first point after the playhead */
-    while (nj - len > s->pi) nj -= len;
+    float beat = (float)s->L * se_recip((float)(4 * s->lbars)), len = 0.0f;
+    int k, nj;
+    if (s->roll == 1) len = 4.0f * beat;
+    if (s->roll == 2) len = 2.0f * beat;
+    if (s->roll == 3) len = beat;
+    if (s->roll >= 4) len = 0.5f * beat;
+    if (len < 64.0f || len > (float)s->L - 32.0f) { s->rlen = 0.0f; s->nj = s->L; return; }
+    k = (int)((float)s->pm * se_recip(len));
+    while (k > 0 && (int)((float)k * len + 0.5f) > s->pm) k--;
+    while ((int)((float)(k + 1) * len + 0.5f) <= s->pm) k++;
+    nj = (int)((float)(k + 1) * len + 0.5f);
     if (nj > s->L) nj = s->L;
-    s->nj = nj;
+    s->rlen = len; s->rk = k; s->nj = nj;
+    s->rs = (int)((float)k * len + 0.5f);
 }
 
 /* the recording is complete: the loop starts and the output jumps to it */
@@ -447,6 +456,7 @@ static inline void se_finish(SeState *s)
     s->ahold = (s->mode == SE_MODE_AUTO) ? s->L : -1;
     s->astep = se_recip((float)s->L);
     s->dsign = 0;
+    s->pm = 0;
     se_jump(s, s->L, 0);                         /* fade from the live tail in    */
     se_window(s);
 }
@@ -494,7 +504,7 @@ static inline void se_on_beat(SeState *s)
         s->wi = 0;
         s->tail = 0;
         s->rec_end = s->beat + 4 * s->rd;
-        if (s->has_loop) { se_jump(s, s->pi, s->rs); se_window(s); }
+        if (s->has_loop) { s->pm = 0; se_jump(s, s->pi, 0); se_window(s); }
     }
 }
 
@@ -589,7 +599,10 @@ static inline void se_block(SeState *s, const SeParams *P, float onoff)
     }
     if (s->T < P->Tmin) s->T = P->Tmin;
     if (s->T > P->Tmax) s->T = P->Tmax;
-    if (P->roll != s->roll) { s->roll = P->roll; if (s->has_loop) se_window(s); }
+    if (P->roll != s->roll) {                    /* a new slice, or back to the loop */
+        s->roll = P->roll;
+        if (s->has_loop) { se_window(s); if (s->pi != s->pm) se_jump(s, s->pi, s->pm); }
+    }
     s->mode = P->mode;
     if (s->pickup) {                             /* XFade takes over where it meets pa */
         float d = 100.0f * (P->xf - s->pa);
@@ -651,7 +664,19 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
                 s->fade--;
             }
             s->pi++;
-            if (s->pi >= s->nj) { se_jump(s, s->pi, s->rs); se_window(s); }
+            s->pm++;
+            if (s->pm >= s->nj) {                /* a grid line, or the loop end */
+                int nj;
+                if (s->pm >= s->L) { s->pm = 0; s->rk = 0; } else s->rk++;
+                if (s->rlen > 0.0f) {            /* Roll: back to the slice start */
+                    nj = (int)((float)(s->rk + 1) * s->rlen + 0.5f);
+                    s->nj = (nj > s->L) ? s->L : nj;
+                    se_jump(s, s->pi, s->rs);
+                } else {
+                    s->nj = s->L;
+                    se_jump(s, s->pi, s->pm);
+                }
+            } else if (s->pi >= s->L) se_jump(s, s->pi, s->rs);   /* a slice past the end */
         }
 
         /* LoCut (s?b, s?l: the band and low-pass integrator states) */
@@ -799,15 +824,18 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return 4;
 }
 
-/* knob 2 Roll: OFF, 4BAR, 2BAR, 1BAR, 1BEAT */
+/* knob 2 Roll: OFF, 1BAR, 2BEAT, 1BEAT, 1/2BT */
 int ZDL_GetLabel_2(unsigned int value, char *out)
 {
     if (value == 0u) return se_put4(out, 'O', 'F', 'F', 0);
+    if (value == 1u) return se_put4(out, '1', 'B', 'A', 'R');
     if (value >= 4u) {
-        out[0] = '1'; out[1] = 'B'; out[2] = 'E'; out[3] = 'A'; out[4] = 'T'; out[5] = 0;
+        out[0] = '1'; out[1] = '/'; out[2] = '2'; out[3] = 'B'; out[4] = 'T'; out[5] = 0;
         return 5;
     }
-    return se_put4(out, (value == 1u) ? '4' : (value == 2u) ? '2' : '1', 'B', 'A', 'R');
+    out[0] = (value == 2u) ? '2' : '1'; out[1] = 'B'; out[2] = 'E'; out[3] = 'A'; out[4] = 'T';
+    out[5] = 0;
+    return 5;
 }
 
 /* knob 3 Bars: screen 0..7 shown as 1..8 */

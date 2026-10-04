@@ -444,34 +444,55 @@ int main(void)
         CHECK(S.rd == 4 && rec_beat == 16 && beep > 0.15f && S.has_loop && S.lbars == 4, "Bars fallback");
     }
 
-    /* 8. Roll 1BEAT: the output repeats every beat; Roll back OFF: whole loop again */
+    /* 8. Roll 1BAR, 2BEAT, 1BEAT, 1/2BT: while on, the output repeats every slice (the slices are the
+     *    loop's own grid); after Roll OFF the output is exactly what it is in a run without
+     *    Roll (the loop never moved) */
     {
-        static float out[44100 * 50];
-        float u[9] = {100, 0, 0, 1, 160, 160, 0, 0};          /* Bars 2, fixed 160, XFade LOOP */
-        Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 17};
-        float onoff = 1.0f, err = 0, pk = 0;
-        double bar = 4 * beat_len(&m);
-        long a, k, bl;
-        fresh();
-        for (t = 0; t < (long)(14 * bar * FS); t += 8) {
-            double tt = t / FS;
-            if (tt > 1.5 * bar && tt < 1.5 * bar + 0.01) onoff = 0.0f;
-            u[2] = (tt > 8.3 * bar) ? 4.0f : 0.0f;
-            for (i = 0; i < 8; i++) b[i] = mix_at(&m, (t + i) / FS);
-            block(u, onoff, b);
-            for (i = 0; i < 8; i++) out[t + i] = b[i];
+        static float out[44100 * 50], ref[44100 * 50];
+        static int pmv[44100 * 50], piv[44100 * 50];
+        float rv[4] = {1, 2, 3, 4}, frac[4] = {4, 2, 1, 0.5f};
+        int ri;
+        for (ri = -1; ri < 4; ri++) {
+            Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 17};
+            double bar = 4 * beat_len(&m);
+            float u[9] = {100, 0, 0, 1, 160, 160, 0, 0};      /* Bars 2, fixed 160, XFade LOOP */
+            float onoff = 1.0f, err = 0, pk = 0, e2 = 0, len;
+            float *o = (ri < 0) ? ref : out;
+            long k, bl;
+            fresh();
+            for (t = 0; t < (long)(15 * bar * FS); t += 8) {
+                double tt = t / FS;
+                if (tt > 1.5 * bar && tt < 1.5 * bar + 0.01) onoff = 0.0f;
+                u[2] = (ri >= 0 && tt > 8.3 * bar && tt < 12.37 * bar) ? rv[ri] : 0.0f;
+                for (i = 0; i < 8; i++) b[i] = mix_at(&m, (t + i) / FS);
+                block(u, onoff, b);
+                for (i = 0; i < 8; i++) { o[t + i] = b[i]; pmv[t + i] = S.pm - 7 + i; piv[t + i] = S.pi - 7 + i; }
+            }
+            if (ri < 0) continue;
+            len = frac[ri] * S.L / (4.0f * S.lbars);
+            bl = (long)(len + 0.5f);
+            for (k = (long)(9.5 * bar * FS); k < (long)(12 * bar * FS); k++) {
+                float ph = (float)pmv[k] - len * floorf((float)pmv[k] / len), e;
+                long d;
+                if (pmv[k] < 0 || ph < SE_X + 16 || ph > len - 16) continue;      /* seams */
+                /* the roll plays loop sample piv[k]: what the run without Roll played when
+                 * its playhead was there, and that sample lies in the slice */
+                d = pmv[k] - piv[k];
+                if (d < 0) d += S.L;                 /* the loop wrapped since */
+                e = fabsf(out[k] - ref[k - d]);
+                if (piv[k] < S.rs || piv[k] > S.rs + bl + 1) e = 9.0f;
+                if (e > err) err = e;
+                if (fabsf(out[k]) > pk) pk = fabsf(out[k]);
+            }
+            for (k = (long)(12.6 * bar * FS); k < (long)(14.5 * bar * FS); k++) {
+                float e = fabsf(out[k] - ref[k]);
+                if (e > e2) e2 = e;
+            }
+            printf("Roll %s: repeats the %ld-sample slice from %d, max diff %.4f (peak %.2f); after OFF vs no Roll: %.5f\n",
+                   ri == 0 ? "1BAR" : ri == 1 ? "2BEAT" : ri == 2 ? "1BEAT" : "1/2BT", bl, S.rs, err, pk, e2);
+            CHECK(err < 0.02f && pk > 0.2f, "Roll does not repeat the slice");
+            CHECK(e2 < 1e-4f, "Roll moved the loop");
         }
-        bl = (long)(S.L / (4.0f * S.lbars) + 0.5f);
-        a = (long)(10 * bar * FS);
-        for (k = a; k < a + (long)(2 * bar * FS); k++) {
-            float e = fabsf(out[k] - out[k - bl]);
-            if ((k - a) % bl < SE_X + 4 || (k - a) % bl > bl - 4) continue;   /* seams */
-            if (e > err) err = e;
-            if (fabsf(out[k]) > pk) pk = fabsf(out[k]);
-        }
-        printf("Roll 1BEAT: output vs one beat earlier, max diff %.4f (peak %.2f); window %d..%d of %d\n",
-               err, pk, S.rs, S.L, S.L);
-        CHECK(err < 0.02f && pk > 0.2f && S.L - S.rs == bl, "Roll 1BEAT does not repeat the last beat");
     }
 
     /* 9. LoCut: a loop of 50 Hz + 3 kHz; LoCut 50 (200 Hz) takes the 50 Hz down > 40 dB */
@@ -510,8 +531,8 @@ int main(void)
         int n;
         struct { int k; unsigned v; const char *want; } L[] = {
             {0, 0, "LIVE"}, {0, 37, "37"}, {0, 100, "LOOP"}, {1, 0, "OFF"}, {1, 50, "200Hz"},
-            {1, 100, "2.0k"}, {1, 90, "1.3k"}, {2, 0, "OFF"}, {2, 1, "4BAR"}, {2, 3, "1BAR"},
-            {2, 4, "1BEAT"}, {3, 0, "1"}, {3, 7, "8"}, {4, 12, "40"}, {5, 170, "170"},
+            {1, 100, "2.0k"}, {1, 90, "1.3k"}, {2, 0, "OFF"}, {2, 5, "1/2BT"},
+            {2, 1, "1BAR"}, {2, 2, "2BEAT"}, {2, 3, "1BEAT"}, {2, 4, "1/2BT"}, {3, 0, "1"}, {3, 7, "8"}, {4, 12, "40"}, {5, 170, "170"},
             {6, 0, "AUTO"}, {6, 100, "100"}, {7, 0, "AUTO"}, {7, 1, "50Hz"}, {7, 101, "150Hz"},
             {8, 0, "JUMP"}, {8, 1, "AUTO"}, {8, 2, "MANU"}};
         for (i = 0; i < (int)(sizeof L / sizeof L[0]); i++) {
@@ -550,7 +571,8 @@ int main(void)
             block(u, onoff, b);
             for (i = 0; i < 8; i++) { if (bad(b[i])) nbad++; if (fabsf(b[i]) > mx) mx = fabsf(b[i]); }
             if (S.pi < 0 || S.pi >= SE_N || S.po < 0 || S.po >= SE_N || S.wi < 0 || S.wi >= SE_N
-                || (S.has_loop && (S.nj > S.L || S.nj <= 0 || S.rs < 0 || S.L > SE_WMAX))) oob++;
+                || (S.has_loop && (S.nj > S.L || S.nj <= 0 || S.rs < 0 || S.L > SE_WMAX
+                                  || S.pi > S.L || S.pm < 0 || S.pm >= S.L || (S.fade > 0 && S.po > S.L + SE_X)))) oob++;
         }
         printf("random run: %ld bad samples, peak %.2f, %ld index problems, tempo %.1f BPM, state %d\n",
                nbad, mx, oob, SE_SPB / S.T, S.cs);
