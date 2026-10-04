@@ -109,14 +109,14 @@ Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with 
 ## Test tools (not in the pack)
 
 ### Metro: a click on Segue's beat grid
-Built only to check, by ear, whether Segue's kick tracker locks to the sequencer. The input passes through and a metronome click is mixed in on every beat the tracker counts. The tracker is Segue's, with fixes found with Metro that Segue will get too: AUTO threshold hunts until it locks (a boomy kick on every beat used to count only once), a missed stretch no longer stops the tempo from ever locking, Thrsh uses its whole range, and with a fixed tempo pushed kicks can no longer drag the grid. Nothing clicks until the tempo is locked. The clicks sit about 13 ms ahead of the kick by design: that is where Segue's beats (and its cuts) are, in the quiet just before the kick. A steady, tiny flam is right; clicks that drift or wander are the problem to report.
+Built only to check, by ear, whether Segue's kick tracker locks to the sequencer. The input passes through and a metronome click is mixed in on every beat the tracker counts. The tracker is Segue's, with fixes found with Metro that Segue will get too: AUTO threshold hunts until it locks (a boomy kick on every beat used to count only once), a missed stretch no longer stops the tempo from ever locking, Thrsh uses its whole range, tempo glides and jumps on the sequencer are followed, and when a loop with pushed or off-beat kicks comes in, the grid moves onto its kick line after four kicks instead of wandering. Nothing clicks until the tempo is locked. The clicks sit about 13 ms ahead of the kick by design: that is where Segue's beats (and its cuts) are, in the quiet just before the kick. A steady, tiny flam is right; clicks that drift or wander are the problem to report.
 
 | Knob | Range | What it does |
 |---|---|---|
 | Mix | 0..100 | DJ-style crossfade: input full up to 50, clicks full from 50, both full at 50. 100 = clicks only. |
 | Click | BEAT, BAR, KICK | BEAT: every beat (800 Hz), bar starts higher (1.6 kHz), phrase starts highest (2.4 kHz). BAR: only bar and phrase starts. KICK: no grid, a 1 kHz click on every sound the detector takes for a kick, about 20 ms late, locked or not (missing clicks = kicks it misses, extra clicks = bass or toms it takes for kicks). |
 | Bars | 1..8 | Phrase length for the phrase click, counted from bar 1 as Segue counts it. |
-| LoBPM, HiBPM | 40..240 | Tempo range the tracker may lock to. Default both 160: a fixed tempo is the surest setting, and needed for syncopated kicks (tribe, tekno), because then only kicks within 6 % of a beat move the grid. |
+| LoBPM, HiBPM | 40..240 | Tempo range the tracker may lock to and follow, glides and jumps included. Default 140..180, room around 160 for tempo changes during a set. Keep it under 2x. LoBPM = HiBPM fixes the tempo. |
 | Listn | as Segue | Where the kick detector listens, as on Segue. |
 | Thrsh | AUTO, 1..100 | AUTO starts strict and loosens every 4 s until it locks. 1 = anything counts as a kick, 50 = 2x jump, 100 = only hard kicks. |
 

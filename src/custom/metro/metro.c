@@ -13,7 +13,7 @@
  *   after loading is bar 1, the tempo locks after four agreeing kicks, and every beat sits
  *   15 ms before the kick is detected, a few ms before the kick starts. So a click lands a
  *   hair before the kick, where Segue cuts.
- *   Five fixes found with Metro (2026-10-04), to be ported into segue.c:
+ *   Seven fixes found with Metro (2026-10-04), to be ported into segue.c:
  *   - AUTO threshold hunts. A boomy kick on every beat (long tail, as Digitakt kicks
  *     often are) is still loud when the next one hits, so the next kick only jumps about
  *     1.5..1.9 x over the band's recent level, under the fixed 2 x: after the first kick
@@ -28,9 +28,19 @@
  *     kicks; once two intervals agree, the beats since bar 1 are counted from the time.
  *   - The Thrsh knob: 1..100 = 1.02..3 x (was 1.3..20 x: above about 10 nothing counted).
  *   - With a fixed tempo (LoBPM = HiBPM) the locked grid follows only kicks within 6 % of
- *     a beat, by a tenth of the error (free tempo: 12 %, a quarter). Luca's tribe loops
- *     push kicks 10..20 % off the beat; the wide window let them drag the grid off. On
- *     his recording (Digitakt, 160 BPM, 148 s of loops) this holds the beat all the way.
+ *     a beat, by a tenth of the error (free tempo: 12 %, a quarter), so a kick pushed
+ *     just off the beat (tribe, tekno) can not drag it.
+ *   - With a free tempo the locked tempo moves by a twentieth of each kick's error (was a
+ *     fiftieth), so a tempo glide on the sequencer is followed within a few ms.
+ *   - A kick line that moved. Four kicks in a row the same distance off the grid (within
+ *     3 % of a beat), with none on it in between, mean a loop with pushed or off-beat
+ *     kicks came in: the grid moves onto them at once, tempo kept, also with a fixed
+ *     tempo. (Before, only four off-grid kicks agreeing on a new tempo moved it, and a
+ *     gap of 3 beats between them reset the count.) Tempo jumps still re-lock as before.
+ *   On Luca's recording (Digitakt, 160 BPM, 148 s of loops with kicks on, pushed off
+ *   and between the beats) the clicks sit on the kick line 92 % of the time with
+ *   LoBPM..HiBPM 150..170 (was 77 %), and 84 % on the same audio warped through a glide
+ *   to 168 BPM, a jump to 150 and a glide back (was 72 %).
  *
  * WHAT YOU HEAR
  *   Nothing is clicked until the tempo is locked: the first click means "locked".
@@ -58,8 +68,8 @@
  *   1 Click 0..2    BEAT / BAR / KICK
  *   2 Bars  0..7    phrase length for the phrase click, shown as 1..8 bars
  *   3 LoBPM 0..240  as Segue: slowest tempo the tracker may lock to (below 40 reads 40)
- *   4 HiBPM 0..240  as Segue: fastest; LoBPM = HiBPM fixes the tempo (default both 160,
- *                   Luca's tempo: the surest setting, needed for syncopated kicks)
+ *   4 HiBPM 0..240  as Segue: fastest; LoBPM = HiBPM fixes the tempo. Default 140..180:
+ *                   room for tempo changes during a set around Luca's 160
  *   5 Thrsh 0..100  0 AUTO (hunts 2, 1.7, 1.5, 1.3 x until it locks), else how far the
  *                   kick band must jump over its recent level: 1 = 1.02 x (anything) ..
  *                   50 = 2 x .. 100 = 3 x (only hard kicks)
@@ -82,7 +92,7 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define MT_MAGIC      0x4D455432u        /* "MET1": change whenever SeState changes      */
+#define MT_MAGIC      0x4D455433u        /* "MET3": change whenever SeState changes      */
 #define SE_LEAD       662.0f             /* beats sit 15 ms before the detected kick     */
 #define SE_JUDGE      110                /* blocks: an onset is judged 20 ms later       */
 #define MT_HUNT       22050              /* AUTO: 4 s (in blocks) per threshold step     */
@@ -129,6 +139,8 @@ typedef struct {
     int   s1;              /* samples since bar 1                             */
     int   hits, misses;    /* agreeing kicks (finding), off-grid in a row     */
     float tm;              /* tempo the last off-grid kick suggested          */
+    float pe;              /* how far off the grid the last off-grid kick was */
+    int   pm;              /* off-grid kicks in a row that far off            */
     /* metronome */
     int   kicked;          /* a kick was accepted in the last block (2: bar 1) */
     int   left;            /* samples of the click left                       */
@@ -222,21 +234,35 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
     if (s->cs == SE_LOCK) {
         /* on the grid: follow it. With a fixed tempo only the two clocks' drift has to
          * be followed, so the window is narrow and the step small: a syncopated kick
-         * pushed just off the beat (tribe, tekno) can not drag the grid along. */
+         * pushed just off the beat (tribe, tekno) can not drag the grid along. With a free
+         * tempo the tempo moves by a twentieth of the error, so a tempo glide is followed
+         * within a few ms. */
         float win = P->fixed ? 0.06f : 0.12f;
         if (e < win * T && e > -win * T) {
             s->ph -= (P->fixed ? 0.1f : 0.25f) * e;
-            if (!P->fixed) s->T = T + 0.02f * e;
-            s->kb = nb; s->misses = 0; s->sk = back;
-        } else if (!P->fixed && se_fold((float)(s->sk - back), P, &f)) {
-            /* off the grid a beat or two after the last kick: the tempo may have jumped
-             * (a syncopated kick or a bass note between beats does not fold into range) */
-            s->sk = back;
-            if (s->misses > 0 && f - s->tm < 0.04f * f && s->tm - f < 0.04f * f) s->misses++;
-            else s->misses = 1;
-            s->tm = f;
-            if (s->misses >= 4) {                /* four agree: re-lock there    */
-                s->T = f; s->ph = SE_LEAD + fb; s->beat = nb; s->kb = nb; s->misses = 0;
+            if (!P->fixed) s->T = T + 0.05f * e;
+            s->kb = nb; s->misses = 0; s->sk = back; s->pm = 0;
+        } else {
+            /* off the grid. Four kicks in a row the same distance off the grid (within 3 %
+             * of a beat), with no kick on it in between: the kick line moved (a loop with
+             * pushed or off-beat kicks came in), so move the grid onto it, tempo kept */
+            float dd = e - s->pe;
+            if (dd > 0.5f * T) dd -= T;
+            if (dd < -0.5f * T) dd += T;
+            if (s->pm > 0 && dd < 0.03f * T && dd > -0.03f * T) s->pm++; else s->pm = 1;
+            s->pe = e;
+            if (s->pm >= 4) {
+                s->ph -= e; s->beat = nb; s->kb = nb; s->sk = back; s->pm = 0; s->misses = 0;
+            } else if (!P->fixed && se_fold((float)(s->sk - back), P, &f)) {
+                /* a beat or two after the last kick: the tempo may have jumped (a
+                 * syncopated kick or a bass note between beats does not fold into range) */
+                s->sk = back;
+                if (s->misses > 0 && f - s->tm < 0.04f * f && s->tm - f < 0.04f * f) s->misses++;
+                else s->misses = 1;
+                s->tm = f;
+                if (s->misses >= 4) {            /* four agree: re-lock there    */
+                    s->T = f; s->ph = SE_LEAD + fb; s->beat = nb; s->kb = nb; s->misses = 0; s->pm = 0;
+                }
             }
         }
     } else {                                     /* SE_ACQ: finding the tempo    */
@@ -327,7 +353,7 @@ static inline void se_init(SeState *s, float T0)
     s->pend = -1; s->pstr = 0.0f; s->kw = 0.0f; s->kp = 0.0f; s->kn = 0;
     s->ri = 0; s->hunt = 0;
     s->cs = SE_WAIT; s->tl = 0; s->T = T0; s->ph = 0.0f; s->beat = 0; s->kb = 0; s->sk = 0; s->s1 = 0;
-    s->hits = 0; s->misses = 0; s->tm = T0;
+    s->hits = 0; s->misses = 0; s->tm = T0; s->pe = 0.0f; s->pm = 0;
     s->kicked = 0; s->left = 0; s->w = MT_W_BEAT; s->amp = 0.0f; s->bs = 0.0f; s->bc = 1.0f;
     s->magic = MT_MAGIC;
 }

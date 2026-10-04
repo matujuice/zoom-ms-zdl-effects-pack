@@ -1,6 +1,6 @@
 {
   "effect_name": "Metro",
-  "comment": "Metro - test tool, not part of the pack: a metronome click on Segue's beat grid, to hear whether Segue's kick tracker locks to the sequencer. The tracker is Segue's (first kick after loading is bar 1; LoBPM, HiBPM, Listn as there) with fixes to be ported into Segue: a hunting AUTO threshold, a stale-kick fix and a beat count from the time while finding the tempo, and a rescaled Thrsh. The input passes through; once the tempo is locked a click is mixed in on every beat: 800 Hz beats, 1.6 kHz bar starts, 2.4 kHz phrase starts (every Bars bars, where Segue would start recording). Click KICK instead clicks on every onset the detector takes for a kick (about 20 ms late, locked or not). Any footswitch press (on or off) resets bar 1 to the next kick. Page 1: Mix (DJ-style: 50 = both full, 100 = clicks only), Click (BEAT / BAR / KICK), Bars. Page 2: LoBPM, HiBPM, Thrsh. Page 3: Listn.",
+  "comment": "Metro - test tool, not part of the pack: a metronome click on Segue's beat grid, to hear whether Segue's kick tracker locks to the sequencer. The tracker is Segue's (first kick after loading is bar 1; LoBPM, HiBPM, Listn as there) with fixes to be ported into Segue: a hunting AUTO threshold, a stale-kick fix and a beat count from the time while finding the tempo, a rescaled Thrsh, a narrow follow window with a fixed tempo, faster tempo following, and a grid that moves onto a kick line that moved (pushed or off-beat loops). The input passes through; once the tempo is locked a click is mixed in on every beat: 800 Hz beats, 1.6 kHz bar starts, 2.4 kHz phrase starts (every Bars bars, where Segue would start recording). Click KICK instead clicks on every onset the detector takes for a kick (about 20 ms late, locked or not). Any footswitch press (on or off) resets bar 1 to the next kick. Page 1: Mix (DJ-style: 50 = both full, 100 = clicks only), Click (BEAT / BAR / KICK), Bars. Page 2: LoBPM, HiBPM, Thrsh. Page 3: Listn.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
@@ -29,14 +29,14 @@
     {
       "name": "LoBPM",
       "max": 240,
-      "default": 160,
-      "comment": "As Segue: slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). Set LoBPM and HiBPM both to the sequencer's tempo for syncopated kicks (tribe, tekno): with a fixed tempo the grid only follows kicks within 6 % of a beat, so pushed kicks can not drag it. Default 160."
+      "default": 140,
+      "comment": "As Segue: slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). The tempo is followed anywhere in LoBPM..HiBPM, glides and jumps included. Default 140."
     },
     {
       "name": "HiBPM",
       "max": 240,
-      "default": 160,
-      "comment": "As Segue: fastest tempo the tracker may lock to, 40 to 240 BPM. LoBPM = HiBPM fixes the tempo (the surest setting). Default 160."
+      "default": 180,
+      "comment": "As Segue: fastest tempo the tracker may lock to, 40 to 240 BPM. LoBPM = HiBPM fixes the tempo. Keep the range under 2 x (a kick every other beat must not fit as a beat). Default 180."
     },
     {
       "name": "Thrsh",

@@ -342,6 +342,61 @@ int main(void)
         printf("Thrsh scale ok\n");
     }
 
+    /* 11. tempo changes with LoBPM..HiBPM as the range (140..175), a kick on every beat
+     *     and a snare on 2 and 4: 160 BPM, a glide to 168 over 10 s, a jump to 150, then
+     *     a loop whose kicks are pushed 60 ms late (the snare stays on the beat). Clicks
+     *     must sit just before the kicks in each stretch, the pushed ones included. */
+    {
+        static double kt[1024];
+        float u[7] = {50, 0, 7, 140, 175, 0, 0}, bb[8];
+        double pos = 0.0, tt;
+        double from[4] = {14.0, 34.0, 52.0, 68.0}, to[4] = {20.0, 45.0, 60.0, 76.0};
+        const char *what[4] = {"160 BPM", "after the glide to 168", "after the jump to 150", "kicks pushed 60 ms"};
+        int nk = 0, j, w, prev_left = 0, on[4] = {0, 0, 0, 0}, n[4] = {0, 0, 0, 0};
+        long t;
+        unsigned int r = 9;
+        /* the kick times: the beat position advances by bpm(t) / 60 per second */
+        for (t = 0; t < (long)(76 * FS) && nk < 1024; t++) {
+            double bpm, p0 = pos;
+            tt = t / FS;
+            bpm = tt < 20 ? 160 : tt < 30 ? 160 + 0.8 * (tt - 20) : tt < 45 ? 168 : 150;
+            pos += bpm / 60.0 / FS;
+            if (tt >= 0.4 && floor(pos) > floor(p0)) kt[nk++] = tt + (tt >= 60.0 ? 0.060 : 0.0);
+        }
+        fresh();
+        for (t = 0, w = 0; t < (long)(76 * FS); t += 8) {
+            for (j = 0; j < 8; j++) {
+                double x, o = 0, y;
+                int i;
+                tt = (t + j) / FS;
+                while (w < nk && kt[w] <= tt) w++;
+                if (w > 0) {
+                    x = tt - kt[w - 1];
+                    o += 0.8 * sin(2 * M_PI * (50 * x + 70 * 0.025 * (1 - exp(-x / 0.025)))) * exp(-x / 0.3);
+                    /* the snare on every other beat, on the beat itself */
+                    i = w - 1;
+                    y = tt - (kt[i] - (kt[i] >= 60.06 ? 0.060 : 0.0));
+                    r = r * 1664525u + 1013904223u;
+                    if ((i & 1) && y >= 0) o += 0.4 * (0.6 * sin(2 * M_PI * 185 * y) * exp(-y / 0.06)
+                                                      + 0.6 * ((double)(int)(r >> 8) * 1.1920929e-7 - 1.0) * exp(-y / 0.09));
+                }
+                bb[j] = (float)o;
+            }
+            block(u, 1.0f, bb);
+            if (S.left > prev_left) {
+                double tc = (t + 8 - (MT_LEN - S.left)) / FS, best = 1e9, d;
+                int i, q;
+                for (i = 0; i < nk; i++) { d = (tc - kt[i]) * 1000.0; if (fabs(d) < fabs(best)) best = d; }
+                for (q = 0; q < 4; q++) if (tc >= from[q] && tc < to[q]) { n[q]++; if (best > -30.0 && best < 5.0) on[q]++; }
+            }
+            prev_left = S.left;
+        }
+        for (j = 0; j < 4; j++) {
+            printf("tempo changes, %s: %d/%d clicks on the kick\n", what[j], on[j], n[j]);
+            CHECK(n[j] > 10 && on[j] >= n[j] - 1, "tempo change not followed (%s)", what[j]);
+        }
+    }
+
     printf(fails ? "\n%d FAILED\n" : "\nall ok\n", fails);
     return fails != 0;
 }
