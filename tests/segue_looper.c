@@ -444,7 +444,9 @@ int main(void)
         CHECK(S.rd == 4 && rec_beat == 16 && beep > 0.15f && S.has_loop && S.lbars == 4, "Bars fallback");
     }
 
-    /* 8. Roll 1BAR, 2BEAT, 1BEAT, 1/2BT: while on, the output repeats every slice (the slices are the
+    /* 8. Roll 1BAR, 2BEAT, 1BEAT, 1/2BT, turned on and off mid-bar (the mix's bars start
+     *    0.25 s = 0.17 bar after t = 0): nothing changes until
+     *    the loop's next bar line, then from it: while on, the output repeats every slice (the slices are the
      *    loop's own grid); after Roll OFF the output is exactly what it is in a run without
      *    Roll (the loop never moved) */
     {
@@ -484,15 +486,56 @@ int main(void)
                 if (e > err) err = e;
                 if (fabsf(out[k]) > pk) pk = fabsf(out[k]);
             }
-            for (k = (long)(12.6 * bar * FS); k < (long)(14.5 * bar * FS); k++) {
+            for (k = (long)(13.4 * bar * FS); k < (long)(14.5 * bar * FS); k++) {
                 float e = fabsf(out[k] - ref[k]);
                 if (e > e2) e2 = e;
+            }
+            for (k = (long)(8.31 * bar * FS); k < (long)(9.1 * bar * FS); k++) {   /* waits */
+                float e = fabsf(out[k] - ref[k]);
+                if (e > e2) e2 = e;
+            }
+            {
+                long bs = (long)(S.L / (float)S.lbars + 0.5f), r = S.rs % bs;
+                CHECK(r < 2 || r > bs - 2, "Roll did not start on a bar line");
             }
             printf("Roll %s: repeats the %ld-sample slice from %d, max diff %.4f (peak %.2f); after OFF vs no Roll: %.5f\n",
                    ri == 0 ? "1BAR" : ri == 1 ? "2BEAT" : ri == 2 ? "1BEAT" : "1/2BT", bl, S.rs, err, pk, e2);
             CHECK(err < 0.02f && pk > 0.2f, "Roll does not repeat the slice");
             CHECK(e2 < 1e-4f, "Roll moved the loop");
         }
+    }
+
+    /* 8b. three quick presses with a loop up: the loop fades out (no click) and is gone,
+     *     the output is the live input again */
+    {
+        static float out[44100 * 30], in[44100 * 30];
+        float u[9] = {100, 0, 0, 1, 160, 160, 0, 0};          /* Bars 2, XFade LOOP */
+        Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 17};
+        double bar = 4 * beat_len(&m), tr = 10.3 * bar;
+        float onoff = 1.0f, step = 0, istep = 0, rest = 0;
+        long k;
+        int had = 0;
+        fresh();
+        for (t = 0; t < (long)(12 * bar * FS); t += 8) {
+            double tt = t / FS;
+            if (tt > 1.5 * bar && tt < 1.5 * bar + 0.01) onoff = 0.0f;
+            if ((tt > tr && tt < tr + 0.01) || (tt > tr + 0.1 && tt < tr + 0.11)
+                || (tt > tr + 0.2 && tt < tr + 0.21)) onoff = 1.0f - onoff;
+            if (tt > tr - 0.01 && tt < tr) had = S.has_loop;
+            for (i = 0; i < 8; i++) b[i] = in[t + i] = mix_at(&m, (t + i) / FS);
+            block(u, onoff, b);
+            for (i = 0; i < 8; i++) out[t + i] = b[i];
+        }
+        for (k = (long)((tr + 0.15) * FS); k < (long)((tr + 0.35) * FS); k++) {
+            float d = fabsf(out[k] - out[k - 1]), di = fabsf(in[k] - in[k - 1]);
+            if (d > step) step = d;
+            if (di > istep) istep = di;
+        }
+        for (k = (long)((tr + 0.4) * FS); k < (long)(12 * bar * FS); k++)
+            if (fabsf(out[k] - in[k]) > rest) rest = fabsf(out[k] - in[k]);
+        printf("reset with a loop up: loop before %d, after %d; biggest step around it %.3f (input %.3f); out vs live after %.6f\n",
+               had, S.has_loop, step, istep, rest);
+        CHECK(had && !S.has_loop && rest < 1e-4f && step < istep + 0.1f, "reset did not drop the loop cleanly");
     }
 
     /* 9. LoCut: a loop of 50 Hz + 3 kHz; LoCut 50 (200 Hz) takes the 50 Hz down > 40 dB */

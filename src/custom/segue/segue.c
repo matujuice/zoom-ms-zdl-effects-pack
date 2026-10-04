@@ -31,8 +31,8 @@
  *   The audio code runs whether the effect is on or off (the pedal only passes the on/off
  *   state, build/ABI.md); Segue ignores it and counts every flip, either way, as a press.
  *   One press arms. Three presses within half a second of each other RESET: the arm (and a
- *   recording just started) is cancelled and the next kick becomes bar 1 again; the loop
- *   stays as it is. Use it if bar 1 slipped (it was set on a stray sound, a long tempo
+ *   recording just started) is cancelled, the loop fades out over 30 ms and is deleted
+ *   (live only again), and the next kick becomes bar 1. Use it if bar 1 slipped (it was set on a stray sound, a long tempo
  *   jump). Unverified on the pedal: that the firmware adds no fade or mute of its own when
  *   the effect is switched off.
  *
@@ -96,7 +96,9 @@
  *                   under the live mix: 0 OFF, 1..100 = 21 Hz..2 kHz (log); shown in Hz
  *   2 Roll  0..4    OFF / 1BAR / 2BEAT (half a bar) / 1BEAT / 1/2BT (half a beat):
  *                   repeats the slice of the loop the playhead is in (slices counted from the
- *                   loop start), in time, like a DJ beat roll. The loop itself runs on
+ *                   loop start), in time, like a DJ beat roll. Quantized: a change (on, a
+ *                   new size, OFF) waits for the loop's next bar line and the slice starts
+ *                   on it. The loop itself runs on
  *                   underneath, so turning Roll OFF lands where the loop would have been:
  *                   the bars and the phrase never move.
  *   3 Bars  0..7    phrase and loop length, shown as 1..8 bars
@@ -126,7 +128,7 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define SE_MAGIC      0x53455135u        /* "SEQ5": change whenever SeState changes */
+#define SE_MAGIC      0x53455136u        /* "SEQ6": change whenever SeState changes */
 #define SE_N          682656             /* loop buffer, 8-bit samples: 15.48 s           */
 #define SE_NB         21333              /* one scale byte per 32 samples (SE_N / 32)     */
 #define SE_PRE        0.85f              /* pre-emphasis: stored d = x - 0.85 x[-1]       */
@@ -140,6 +142,7 @@
 #define SE_TAPWIN     2756               /* blocks: 0.5 s between the taps of a reset    */
 #define SE_SPB        2646000.0f         /* samples per beat x BPM (60 x 44100)          */
 #define SE_GLIDE      0.005f             /* gain glide per sample: ~5 ms                 */
+#define SE_DROP       1323               /* reset: the loop fades out over 30 ms         */
 #define SE_BEEP_LEN   3528               /* one beep or gap: 80 ms                       */
 #define SE_BEEP_W     0.14247585f        /* 2 pi 1000 / 44100: a 1 kHz beep              */
 #define SE_BEEP_AMP   0.2f
@@ -199,6 +202,9 @@ typedef struct {
     int   nj;              /* next grid line of pm (L: the loop end)          */
     float rlen;            /* Roll slice length, samples (0 = off)            */
     int   roll;            /* Roll setting the slice was taken for            */
+    int   rq;              /* Roll setting waiting for the next bar line (-1) */
+    int   bk, nb;          /* bar of the loop pm is in, the next bar line     */
+    int   drop;            /* reset: samples until the loop is gone           */
     int   pickup;          /* 1 = the output follows pa until XFade meets it  */
     float pa;              /* that automatic XFade position, 0..1 (1 = LOOP)  */
     int   ahold;           /* AUTO: samples left at 100 % loop, -1 = no ramp  */
@@ -370,6 +376,7 @@ static inline void se_init(SeState *s, float T0)
     s->armed = 0; s->rb = 8; s->rd = 8; s->rec = 0; s->rec_end = 0; s->wi = 0; s->tail = 0;
     s->has_loop = 0; s->L = 0; s->lbars = 1; s->pi = 0; s->po = 0; s->fade = 0;
     s->pm = 0; s->rs = 0; s->rk = 0; s->nj = 0; s->rlen = 0.0f; s->roll = 0; s->pickup = 0;
+    s->rq = -1; s->bk = 0; s->nb = 0; s->drop = 0;
     s->pa = 0.0f; s->ahold = -1; s->astep = 0.0f; s->dsign = 0; s->mode = 0;
     s->gd = 1.0f; s->gw = 0.0f;
     s->s1b = 0.0f; s->s1l = 0.0f; s->s2b = 0.0f; s->s2l = 0.0f; s->F = 0.0014248f;
@@ -445,6 +452,22 @@ static inline void se_window(SeState *s)
     s->rs = (int)((float)k * len + 0.5f);
 }
 
+/* the next bar line of the loop after bar s->bk */
+SE_ALWAYS_INLINE(se_bar)
+static inline void se_bar(SeState *s)
+{
+    int nb = (int)((float)(s->bk + 1) * (float)s->L * se_recip((float)s->lbars) + 0.5f);
+    s->nb = (nb > s->L) ? s->L : nb;
+}
+
+/* pm is on a bar line: a Roll change waiting for it takes effect */
+SE_ALWAYS_INLINE(se_roll_now)
+static inline void se_roll_now(SeState *s)
+{
+    if (s->rq >= 0) { s->roll = s->rq; s->rq = -1; }
+    se_window(s);
+}
+
 /* the recording is complete: the loop starts and the output jumps to it */
 SE_ALWAYS_INLINE(se_finish)
 static inline void se_finish(SeState *s)
@@ -459,9 +482,10 @@ static inline void se_finish(SeState *s)
     s->ahold = (s->mode == SE_MODE_AUTO) ? s->L : -1;
     s->astep = se_recip((float)s->L);
     s->dsign = 0;
-    s->pm = 0;
+    s->pm = 0; s->bk = 0; s->drop = 0;
+    se_bar(s);
     se_jump(s, s->L, 0);                         /* fade from the live tail in    */
-    se_window(s);
+    se_roll_now(s);
 }
 
 /* how many bars to record: Bars, or if they do not fit at this tempo the longest part
@@ -483,7 +507,8 @@ static inline int se_arm(SeState *s, const SeParams *P)
     return d < P->bars;
 }
 
-/* three quick presses: forget bar 1, cancel the arm and a recording just started */
+/* three quick presses: forget bar 1, cancel the arm and a recording just started, and
+ * delete the loop (it fades out first) */
 SE_ALWAYS_INLINE(se_reset)
 static inline void se_reset(SeState *s)
 {
@@ -491,6 +516,7 @@ static inline void se_reset(SeState *s)
     s->rec = 0;
     s->cs = SE_WAIT;
     s->hits = 0; s->misses = 0;
+    if (s->has_loop && s->drop == 0) s->drop = SE_DROP;      /* fade the loop out */
 }
 
 /* a beat line has just passed (s->beat is the new beat) */
@@ -507,7 +533,11 @@ static inline void se_on_beat(SeState *s)
         s->wi = 0;
         s->tail = 0;
         s->rec_end = s->beat + 4 * s->rd;
-        if (s->has_loop) { s->pm = 0; se_jump(s, s->pi, 0); se_window(s); }
+        if (s->has_loop) {
+            s->pm = 0; s->bk = 0; se_bar(s);
+            se_roll_now(s);
+            se_jump(s, s->pi, (s->rlen > 0.0f) ? s->rs : 0);
+        }
     }
 }
 
@@ -606,10 +636,8 @@ static inline void se_block(SeState *s, const SeParams *P, float onoff)
     }
     if (s->T < P->Tmin) s->T = P->Tmin;
     if (s->T > P->Tmax) s->T = P->Tmax;
-    if (P->roll != s->roll) {                    /* a new slice, or back to the loop */
-        s->roll = P->roll;
-        if (s->has_loop) { se_window(s); if (s->pi != s->pm) se_jump(s, s->pi, s->pm); }
-    }
+    if (!s->has_loop) { s->roll = P->roll; s->rq = -1; }
+    else s->rq = (P->roll != s->roll) ? P->roll : -1;   /* waits for the next bar line */
     s->mode = P->mode;
     if (s->pickup) {                             /* XFade takes over where it meets pa */
         float d = 100.0f * (P->xf - s->pa);
@@ -672,14 +700,20 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
             }
             s->pi++;
             s->pm++;
-            if (s->pm >= s->nj) {                /* a grid line, or the loop end */
-                int nj;
-                if (s->pm >= s->L) { s->pm = 0; s->rk = 0; } else s->rk++;
-                if (s->rlen > 0.0f) {            /* Roll: back to the slice start */
+            if (s->pm >= s->nb || s->pm >= s->nj) {   /* a bar line, a Roll grid line */
+                int nj, bar = (s->pm >= s->nb), line = (s->pm >= s->nj);
+                if (s->pm >= s->L) { s->pm = 0; s->rk = 0; s->bk = 0; }   /* the loop end */
+                else { if (line) s->rk++; if (bar) s->bk++; }
+                if (bar) se_bar(s);
+                if (bar && s->rq >= 0) {         /* a Roll change waiting for this bar */
+                    se_roll_now(s);
+                    nj = (s->rlen > 0.0f) ? s->rs : s->pm;
+                    if (s->pi != nj) se_jump(s, s->pi, nj);
+                } else if (line && s->rlen > 0.0f) {   /* Roll: back to the slice start */
                     nj = (int)((float)(s->rk + 1) * s->rlen + 0.5f);
                     s->nj = (nj > s->L) ? s->L : nj;
                     se_jump(s, s->pi, s->rs);
-                } else {
+                } else if (line) {               /* the loop end */
                     s->nj = s->L;
                     se_jump(s, s->pi, s->pm);
                 }
@@ -703,7 +737,11 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
         if (P->cut) wet = h;
 
         /* gains: live only before the first loop, 100 % loop until picked up */
-        if (!s->has_loop) { tgd = 1.0f; tgw = 0.0f; }
+        if (s->drop > 0) {                       /* reset: fade the loop out, then forget it */
+            tgd = 1.0f; tgw = 0.0f;
+            if (--s->drop == 0) { s->has_loop = 0; s->pickup = 0; s->rq = -1; s->fade = 0; }
+        }
+        else if (!s->has_loop) { tgd = 1.0f; tgw = 0.0f; }
         else if (s->pickup) {                    /* JUMP, AUTO: the automatic XFade */
             if (s->ahold > 0) s->ahold--;
             else if (s->ahold == 0 && s->pa > 0.0f) { s->pa -= s->astep; if (s->pa < 0.0f) s->pa = 0.0f; }
