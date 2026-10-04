@@ -56,7 +56,10 @@
  *   the bar count as well as it can (a reset puts bar 1 right if not).
  *   Finding the tempo: after bar 1 the time between kicks is halved until it fits LoBPM..
  *   HiBPM (kicks every 2 beats count as a beat, off-beat ones are skipped); four agreeing
- *   in a row lock the tempo. LoBPM = HiBPM fixes it (only the phase is tracked). The range
+ *   in a row lock the tempo. LoBPM = HiBPM fixes it (only the phase is tracked, and once
+ *   locked only kicks within 6 % of a beat nudge it, by a tenth of their error, so kicks
+ *   pushed off the beat by a tribe or tekno pattern cannot drag it; a free tempo follows
+ *   kicks within 12 %, by a quarter). This is the default, at 160 BPM. The range
  *   is what stops hats, double time or half time from fooling it. A gap of more than two
  *   beats that does not halve into the range starts the measuring again from that kick;
  *   once two gaps agree, the beats since bar 1 are counted from the time since it.
@@ -537,8 +540,12 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
     if (e > 0.5f * T) { e -= T; nb++; }
     if (e < -0.5f * T) { e += T; nb--; }
     if (s->cs == SE_LOCK) {
-        if (e < 0.12f * T && e > -0.12f * T) {   /* on the grid: follow it      */
-            s->ph -= 0.25f * e;
+        /* on the grid: follow it. With a fixed tempo only the two clocks' drift has to
+         * be followed, so the window is narrow and the step small: a syncopated kick
+         * pushed just off the beat (tribe, tekno) can not drag the grid along. */
+        float win = P->fixed ? 0.06f : 0.12f;
+        if (e < win * T && e > -win * T) {
+            s->ph -= (P->fixed ? 0.1f : 0.25f) * e;
             if (!P->fixed) s->T = T + 0.02f * e;
             s->kb = nb; s->misses = 0; s->sk = back;
         } else if (!P->fixed && se_fold((float)(s->sk - back), P, &f)) {

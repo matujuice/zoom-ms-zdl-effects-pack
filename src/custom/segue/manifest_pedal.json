@@ -35,14 +35,14 @@
     {
       "name": "LoBPM",
       "max": 240,
-      "default": 140,
-      "comment": "Slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). With HiBPM it keeps hats, double time and half time from fooling the tracker. Default 140."
+      "default": 160,
+      "comment": "Slowest tempo the tracker may lock to, 40 to 240 BPM (below 40 reads as 40). With HiBPM it keeps hats, double time and half time from fooling the tracker. Default 160 (with HiBPM 160: a fixed 160 BPM, which tracks best; set your tempo, or open a range for a set that changes tempo)."
     },
     {
       "name": "HiBPM",
       "max": 240,
-      "default": 170,
-      "comment": "Fastest tempo the tracker may lock to, 40 to 240 BPM. Set LoBPM and HiBPM equal to fix the tempo (only the beat position is tracked). Default 170."
+      "default": 160,
+      "comment": "Fastest tempo the tracker may lock to, 40 to 240 BPM. Set LoBPM and HiBPM equal to fix the tempo (only the beat position is tracked, and kicks pushed off the beat cannot drag it). Default 160."
     },
     {
       "name": "Thrsh",
