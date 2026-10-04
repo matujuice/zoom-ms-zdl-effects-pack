@@ -7,13 +7,26 @@
  * on the kicks, drift off them, or put bar 1 in the wrong place.
  *
  * TRACKER
- *   The kick detector and the bar clock are copied unchanged from segue.c (Segue, PR #8,
- *   commit 5518a31): the functions keep their se_ names and the knobs LoBPM, HiBPM, Thrsh
- *   and Listn mean exactly what they mean there. If Segue's tracker changes, copy it here
- *   again, or this test no longer tests it. Everything Segue's header says under KICK
- *   TRACKING holds: the first kick after loading is bar 1, the tempo locks after four
- *   agreeing kicks, and every beat sits 15 ms before the kick is detected, which is a few
- *   ms before the kick starts. So a click lands a hair before the kick, where Segue cuts.
+ *   The kick detector and the bar clock come from segue.c (Segue, PR #8, commit 5518a31):
+ *   the functions keep their se_ names and the knobs LoBPM, HiBPM and Listn mean what they
+ *   mean there. Everything Segue's header says under KICK TRACKING holds: the first kick
+ *   after loading is bar 1, the tempo locks after four agreeing kicks, and every beat sits
+ *   15 ms before the kick is detected, a few ms before the kick starts. So a click lands a
+ *   hair before the kick, where Segue cuts.
+ *   Four fixes found with Metro (2026-10-04), to be ported into segue.c:
+ *   - AUTO threshold hunts. A boomy kick on every beat (long tail, as Digitakt kicks
+ *     often are) is still loud when the next one hits, so the next kick only jumps about
+ *     1.5..1.9 x over the band's recent level, under the fixed 2 x: after the first kick
+ *     nothing counted. AUTO now starts at 2 x and, while nothing has locked, steps down
+ *     every 4 s (1.7, 1.5, 1.3 x, then 2 x again); once locked the step stays.
+ *   - A stale reference while finding the tempo. A gap between kicks longer than two
+ *     beats that is not 1, 2, 4.. beats was skipped as "off the beat" but kept as the
+ *     reference, so every later kick was measured from that stale kick and nothing ever
+ *     locked (with LoBPM = HiBPM always, after any missed stretch). Such a gap now starts
+ *     the measuring again.
+ *   - The beat count while finding the tempo. Halving only counts 1, 2, 4.. beats between
+ *     kicks; once two intervals agree, the beats since bar 1 are counted from the time.
+ *   - The Thrsh knob: 1..100 = 1.02..3 x (was 1.3..20 x: above about 10 nothing counted).
  *
  * WHAT YOU HEAR
  *   Nothing is clicked until the tempo is locked: the first click means "locked".
@@ -42,7 +55,9 @@
  *   2 Bars  0..7    phrase length for the phrase click, shown as 1..8 bars
  *   3 LoBPM 0..240  as Segue: slowest tempo the tracker may lock to (below 40 reads 40)
  *   4 HiBPM 0..240  as Segue: fastest; LoBPM = HiBPM fixes the tempo
- *   5 Thrsh 0..100  as Segue: 0 AUTO (2 x), 1 = 1.3 x .. 100 = 20 x
+ *   5 Thrsh 0..100  0 AUTO (hunts 2, 1.7, 1.5, 1.3 x until it locks), else how far the
+ *                   kick band must jump over its recent level: 1 = 1.02 x (anything) ..
+ *                   50 = 2 x .. 100 = 3 x (only hard kicks)
  *   6 Listn 0..101  as Segue: 0 AUTO (100 Hz), 1..101 = 50..150 Hz
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -62,9 +77,10 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define MT_MAGIC      0x4D455431u        /* "MET1": change whenever SeState changes      */
+#define MT_MAGIC      0x4D455432u        /* "MET1": change whenever SeState changes      */
 #define SE_LEAD       662.0f             /* beats sit 15 ms before the detected kick     */
 #define SE_JUDGE      110                /* blocks: an onset is judged 20 ms later       */
+#define MT_HUNT       22050              /* AUTO: 4 s (in blocks) per threshold step     */
 #define SE_SPB        2646000.0f         /* samples per beat x BPM (60 x 44100)          */
 
 #define MT_BEAT       0                  /* Click knob                                   */
@@ -95,6 +111,8 @@ typedef struct {
     float pstr;            /* its peak so far                                 */
     float kw, kp;          /* loudest onset this second and the last one      */
     int   kn;              /* blocks into this second                         */
+    int   ri;              /* AUTO: threshold step 0..3 (2, 1.7, 1.5, 1.3 x)  */
+    int   hunt;            /* AUTO: blocks without a lock at this step        */
     /* bar clock (as Segue) */
     int   cs;              /* SE_WAIT / SE_ACQ / SE_LOCK                      */
     int   tl;              /* the tempo has been locked once                  */
@@ -103,6 +121,7 @@ typedef struct {
     int   beat;            /* beats since bar 1 (beat 0 = bar 1, beat 1)      */
     int   kb;              /* beat of the last kick accepted                  */
     int   sk;              /* samples since the last kick accepted            */
+    int   s1;              /* samples since bar 1                             */
     int   hits, misses;    /* agreeing kicks (finding), off-grid in a row     */
     float tm;              /* tempo the last off-grid kick suggested          */
     /* metronome */
@@ -120,6 +139,7 @@ typedef struct {
     float Tmin, Tmax;      /* beat length range from HiBPM, LoBPM             */
     int   fixed;           /* LoBPM = HiBPM                                   */
     float R;               /* kick: jump over the average                     */
+    int   autoR;           /* Thrsh AUTO: the detector picks R itself         */
     float lpc;             /* kick band low-pass coefficient                  */
     int   refr;            /* blocks between kicks at least                   */
 } SeParams;
@@ -199,7 +219,7 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
     float T = s->T, e, f = T, fb = (float)back;
     int nb, n;
     if (s->cs == SE_WAIT) {                      /* bar 1 */
-        s->beat = 0; s->ph = SE_LEAD + fb; s->kb = 0; s->sk = back;
+        s->beat = 0; s->ph = SE_LEAD + fb; s->kb = 0; s->sk = back; s->s1 = back;
         s->hits = 0; s->misses = 0;
         s->cs = s->tl ? SE_LOCK : SE_ACQ;
         return;
@@ -226,7 +246,14 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
         }
     } else {                                     /* SE_ACQ: finding the tempo    */
         n = se_fold((float)(s->sk - back), P, &f);
-        if (n == 0) return;                      /* off-beat: wait for the next  */
+        if (n == 0) {
+            /* off the beat: wait for the next kick, measured from the same one. But a
+             * gap longer than two beats that is no 1, 2, 4.. beats would leave every
+             * later kick measured from that stale kick, and nothing would ever lock:
+             * measure from this one instead. */
+            if ((float)(s->sk - back) > 2.06f * P->Tmax) s->sk = back;
+            return;
+        }
         if (P->fixed) {
             if (f - T < 0.06f * T && T - f < 0.06f * T) s->hits++; else s->hits = 0;
         } else if (s->hits > 0 && f - T < 0.04f * T && T - f < 0.04f * T) {
@@ -235,6 +262,12 @@ static inline void se_kick(SeState *s, const SeParams *P, int back)
             s->T = f; s->hits = 1;
         }
         s->beat = s->kb + n; s->kb = s->beat; s->ph = SE_LEAD + fb; s->sk = back;
+        if (s->hits >= 2) {
+            /* the tempo is known well enough: count the beats since bar 1 from the time
+             * (halving above only counts 1, 2, 4.. beats, wrong after a longer gap) */
+            s->beat = (int)((float)(s->s1 - back) * se_recip(s->T) + 0.5f);
+            s->kb = s->beat;
+        }
         if (s->hits >= 4) { s->cs = SE_LOCK; s->tl = 1; s->misses = 0; }
     }
     if (s->T < P->Tmin) s->T = P->Tmin;
@@ -264,6 +297,19 @@ static inline void se_detect(SeState *s, const SeParams *P, float pk)
         }
     }
     th = P->R * s->slow;
+    if (P->autoR) {
+        /* AUTO: start strict (2 x); while nothing has locked, step down every 4 s
+         * (1.7, 1.5, 1.3 x, then back to 2 x): a boomy kick whose tail is still loud
+         * at the next beat only jumps ~1.5..1.9 x, while bass and snares are better
+         * kept out by the strict setting when it works. Once locked, the step stays. */
+        float r = 2.0f;
+        if (s->ri == 1) r = 1.7f;
+        if (s->ri == 2) r = 1.5f;
+        if (s->ri == 3) r = 1.3f;
+        th = r * s->slow;
+        if (s->cs == SE_LOCK) s->hunt = 0;
+        else if (++s->hunt >= MT_HUNT) { s->hunt = 0; s->ri = (s->ri + 1) & 3; }
+    }
     if (s->refr > 0) s->refr--;
     if (!s->ready && s->env < th) s->ready = 1;
     if (s->ready && s->refr == 0 && s->env > th && s->env > 0.002f && s->pend < 0) {
@@ -284,7 +330,8 @@ static inline void se_init(SeState *s, float T0)
     s->d1 = 0.0f; s->d2 = 0.0f; s->dc = 0.0f;
     s->env = 0.0f; s->slow = 0.0f; s->refr = 0; s->ready = 1;
     s->pend = -1; s->pstr = 0.0f; s->kw = 0.0f; s->kp = 0.0f; s->kn = 0;
-    s->cs = SE_WAIT; s->tl = 0; s->T = T0; s->ph = 0.0f; s->beat = 0; s->kb = 0; s->sk = 0;
+    s->ri = 0; s->hunt = 0;
+    s->cs = SE_WAIT; s->tl = 0; s->T = T0; s->ph = 0.0f; s->beat = 0; s->kb = 0; s->sk = 0; s->s1 = 0;
     s->hits = 0; s->misses = 0; s->tm = T0;
     s->kicked = 0; s->left = 0; s->w = MT_W_BEAT; s->amp = 0.0f; s->bs = 0.0f; s->bc = 1.0f;
     s->magic = MT_MAGIC;
@@ -309,7 +356,8 @@ static inline void se_prepare(SeParams *P, const float *u)
     P->Tmin = SE_SPB * se_recip(hi);
     P->Tmax = SE_SPB * se_recip(lo);
     th = (int)(u[5] + 0.5f);
-    P->R = (th == 0) ? 2.0f : 1.25f * se_exp2((float)th * 0.04f);
+    P->autoR = (th == 0);
+    P->R = 1.0f + 0.02f * (float)th;                         /* 1..100: 1.02 .. 3 x */
     t = (u[6] >= 0.5f) ? (49.0f + u[6]) : 100.0f;           /* kick band, Hz */
     P->lpc = t * 1.4247585e-4f;                              /* ~ 2 pi f / fs */
     P->refr = (int)(P->Tmin * 0.2f * 0.125f);
@@ -374,6 +422,7 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
         /* bar clock (as Segue); a click starts on the sample the beat line passes */
         s->ph += 1.0f;
         if (s->sk < 0x10000000) s->sk++;
+        if (s->s1 < 0x10000000) s->s1++;
         if (s->ph >= s->T) { s->ph -= s->T; s->beat++; if (s->cs != SE_WAIT) mt_on_beat(s, P); }
 
         if (s->left > 0) {

@@ -1,7 +1,8 @@
 /* Metro: on a synthetic drum-machine mix (the one in segue_looper.c), the clicks start
  * only once locked, land just before the true kicks with the right accents (beat, bar,
  * phrase), KICK clicks follow the detector, the footswitch resets bar 1, Mix is the DJ
- * law, labels, and a random-knob run (no NaN, bounded). */
+ * law, labels, a boomy kick on every beat (AUTO hunts), the Thrsh scale, and a
+ * random-knob run (no NaN, bounded). */
 #define METRO_HOST_TEST
 #include <stdio.h>
 #include <string.h>
@@ -283,6 +284,62 @@ int main(void)
         }
         printf("random knobs: peak %.2f\n", pk);
         CHECK(pk < 2.5f, "random run blew up");
+    }
+
+    /* 9. a boomy kick (45 Hz, 0.6 s decay) on every beat, with a snare on 2 and 4: its
+     *    tail is still loud at the next kick, which jumps under 2 x. AUTO must hunt down
+     *    and lock, with the tempo free (120..170) and fixed (Lo = Hi; this one also needs
+     *    the stale-kick fix: the kicks missed at 2 x leave gaps of no 1, 2, 4.. beats) */
+    {
+        double bpms[2] = {150.0, 160.0};
+        int c, f;
+        for (f = 0; f < 2; f++) for (c = 0; c < 2; c++) {
+            float u[7] = {50, 0, 7, 120, 170, 0, 0}, bb[8];
+            double T = 60.0 / bpms[c], t0 = 0.4, first = -1, ms;
+            long t, k;
+            int j, prev_left = 0, on = 0, n = 0, barok = 0, barn = 0;
+            unsigned int r = 5;
+            if (f) { u[3] = (float)bpms[c]; u[4] = (float)bpms[c]; }
+            fresh();
+            for (t = 0; t < (long)(60 * FS); t += 8) {
+                for (j = 0; j < 8; j++) {
+                    double tt = (t + j) / FS, uu = tt - t0, x, o = 0;
+                    if (uu >= 0) {
+                        k = (long)floor(uu / T); x = uu - k * T;
+                        o += 0.8 * sin(2 * M_PI * (45 * x + 70 * 0.025 * (1 - exp(-x / 0.025)))) * exp(-x / 0.6);
+                        r = r * 1664525u + 1013904223u;
+                        if (k & 1) o += 0.5 * (0.6 * sin(2 * M_PI * 185 * x) * exp(-x / 0.06)
+                                              + 0.6 * ((double)(int)(r >> 8) * 1.1920929e-7 - 1.0) * exp(-x / 0.09));
+                    }
+                    bb[j] = (float)o;
+                }
+                block(u, 1.0f, bb);
+                if (S.left > prev_left) {
+                    double tc = (t + 8 - (MT_LEN - S.left)) / FS;
+                    if (first < 0) first = tc;
+                    k = (long)floor((tc - t0) / T + 0.5); ms = (tc - t0 - k * T) * 1000.0;
+                    if (tc > 30.0) {
+                        n++; if (ms > -30.0 && ms < 5.0) on++;
+                        if (S.w != MT_W_BEAT) { barn++; if (k % 4 == 0) barok++; }
+                    }
+                }
+                prev_left = S.left;
+            }
+            printf("boomy kick %.0f BPM, %s: first click %.1f s, %d/%d clicks on the beat, %d/%d bar clicks on bar 1\n",
+                   bpms[c], f ? "fixed tempo" : "120..170", first, on, n, barok, barn);
+            CHECK(n > 60 && on == n && barok == barn, "boomy kick not tracked");
+        }
+    }
+
+    /* 10. Thrsh: 1 is the loosest, 50 = 2 x (old AUTO), 100 = 3 x */
+    {
+        float u[7] = {50, 0, 7, 140, 170, 1, 0};
+        SeParams P;
+        se_prepare(&P, u); CHECK(P.R > 1.01f && P.R < 1.03f && !P.autoR, "Thrsh 1");
+        u[5] = 50; se_prepare(&P, u); CHECK(P.R > 1.98f && P.R < 2.02f, "Thrsh 50");
+        u[5] = 100; se_prepare(&P, u); CHECK(P.R > 2.98f && P.R < 3.02f, "Thrsh 100");
+        u[5] = 0; se_prepare(&P, u); CHECK(P.autoR, "Thrsh AUTO");
+        printf("Thrsh scale ok\n");
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nall ok\n", fails);

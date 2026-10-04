@@ -1,6 +1,6 @@
 {
   "effect_name": "Metro",
-  "comment": "Metro - test tool, not part of the pack: a metronome click on Segue's beat grid, to hear whether Segue's kick tracker locks to the sequencer. The tracker is copied unchanged from Segue (first kick after loading is bar 1; LoBPM, HiBPM, Thrsh, Listn as there). The input passes through; once the tempo is locked a click is mixed in on every beat: 800 Hz beats, 1.6 kHz bar starts, 2.4 kHz phrase starts (every Bars bars, where Segue would start recording). Click KICK instead clicks on every onset the detector takes for a kick (about 20 ms late, locked or not). Any footswitch press (on or off) resets bar 1 to the next kick. Page 1: Mix (DJ-style: 50 = both full, 100 = clicks only), Click (BEAT / BAR / KICK), Bars. Page 2: LoBPM, HiBPM, Thrsh. Page 3: Listn.",
+  "comment": "Metro - test tool, not part of the pack: a metronome click on Segue's beat grid, to hear whether Segue's kick tracker locks to the sequencer. The tracker is Segue's (first kick after loading is bar 1; LoBPM, HiBPM, Listn as there) with fixes to be ported into Segue: a hunting AUTO threshold, a stale-kick fix and a beat count from the time while finding the tempo, and a rescaled Thrsh. The input passes through; once the tempo is locked a click is mixed in on every beat: 800 Hz beats, 1.6 kHz bar starts, 2.4 kHz phrase starts (every Bars bars, where Segue would start recording). Click KICK instead clicks on every onset the detector takes for a kick (about 20 ms late, locked or not). Any footswitch press (on or off) resets bar 1 to the next kick. Page 1: Mix (DJ-style: 50 = both full, 100 = clicks only), Click (BEAT / BAR / KICK), Bars. Page 2: LoBPM, HiBPM, Thrsh. Page 3: Listn.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
@@ -42,7 +42,7 @@
       "name": "Thrsh",
       "max": 100,
       "default": 0,
-      "comment": "As Segue: how sudden a jump in the kick band must be to count as a kick: AUTO (2 x), or 1 (1.3 x) to 100 (20 x). Default AUTO."
+      "comment": "How sudden a jump in the kick band must be to count as a kick. AUTO starts strict (2 x the band's recent level) and, until it locks, tries 1.7, 1.5 and 1.3 x in turn, 4 s each, so a boomy kick whose tail is still loud at the next beat is found too. Or fixed: 1 (1.02 x, anything counts) to 50 (2 x) to 100 (3 x, only hard kicks). Default AUTO."
     },
     {
       "name": "Listn",
