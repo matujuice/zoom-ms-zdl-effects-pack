@@ -48,7 +48,7 @@
       "name": "Thrsh",
       "max": 100,
       "default": 0,
-      "comment": "Tracking only, no effect on the sound. How sudden a jump in the kick band must be to count as a kick: AUTO (2 x the band's recent level), or 1 (1.3 x: soft kicks count, so may bass notes) to 100 (20 x: only hard kicks). Default AUTO."
+      "comment": "Tracking only, no effect on the sound. How sudden a jump in the kick band must be to count as a kick: AUTO (starts at 2 x the band's recent level and steps down to 1.7, 1.5, 1.3 x every 4 s until it locks, for boomy kicks), or 1 (1.02 x: soft kicks count, so may bass notes) to 50 (2 x) to 100 (3 x: only hard kicks). Default AUTO."
     },
     {
       "name": "Listn",
