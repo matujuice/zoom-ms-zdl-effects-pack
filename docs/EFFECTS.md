@@ -1,4 +1,4 @@
-# The seven effects
+# The effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -105,3 +105,23 @@ Everything you play is recorded into a 6 second buffer. Pos moves a read head th
 | Tempo | 40..240 BPM | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+### Segue: transition looper for a drum-machine mix
+Made for playing a set with one sequencer: the whole mix goes through the pedal. Segue follows the kick to know where every bar and phrase starts (the first kick it hears after loading is bar 1). Press the footswitch before the phrase ends and it records the next phrase. At the end of that phrase the output jumps to 100 % loop, so the sequencer can change pattern underneath without anyone hearing it. Then turn XFade fully right (the loop picks up the knob) and back left to fade the live mix in and the loop out. The loop keeps running, inaudible, until the next press records a new one over it.
+
+Any press counts, whichever way the switch goes: the LED means nothing on this effect. Three quick presses (each within half a second) reset bar 1 to the next kick and cancel an armed recording; the loop stays. The loop is mono, 8-bit mu-law (a slight lo-fi hiss), up to 16 seconds, so 8 bars fit down to about 121 BPM. Nothing records before the first kick has been heard.
+
+| Knob | Range | What it does |
+|---|---|---|
+| XFade | LIVE, 1..99, LOOP | Crossfade, DJ style: the live mix stays full up to 50, the loop is full from 50. Right after a loop starts the output is 100 % loop whatever XFade says; it follows XFade again once you turn it fully right (LOOP). Before the first loop you hear the live mix. |
+| LoCut | OFF, 21 Hz..2.0k | High-pass on the loop only (24 dB per octave): take its kick and bass out while the live mix comes back. |
+| Roll | OFF, 4BAR, 2BAR, 1BAR, 1BEAT | Plays only the last 4, 2 or 1 bars or the last beat of the loop, over and over, for a build-up. It joins in time. |
+| Bars | 1..8 | Phrase and loop length. A press waits for the next phrase start, counted in Bars from bar 1. If the bars don't fit at the tempo being tracked, it records the last 4, 2 or 1 bars of the phrase instead (so the jump still lands on the phrase end) and beeps twice. |
+| LoBPM | 40..240 | Slowest tempo the tracker may lock to. |
+| HiBPM | 40..240 | Fastest. The range stops hats, double time and half time from fooling it; set both equal to fix the tempo. |
+| Thrsh | AUTO, 1..100 | Tracking only, no effect on the sound. How sudden a jump in the kick band must be to count as a kick: 1 catches soft kicks (and maybe bass notes), 100 only hard ones. AUTO suits most tracks. |
+| Listn | AUTO, 50Hz..150Hz | Tracking only, no effect on the sound. Where the kick detector listens (AUTO = 100 Hz). Lower it if a bassline sits just above the kick. |
+
+How the tracking works: it follows every kick on the beat and nudges its bar clock toward it, so it keeps time with the drum machine all set long (their clocks differ slightly) and through slow tempo moves. In a breakdown without kicks it keeps counting on its own and picks up again when the kick returns. Kicks off the beat are ignored; bass notes and toms clearly quieter than the kick don't count. The loop always plays at the tempo it was recorded at.
+
+Not yet checked on the pedal: the tracking on a real mix, CPU use, and that the pedal adds no fade of its own when the effect is switched off (Segue keeps playing either way).
