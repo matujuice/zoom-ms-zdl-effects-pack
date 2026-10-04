@@ -139,7 +139,7 @@ int main(void)
     /* 2. tracking: 160 BPM four on the floor, machine clock 200 ppm slow (twice the worst
      *    real case), 10 minutes with a 40 s kickless breakdown in the middle */
     {
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0};
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0};
         Mix m = {160.0, 200.0, 0.5, 0, 0, 300.0, 340.0, 1};
         double Te, worst, mean; long be;
         fresh();
@@ -156,7 +156,7 @@ int main(void)
      *    kick, inside a wide tempo range): about 4 dB under the kick with range 40..240
      *    (told apart by level), and 1 dB under it with 120..170 (told apart by the range) */
     {
-        float u[8] = {0, 0, 0, 7, 40, 240, 0, 0};
+        float u[9] = {0, 0, 0, 7, 40, 240, 0, 0};
         Mix m = {142.0, -80.0, 1.2, 0, 1, 1e9, 1e9, 7};
         double Te, worst, mean; long be;
         int c;
@@ -173,7 +173,7 @@ int main(void)
 
     /* 4. fixed tempo (Lo = Hi = 160) and a slow ramp 150 -> 165 over 3 minutes */
     {
-        float u[8] = {0, 0, 0, 7, 160, 160, 0, 0};
+        float u[9] = {0, 0, 0, 7, 160, 160, 0, 0};
         Mix m = {160.0, 50.0, 0.2, 0, 0, 1e9, 1e9, 3};
         double Te, worst, mean; long be;
         fresh();
@@ -182,7 +182,7 @@ int main(void)
         CHECK(S.cs == SE_LOCK && be == 0 && worst > -30.0 && worst < 2.0, "fixed tempo tracking");
     }
     {
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0};
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0};
         Mix m = {150.0, 0.0, 0.3, 0, 0, 1e9, 1e9, 5};
         long last_beat = -1, offs = 0;
         double kt = m.t0, worstd = -12;     /* the ramp: kick times by integrating the tempo */
@@ -214,7 +214,7 @@ int main(void)
      *    from there), output = A's loop; XFade to LOOP picks up; XFade to LIVE gives B */
     {
         static float in[44100 * 60], out[44100 * 60];
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0};
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0};
         Mix m = {160.0, 30.0, 0.25, 0, 0, 1e9, 1e9, 9};
         long N = (long)(55 * FS), jump_t = -1, rec_t = -1, rec_beat = -1;
         double bar = 4 * beat_len(&m);
@@ -284,7 +284,7 @@ int main(void)
      *     while it is overwritten, and the new one takes over at the jump */
     {
         static float out[44100 * 75];
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0}, onoff = 1.0f;
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0}, onoff = 1.0f;
         Mix m = {160.0, 0.0, 0.25, 0, 0, 1e9, 1e9, 21};
         double bar = 4 * beat_len(&m);
         long N = (long)(36 * bar * FS);
@@ -309,9 +309,53 @@ int main(void)
         CHECK(a1 > 20 * b1 && b2 > 20 * a2, "re-recording with the loop up");
     }
 
+    /* 5c. Mode AUTO: 100 % loop for one loop, then a fade back to live over the next one,
+     *     XFade untouched at LIVE; Mode MANUAL: XFade at 30 is obeyed from the jump on;
+     *     AUTO with XFade at 50: the knob takes over when the fade meets it */
+    {
+        static float out[44100 * 50], in[44100 * 50];
+        int mode;
+        for (mode = 0; mode < 3; mode++) {
+            float u[9] = {0, 0, 0, 3, 160, 160, 0, 0, 1}, onoff = 1.0f;   /* Bars 4, fixed 160 */
+            Mix m = {160.0, 0.0, 0.25, 0, 0, 1e9, 1e9, 31};
+            double bar = 4 * beat_len(&m);
+            long N = (long)(22 * bar * FS);
+            float ra, rb, rc, rd;
+            if (mode == 1) u[8] = 2, u[0] = 30;
+            if (mode == 2) u[0] = 50;
+            fresh();
+            for (t = 0; t < N; t += 8) {
+                double tt = t / FS;
+                m.pattern = (tt >= m.t0 + 8 * bar - 0.002) ? 1 : 0;           /* B from bar 9 */
+                if (tt > m.t0 + 2.5 * bar && tt < m.t0 + 2.5 * bar + 0.01) onoff = 0.0f;
+                for (i = 0; i < 8; i++) { in[t + i] = mix_at(&m, (t + i) / FS); b[i] = in[t + i]; }
+                block(u, onoff, b);
+                for (i = 0; i < 8; i++) out[t + i] = b[i];
+            }
+            /* share of the loop (A, 440 Hz) against live (B, 660 Hz) per stretch */
+#define SHARE(from, len) (tone(out + (long)((m.t0 + (from) * bar) * FS), (long)((len) * bar * FS), 440) / \
+                          (tone(out + (long)((m.t0 + (from) * bar) * FS), (long)((len) * bar * FS), 660) + 1e-12f))
+            ra = SHARE(9, 3);        /* first loop after the jump        */
+            rb = SHARE(13.2, 0.6);   /* early in AUTO's fade             */
+            rc = SHARE(15.4, 0.6);   /* late in the fade                 */
+            rd = SHARE(18, 3);       /* after it                         */
+#undef SHARE
+            if (mode == 0) {
+                printf("AUTO, XFade LIVE: loop/live power %.0f (held), %.2f, %.3f (fading), %.4f (after), pickup %d\n", ra, rb, rc, rd, S.pickup);
+                CHECK(ra > 1000 && rb > 0.3f && rb < 300 && rc < 0.3f && rd < 0.001f && !S.pickup, "Mode AUTO");
+            } else if (mode == 1) {
+                printf("MANUAL, XFade 30: loop/live power %.2f right after the jump (XFade 30 = loop at -4.4 dB under full live: ~0.36)\n", ra);
+                CHECK(ra > 0.2f && ra < 0.6f && !S.pickup, "Mode MANUAL");
+            } else {
+                printf("AUTO, XFade 50: %.0f (held), %.2f (fade above 50), after: %.2f (both full: ~1), pickup %d\n", ra, rb, rd, S.pickup);
+                CHECK(ra > 1000 && rd > 0.5f && rd < 2.0f && !S.pickup, "AUTO takeover at XFade 50");
+            }
+        }
+    }
+
     /* 6. presses: a second press while armed does nothing; three quick ones reset bar 1 */
     {
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0};
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0};
         Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 11};
         float onoff = 1.0f;
         int armed_after_one, armed_after_two, state_after_three, beat_after;
@@ -339,7 +383,7 @@ int main(void)
 
     /* 7. Bars do not fit: fixed 100 BPM, 8 bars (19.2 s) -> 4 bars and a double beep */
     {
-        float u[8] = {0, 0, 0, 7, 100, 100, 0, 0};
+        float u[9] = {0, 0, 0, 7, 100, 100, 0, 0};
         Mix m = {100.0, 0, 0.25, 0, 0, 1e9, 1e9, 13};
         float onoff = 1.0f, beep = 0;
         long rec_beat = -1;
@@ -366,7 +410,7 @@ int main(void)
     /* 8. Roll 1BEAT: the output repeats every beat; Roll back OFF: whole loop again */
     {
         static float out[44100 * 50];
-        float u[8] = {100, 0, 0, 1, 160, 160, 0, 0};          /* Bars 2, fixed 160, XFade LOOP */
+        float u[9] = {100, 0, 0, 1, 160, 160, 0, 0};          /* Bars 2, fixed 160, XFade LOOP */
         Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 17};
         float onoff = 1.0f, err = 0, pk = 0;
         double bar = 4 * beat_len(&m);
@@ -396,7 +440,7 @@ int main(void)
     /* 9. LoCut: a loop of 50 Hz + 3 kHz; LoCut 50 (200 Hz) takes the 50 Hz down > 40 dB */
     {
         static float out[44100 * 16];
-        float u[8] = {100, 0, 0, 0, 160, 160, 0, 0};          /* Bars 1 */
+        float u[9] = {100, 0, 0, 0, 160, 160, 0, 0};          /* Bars 1 */
         float onoff = 1.0f;
         Mix m = {160.0, 0, 0.25, 0, 0, 1e9, 1e9, 19};
         double bar = 4 * beat_len(&m);
@@ -431,7 +475,8 @@ int main(void)
             {0, 0, "LIVE"}, {0, 37, "37"}, {0, 100, "LOOP"}, {1, 0, "OFF"}, {1, 50, "200Hz"},
             {1, 100, "2.0k"}, {1, 90, "1.3k"}, {2, 0, "OFF"}, {2, 1, "4BAR"}, {2, 3, "1BAR"},
             {2, 4, "1BEAT"}, {3, 0, "1"}, {3, 7, "8"}, {4, 12, "40"}, {5, 170, "170"},
-            {6, 0, "AUTO"}, {6, 100, "100"}, {7, 0, "AUTO"}, {7, 1, "50Hz"}, {7, 101, "150Hz"}};
+            {6, 0, "AUTO"}, {6, 100, "100"}, {7, 0, "AUTO"}, {7, 1, "50Hz"}, {7, 101, "150Hz"},
+            {8, 0, "JUMP"}, {8, 1, "AUTO"}, {8, 2, "MANU"}};
         for (i = 0; i < (int)(sizeof L / sizeof L[0]); i++) {
             memset(o, 0, sizeof o);
             if (L[i].k == 0) n = ZDL_GetLabel_0(L[i].v, o);
@@ -441,7 +486,8 @@ int main(void)
             else if (L[i].k == 4) n = ZDL_GetLabel_4(L[i].v, o);
             else if (L[i].k == 5) n = ZDL_GetLabel_5(L[i].v, o);
             else if (L[i].k == 6) n = ZDL_GetLabel_6(L[i].v, o);
-            else n = ZDL_GetLabel_7(L[i].v, o);
+            else if (L[i].k == 7) n = ZDL_GetLabel_7(L[i].v, o);
+            else n = ZDL_GetLabel_8(L[i].v, o);
             CHECK(strcmp(o, L[i].want) == 0 && n == (int)strlen(o) && n <= 5, "label %d/%u: '%s' want '%s'", L[i].k, L[i].v, o, L[i].want);
         }
         for (i = 0; i <= 100; i++) { n = ZDL_GetLabel_1((unsigned)i, o); CHECK(n <= 5, "LoCut label too long at %d", i); }
@@ -451,14 +497,14 @@ int main(void)
     /* 11. 20 minutes of random knobs, presses, tempo jumps and silences: bounded, no NaN,
      *     every index inside the buffer */
     {
-        float u[8] = {0, 0, 0, 7, 140, 170, 0, 0}, onoff = 1.0f, mx = 0;
+        float u[9] = {0, 0, 0, 7, 140, 170, 0, 0}, onoff = 1.0f, mx = 0;
         Mix m = {160.0, 0, 0.1, 0, 1, 1e9, 1e9, 23};
         unsigned int r = 99;
         long nbad = 0, oob = 0;
         fresh();
         for (t = 0; t < (long)(1200 * FS); t += 8) {
             r = r * 1664525u + 1013904223u;
-            if ((r >> 8) % 20000 == 0) { int k = (r >> 4) % 8; float mx8[8] = {100, 100, 4, 7, 240, 240, 100, 101};
+            if ((r >> 8) % 20000 == 0) { int k = (r >> 4) % 9; float mx8[9] = {100, 100, 4, 7, 240, 240, 100, 101, 2};
                 u[k] = (float)((r >> 12) % (unsigned)(mx8[k] + 1)); }
             if ((r >> 9) % 30000 == 0) onoff = 1.0f - onoff;
             if ((r >> 10) % 400000 == 0) m.bpm = 120 + (r >> 14) % 60;

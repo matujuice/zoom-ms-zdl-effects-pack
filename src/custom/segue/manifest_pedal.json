@@ -1,6 +1,6 @@
 {
   "effect_name": "Segue",
-  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit mu-law, about 16 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (play only the last 4/2/1 bars or beat). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3 Tracking (no effect on the sound): Thrsh, Listn.",
+  "comment": "Segue - bar-synced transition looper for a whole drum-machine mix (one sequencer, e.g. a Digitakt at 160 BPM). It follows the kick to count bars and phrases (the first kick after loading is bar 1). Press the footswitch (any press, on or off: the LED means nothing) before the phrase ends: it records the next phrase (Bars bars, mono, 8-bit mu-law, about 16 s), and at its end the output jumps to 100 % loop, hiding the sequencer's pattern change. XFade then picks up when turned fully right (LOOP) and fades the live mix back in as you turn it left. Three quick presses reset bar 1 to the next kick. Page 1 Perform: XFade, LoCut (high-pass on the loop only), Roll (play only the last 4/2/1 bars or beat). Page 2 Loop: Bars, LoBPM, HiBPM (the tracker's tempo range; equal = fixed tempo). Page 3: Thrsh, Listn (tracking only, no effect on the sound), Mode (JUMP / AUTO / MANUAL: what the output does when a loop is ready).",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
@@ -12,7 +12,7 @@
       "name": "XFade",
       "max": 100,
       "default": 0,
-      "comment": "Crossfade between the live mix (left, LIVE) and the loop (right, LOOP), DJ style: live full from 0 to 50, loop full from 50 to 100, both full at 50. Right after a loop starts the output is 100 % loop and XFade is ignored until you turn it fully right (pickup); then it works normally. Before the first loop the output is live whatever it says. Default 0 (LIVE)."
+      "comment": "Crossfade between the live mix (left, LIVE) and the loop (right, LOOP), DJ style: live full from 0 to 50, loop full from 50 to 100, both full at 50. In Mode JUMP and AUTO the output follows its own automatic position right after a loop starts (JUMP: 100 % loop; AUTO: 100 % loop, then a fade back to live) and XFade takes over when it meets that position; in MANUAL it always works. Before the first loop the output is live whatever it says. Default 0 (LIVE)."
     },
     {
       "name": "LoCut",
@@ -48,13 +48,19 @@
       "name": "Thrsh",
       "max": 100,
       "default": 0,
-      "comment": "Tracking only, no effect on the sound. How sudden a jump in the kick band must be to count as a kick: AUTO (2.5 x the band's recent average), or 1 (1.3 x: soft kicks count, so may bass notes) to 100 (20 x: only hard kicks). Default AUTO."
+      "comment": "Tracking only, no effect on the sound. How sudden a jump in the kick band must be to count as a kick: AUTO (2 x the band's recent level), or 1 (1.3 x: soft kicks count, so may bass notes) to 100 (20 x: only hard kicks). Default AUTO."
     },
     {
       "name": "Listn",
       "max": 101,
       "default": 0,
       "comment": "Tracking only, no effect on the sound. Where the kick detector listens: a low-pass at AUTO (100 Hz) or 50 to 150 Hz. Lower it if a bassline sits just above the kick. Default AUTO."
+    },
+    {
+      "name": "Mode",
+      "max": 2,
+      "default": 0,
+      "comment": "What happens when a loop is ready. JUMP = the output jumps to 100 % loop and stays there until XFade is turned fully right. AUTO = 100 % loop for one loop length, then it fades back to live by itself over the next one; turning XFade takes over once it meets the fade. MANU (manual) = nothing moves on its own, XFade always does what it shows. Default JUMP."
     }
   ],
   "audio_func_name": "Fx_DLY_Segue",

@@ -18,6 +18,11 @@
  *   5. PICKUP: the output stays 100 % loop, whatever XFade says, until XFade is turned fully
  *      right (LOOP). From then on XFade works normally: turn it left to fade the mix back in
  *      and the loop out.
+ *   That is Mode JUMP. Mode AUTO does steps 4..5 by itself: 100 % loop for one loop length,
+ *   then the output fades back to live over the next one (an automatic XFade from LOOP to
+ *   LIVE, DJ law). Mode MANUAL never moves on its own: XFade always does what it shows.
+ *   In JUMP and AUTO, turning XFade takes over as soon as it meets the automatic position
+ *   (crosses it, or is within 1 of it), like a soft-takeover knob, so there is no jump.
  *   6. The loop keeps playing (inaudible at XFade LIVE) and tracking goes on. The next press
  *      arms the next transition; the new recording overwrites the loop in place.
  *   Until the first loop is recorded the output is the live mix, whatever XFade says.
@@ -34,11 +39,12 @@
  * KICK TRACKING (no effect on the sound)
  *   The input goes through a kick band: two one-pole low-passes at Listn (AUTO = 100 Hz)
  *   minus a 30 Hz one-pole (no rumble or DC). Once per 8-sample block the band's peak feeds
- *   an envelope (instant attack, ~30 ms release) and a slow average of it (~0.3 s). A kick
- *   is an envelope that jumps above Thrsh x the average (AUTO = 2.5 x) and above 30 % of the
- *   recent kick peak (so a quieter low tom or bass note between kicks does not count),
- *   at least 0.45 beat (at HiBPM) after the last one, and only after the envelope fell back
- *   below the threshold (no double triggers on one long kick).
+ *   an envelope (instant attack, 10 ms release) and a 40 ms average of it. An onset is the
+ *   envelope jumping above Thrsh x the average (AUTO = 2 x), at least 0.2 beat (at HiBPM)
+ *   after the last one and only after the envelope fell back below the threshold (no double
+ *   triggers on one long kick). 20 ms later the onset is judged by the peak it reached: a
+ *   kick if at least 70 % of the loudest onset in the last 1..2 s, so bass notes and toms
+ *   clearly quieter than the kick do not count.
  *   The bar clock is a phase-locked loop. It counts beats of T samples; every kick that
  *   lands within 12 % of a beat nudges the phase by a quarter of the error and the tempo by
  *   2 % of it, so it follows the sequencer through the up to ~100 ppm the two crystals
@@ -71,10 +77,11 @@
  *   start: the playhead reads each sample just before it is overwritten, so a loop still
  *   up during the recording keeps playing unchanged until the jump.
  *
- * KNOBS (screen values; pages of three: Perform, Loop, Tracking)
+ * KNOBS (screen values; pages of three: Perform, Loop, Tracking + Mode)
  *   0 XFade 0..100  crossfade, DJ style: 0 LIVE (the mix) .. 100 LOOP; dry gain
- *                   min(1, 2 - 2m), loop gain min(1, 2m), both full at 50. After the jump:
- *                   ignored (100 % loop) until it reaches 100 (pickup). Gains glide ~5 ms.
+ *                   min(1, 2 - 2m), loop gain min(1, 2m), both full at 50. After the jump
+ *                   (JUMP, AUTO): ignored until it meets the automatic position (pickup).
+ *                   Gains glide ~5 ms.
  *   1 LoCut 0..100  high-pass on the loop only (24 dB/octave), to take its kick and bass out
  *                   under the live mix: 0 OFF, 1..100 = 21 Hz..2 kHz (log); shown in Hz
  *   2 Roll  0..4    OFF / 4BAR / 2BAR / 1BAR / 1BEAT: plays only the last 4, 2 or 1 bars or
@@ -83,9 +90,10 @@
  *   3 Bars  0..7    phrase and loop length, shown as 1..8 bars
  *   4 LoBPM 0..240  slowest tempo the tracker may lock to (below 40 reads as 40)
  *   5 HiBPM 0..240  fastest; LoBPM = HiBPM fixes the tempo (swapped if Lo > Hi)
- *   6 Thrsh 0..100  0 AUTO (2.5 x), else how far above its average the kick band must jump
+ *   6 Thrsh 0..100  0 AUTO (2 x), else how far above its average the kick band must jump
  *                   to count as a kick: 1 = 1.3 x (anything), 100 = 20 x (only hard kicks)
  *   7 Listn 0..101  0 AUTO (100 Hz), else the kick band's low-pass: 1..101 = 50..150 Hz
+ *   8 Mode  0..2    JUMP / AUTO / MANU(AL): what the output does when a loop is ready
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -105,7 +113,7 @@
 #define SE_CODE_SECTION(fn)
 #endif
 
-#define SE_MAGIC      0x53455131u        /* "SEQ1": change whenever SeState changes */
+#define SE_MAGIC      0x53455132u        /* "SEQ2": change whenever SeState changes */
 #define SE_N          704000             /* loop buffer, 8-bit mu-law: 15.96 s           */
 #define SE_X          128                /* seam crossfade, samples (2.9 ms)             */
 #define SE_XINV       0.0078125f         /* 1 / SE_X                                     */
@@ -118,6 +126,10 @@
 #define SE_BEEP_LEN   3528               /* one beep or gap: 80 ms                       */
 #define SE_BEEP_W     0.14247585f        /* 2 pi 1000 / 44100: a 1 kHz beep              */
 #define SE_BEEP_AMP   0.2f
+
+#define SE_MODE_JUMP   0                 /* Mode knob                                    */
+#define SE_MODE_AUTO   1
+#define SE_MODE_MANUAL 2
 
 #define SE_WAIT       0                  /* no bar 1 yet (after loading or a reset)      */
 #define SE_ACQ        1                  /* bar 1 known, finding the tempo               */
@@ -162,7 +174,12 @@ typedef struct {
     int   po, fade;        /* the voice fading out at a seam, samples left    */
     int   rs, nj;          /* Roll window start, next jump point              */
     int   roll;            /* Roll setting the window was set for             */
-    int   pickup;          /* 1 = 100 % loop until XFade reaches LOOP         */
+    int   pickup;          /* 1 = the output follows pa until XFade meets it  */
+    float pa;              /* that automatic XFade position, 0..1 (1 = LOOP)  */
+    int   ahold;           /* AUTO: samples left at 100 % loop, -1 = no ramp  */
+    float astep;           /* AUTO: pa step per sample (one loop to fade out) */
+    int   dsign;           /* side of pa the knob is on (0 = not known yet)   */
+    int   mode;            /* SE_MODE_* (from the Mode knob)                  */
     float gd, gw;          /* dry and loop gains (gliding)                    */
     float s1b, s1l, s2b, s2l;   /* LoCut: two state-variable filters          */
     float F;               /* LoCut: tan(pi f / fs), gliding                  */
@@ -173,7 +190,8 @@ typedef struct {
 
 typedef struct {
     float tgd, tgw;        /* XFade gains (DJ law)                            */
-    int   xf_full;         /* XFade at LOOP: picks the knob up                */
+    float xf;              /* XFade position 0..1                             */
+    int   mode;            /* SE_MODE_JUMP / AUTO / MANUAL                    */
     int   cut;             /* LoCut on                                        */
     float F;               /* LoCut: tan(pi f / fs)                           */
     int   roll;            /* 0..4                                            */
@@ -273,6 +291,7 @@ static inline void se_init(SeState *s, float T0)
     s->armed = 0; s->rb = 8; s->rd = 8; s->rec = 0; s->rec_end = 0; s->wi = 0; s->tail = 0;
     s->has_loop = 0; s->L = 0; s->lbars = 1; s->pi = 0; s->po = 0; s->fade = 0;
     s->rs = 0; s->nj = 0; s->roll = 0; s->pickup = 0;
+    s->pa = 0.0f; s->ahold = -1; s->astep = 0.0f; s->dsign = 0; s->mode = 0;
     s->gd = 1.0f; s->gw = 0.0f;
     s->s1b = 0.0f; s->s1l = 0.0f; s->s2b = 0.0f; s->s2l = 0.0f; s->F = 0.0014248f;
     s->beep = 0; s->bs = 0.0f; s->bc = 1.0f;
@@ -288,7 +307,8 @@ static inline void se_prepare(SeParams *P, const float *u)
     m = u[0] * 0.01f;
     P->tgd = 2.0f - 2.0f * m; if (P->tgd > 1.0f) P->tgd = 1.0f;
     P->tgw = 2.0f * m;        if (P->tgw > 1.0f) P->tgw = 1.0f;
-    P->xf_full = (u[0] >= 99.5f);
+    P->xf = m;
+    P->mode = (int)(u[8] + 0.5f);
     P->cut = (u[1] >= 0.5f);
     /* f = 20 Hz x 100^(v/100); the filters want tan(pi f / fs), here at most tan(0.143) */
     t = 20.0f * se_exp2(u[1] * 0.06643856f) * 7.1237928e-5f;  /* pi f / fs */
@@ -349,7 +369,11 @@ static inline void se_finish(SeState *s)
     s->lbars = s->rd;
     s->tail = SE_X;                              /* record on into the tail       */
     s->has_loop = 1;
-    s->pickup = 1;
+    s->pickup = (s->mode != SE_MODE_MANUAL);     /* JUMP, AUTO: 100 % loop now */
+    s->pa = 1.0f;
+    s->ahold = (s->mode == SE_MODE_AUTO) ? s->L : -1;
+    s->astep = se_recip((float)s->L);
+    s->dsign = 0;
     se_jump(s, s->L, 0);                         /* fade from the live tail in    */
     se_window(s);
 }
@@ -480,7 +504,13 @@ static inline void se_block(SeState *s, const SeParams *P, float onoff)
     if (s->T < P->Tmin) s->T = P->Tmin;
     if (s->T > P->Tmax) s->T = P->Tmax;
     if (P->roll != s->roll) { s->roll = P->roll; if (s->has_loop) se_window(s); }
-    if (s->pickup && P->xf_full) s->pickup = 0;
+    s->mode = P->mode;
+    if (s->pickup) {                             /* XFade takes over where it meets pa */
+        float d = 100.0f * (P->xf - s->pa);
+        int sg = (d > 0.0f) ? 1 : -1;
+        if ((d < 1.0f && d > -1.0f) || (s->dsign != 0 && sg != s->dsign)) s->pickup = 0;
+        else s->dsign = sg;
+    }
 }
 
 SE_ALWAYS_INLINE(se_process)
@@ -551,7 +581,12 @@ static inline void se_process(SeState *s, const SeParams *P, float *buf, int n)
 
         /* gains: live only before the first loop, 100 % loop until picked up */
         if (!s->has_loop) { tgd = 1.0f; tgw = 0.0f; }
-        else if (s->pickup) { tgd = 0.0f; tgw = 1.0f; }
+        else if (s->pickup) {                    /* JUMP, AUTO: the automatic XFade */
+            if (s->ahold > 0) s->ahold--;
+            else if (s->ahold == 0 && s->pa > 0.0f) { s->pa -= s->astep; if (s->pa < 0.0f) s->pa = 0.0f; }
+            tgd = 2.0f - 2.0f * s->pa; if (tgd > 1.0f) tgd = 1.0f;
+            tgw = 2.0f * s->pa;        if (tgw > 1.0f) tgw = 1.0f;
+        }
         else { tgd = P->tgd; tgw = P->tgw; }
         gd += SE_GLIDE * (tgd - gd);
         gw += SE_GLIDE * (tgw - gw);
@@ -706,6 +741,14 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
     return se_put_hz(49 + (int)value, out);
 }
 
+/* knob 8 Mode: JUMP, AUTO, MANU */
+int ZDL_GetLabel_8(unsigned int value, char *out)
+{
+    if (value >= 2u) return se_put4(out, 'M', 'A', 'N', 'U');
+    if (value == 1u) return se_put4(out, 'A', 'U', 'T', 'O');
+    return se_put4(out, 'J', 'U', 'M', 'P');
+}
+
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef SEGUE_HOST_TEST
 
@@ -730,7 +773,7 @@ void SEGUE_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     SeState *s;
     SeParams P;
-    float u[8];
+    float u[9];
     int i;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -758,6 +801,7 @@ void SEGUE_AUDIO_FUNC(unsigned int *ctx)
     u[5] = se_ui(params[SEGUE_HIBPM_SLOT], (float)SEGUE_HIBPM_UI_DEFAULT, 240.0f);
     u[6] = se_ui(params[SEGUE_THRSH_SLOT], (float)SEGUE_THRSH_UI_DEFAULT, 100.0f);
     u[7] = se_ui(params[SEGUE_LISTN_SLOT], (float)SEGUE_LISTN_UI_DEFAULT, 101.0f);
+    u[8] = se_ui(params[SEGUE_MODE_SLOT],  (float)SEGUE_MODE_UI_DEFAULT,  2.0f);
 
     se_prepare(&P, u);
     if (s->magic != SE_MAGIC) se_init(s, 0.5f * (P.Tmin + P.Tmax));
