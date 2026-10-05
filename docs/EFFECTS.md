@@ -1,4 +1,4 @@
-# The seven effects
+# The effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -107,3 +107,25 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Tempo | 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+### DirtBox: three distortions and a noise reducer (new, not in a release yet)
+One distortion with three characters on the Model knob, and an automatic noise reducer (ZNR) built in. Drive mostly adds dirt rather than volume: the output is levelled so that an input peaking around -14 dBFS comes out at about the same peak at any Drive.
+
+- **ACID**: the gritty distortion of 303 boxes, a DS-1 type clip that is harder on one side (raspy, with even harmonics). Most of the bass stays under the gain, so basslines keep their weight.
+- **RAT**: after the ProCo RAT. Only the sound above about 70 Hz gets the full gain, the top end softens as Drive goes up (as the RAT's op-amp does), and hard diode clipping follows. Tone is the RAT's Filter, turned round: up = brighter.
+- **METAL**: after the Boss Metal Zone. Two clipping stages for a lot of gain, the lows under 100 Hz are kept out of it so it stays tight, and the mids are scooped (-9 dB at 750 Hz).
+
+These are sketches of each pedal's character, not component-level models. No oversampling, so high notes at full Drive alias a little.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Model | ACID, RAT, METAL | Which distortion. Switching fades the effect back in over a few ms so it doesn't click. |
+| Drive | 0..100 | How hard the signal hits the clipper: 0.5x at 0 up to 120x (ACID), 300x (RAT) or 60x into a second 6x stage (METAL). |
+| Tone | 0..100 | 100 = brightest on all three. ACID: crossfades a low-pass and a high-pass at 600 Hz, flat at 50. RAT: low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. |
+| ZNR | 0..100 | Noise reducer on the distorted sound only (the dry sound is never touched). It measures your noise floor by itself and stays shut this far above it: +6 dB at 1, +15 dB at 50, +24 dB at 100. 0 = off. |
+| Level | 0..100 | Distorted level, 50 = about the input level, 100 = +6 dB. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. At 50 you get parallel distortion: the clean kick stays under the dirt. |
+
+**How ZNR keeps kick tails.** It listens to the clean input, not the distorted sound, so it follows the kick's real decay. The noise floor it measures can never be set above -60 dBFS, so in a track that never goes quiet the threshold stays at -45 dBFS or lower (ZNR 50) and never climbs into the music. Below the threshold it does not cut: it waits 50 ms, then turns the distortion down gently (a 1:3 expander) over about 150 ms, so a tail fades the way it fades on the input. In the host test a 160 BPM kick pattern came through unchanged while the noise between songs dropped by about 30 dB.
+
+Try: Digitakt kick and bass at Drive 60, Mix 50 for parallel grit; RAT with Tone 30 for a fat, dark fuzz on a Shruthi bass; METAL on hats and snares only.
