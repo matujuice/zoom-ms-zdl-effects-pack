@@ -1,12 +1,11 @@
 """Generate src/airwindows/common/covers/DirtBox.json (128x64 cover override).
 
-Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up, circuit-bent one.
+Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up one.
   * the case: DubSiren's outer wall, inner lip and slotted screws, knocked about: the top
     wall dented in, one corner folded, the lip sprung loose at one spot, one screw turned
     crooked and two gone (bare holes with rust round them),
   * the classic acid smiley where DubSiren has its woofer,
   * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
-  * circuit bending on the right: a drilled hole with two jumper wires to croc clips,
   * smiley and title centred together as one group, a short scratch, DubSiren's brushed-metal grain.
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
@@ -36,7 +35,7 @@ def bez(p0,p1,p2,p3,n=40):
 def build():
     rnd=random.Random(5)
     c=Canvas()
-    TITLE,TX,TY="DIRTBOX",41,12        # smiley (21) + 5 + title (68): x 15..108, centred between the lips with the wires
+    TITLE,TX,TY="DIRTBOX",43,12        # smiley (21) + 5 + title (68): x 17..110, centred
     # title: the pack's 3x5 font at scale 3 with DubSiren's stencil slit; worn, not wrecked:
     # a few chipped pixels on the edges and one letter (T) sitting a pixel low, as if knocked
     # the pack's chunky title letters (WaveFold's font scaling: 2 px stems)
@@ -74,7 +73,7 @@ def build():
               "...##...........##...",
               "....####.....####....",
               ".......#######.......")
-    face = set((15 + x, 10 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
+    face = set((17 + x, 10 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
     for p in face: c.px(*p)
     # gap round the title so it stays readable, then the title
     for (x,y) in main:
@@ -110,14 +109,6 @@ def build():
         for (dx,dy) in ((-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)): c.px(sx+dx,sy+dy)
     head(6,6,'-'); hole(121,6); head(121,57,'/'); hole(8,53)
     rust=[(121,6,6),(8,53,7),(4,59,5)]
-    # circuit bending on the right: a drilled hole, two jumper wires looping out to croc clips,
-    # and a body-contact screw
-    hx,hy=117,26
-    for (dx,dy) in ((-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)): c.px(hx+dx,hy+dy)
-    for pts in (bez((hx,hy),(124,16),(112,6),(115,12)), bez((hx,hy),(124,33),(116,37),(113,32))):
-        for p in pts: c.px(*p)
-    for (ex,ey,s) in ((115,12,-1),(113,32,-1)):
-        c.px(ex,ey); c.px(ex+s,ey-1); c.px(ex+s,ey+1); c.px(ex+2*s,ey-1); c.px(ex+2*s,ey+1); c.px(ex+3*s,ey)
     # labels and dials, as on every cover
     for (kid,kx,ky),label in zip(cc.knob_layout(3),("MODEL","DRIVE","TONE")):
         cx=kx+10; w=len(label)*4-1
