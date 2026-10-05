@@ -1,15 +1,19 @@
 """Generate src/airwindows/common/covers/DirtBox.json (128x64 cover override).
 
-Same layout as WaveFold's cover: two equal rectangles mirrored around the middle
-of the screen. On the left, a box with two cycles of a sine clipped flat at the
-limit (a distortion's hard clip), while dots show the peaks the clip cut off. On
-the right, DIRT black on white in the top half, BOX white on a black block in the
-bottom half.
+Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up, circuit-bent one.
+  * the case: DubSiren's outer wall, inner lip and slotted screws, knocked about: the top
+    wall dented in, one corner folded, the lip sprung loose at one spot, one screw turned
+    crooked and two gone (bare holes with rust round them),
+  * an acid smiley where DubSiren has its woofer, with a chip out of the rim and a drip
+    running from the chin,
+  * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
+  * circuit bending on the right: a drilled hole with two jumper wires to croc clips,
+  * a couple of long scratches, DubSiren's brushed-metal grain worn away in one patch.
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
-Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
+Also writes cover_preview.png next to this script (black on white).
 """
-import json, math, sys
+import json, math, random, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]        # src/custom/dirtbox/make_cover.py -> repo root
@@ -20,113 +24,126 @@ import custom_covers as cc
 from custom_covers import _VSquash
 
 NAME = "DirtBox"
-LABELS = ("MODEL", "DRIVE", "TONE")
-W, H = 128, 64
-ART_TOP, ART_BOTTOM = 0, 34  # the art lives in rows 0..34, labels start at 37
-RECT_W = 61                  # box x 0..60, gap 61..66, title x 67..127: mirrored around 63.5
-BOX_X0, BOX_X1 = 0, RECT_W - 1
-TXT_X0 = W - RECT_W
-COLS = (2, 6, 2)             # font column -> px: 2 px stems like the pack's other titles, 4 x 10 + 3 x 3 = 49
-ROWS = (3, 2, 3, 2, 3)       # font row -> px: letters 13 tall
-LGAP = 3
-TXT_IN = (RECT_W - (4 * sum(COLS) + 3 * LGAP)) // 2   # 6 px side margin inside the title rectangle
-SPLIT = (ART_TOP + ART_BOTTOM) // 2                   # row 17: DIRT in rows 0..16, BOX block 18..34
-FRAME = True                 # outline the title rectangle like the wave box
-ROUND = True                 # clip the rectangles' corners, like DubSiren's box
-LIMIT = 0.40                 # clip limit, as a fraction of the sine's peak
-AMP = 14.0                   # sine peak in px
-PERIOD = (RECT_W - 5) / 2.0  # two full cycles inside the box
-
-
-def big_text(c, text, x, y, v=1):
-    for ch in text:
-        rows = Canvas._FONT[ch]
-        yy = y
-        for r, row in enumerate(rows):
-            xx = x
-            for k, bit in enumerate(row):
-                if bit == '1':
-                    for dy in range(ROWS[r]):
-                        for dx in range(COLS[k]):
-                            c.px(xx + dx, yy + dy, v)
-                xx += COLS[k]
-            yy += ROWS[r]
-        x += sum(COLS) + LGAP
-
-
-def line(c, x0, y0, x1, y1):
-    n = max(abs(x1 - x0), abs(y1 - y0), 1)
-    for i in range(n + 1):
-        c.px(round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n))
-
-
-def clip(v):
-    """Flat at +-LIMIT, like a hard clip."""
-    return max(-LIMIT, min(LIMIT, v))
-
-
+A=1.4
+def line(c,x0,y0,x1,y1,v=1,skip=None):
+    n=max(abs(x1-x0),abs(y1-y0),1)
+    for i in range(n+1):
+        x,y=round(x0+(x1-x0)*i/n),round(y0+(y1-y0)*i/n)
+        if skip and skip(x,y): continue
+        c.px(x,y,v)
+def bez(p0,p1,p2,p3,n=40):
+    return [(round((1-t)**3*p0[0]+3*(1-t)**2*t*p1[0]+3*(1-t)*t*t*p2[0]+t**3*p3[0]),
+             round((1-t)**3*p0[1]+3*(1-t)**2*t*p1[1]+3*(1-t)*t*t*p2[1]+t**3*p3[1])) for t in [i/n for i in range(n+1)]]
 def build():
-    c = Canvas()
-    c.rect(BOX_X0, ART_TOP, BOX_X1, ART_BOTTOM)
-    cy = (ART_TOP + ART_BOTTOM) / 2
-    x0, x1 = BOX_X0 + 2, BOX_X1 - 2
-    s = lambda x: math.sin(2 * math.pi * (x - x0) / PERIOD)
-
-    # ghost: the part of the sine the clip removed, a dot every 2 px along the curve
-    run, p = 2.0, None
-    for i in range(x0 * 8, x1 * 8 + 1):
-        x = i / 8.0
-        v = s(x)
-        if abs(v) <= LIMIT + 0.04:
-            p, run = None, 2.0
-            continue
-        y = cy - AMP * v
-        if p:
-            run += math.hypot(x - p[0], y - p[1])
-        p = (x, y)
-        if run >= 2.0:
-            c.px(round(x), round(y))
-            run = 0.0
-
-    # clipped sine: solid, 2 px thick
-    for off in (0, 1):
-        prev = None
-        for x in range(x0, x1 + 1):
-            y = round(cy - AMP * clip(s(x))) + off
-            if prev is None:
-                c.px(x, y)
-            else:
-                line(c, x - 1, prev, x, y)
-            prev = y
-
-    # title: DIRT black on white in the top half, BOX knocked out of a black block in
-    # the bottom half; the letters sit at the same distance from each half's edges
-    ty = (SPLIT - ART_TOP - sum(ROWS)) // 2
-    if FRAME:
-        c.rect(TXT_X0, ART_TOP, W - 1, ART_BOTTOM)
-    for y in range(SPLIT + 1, ART_BOTTOM + 1):
-        c.hline(TXT_X0, W - 1, y)
-    big_text(c, "DIRT", TXT_X0 + TXT_IN, ART_TOP + ty)
-    big_text(c, "BOX", TXT_X0 + TXT_IN + (sum(COLS) + LGAP) // 2, SPLIT + 1 + ty, v=0)
-    if ROUND:
-        for x0, x1 in ((BOX_X0, BOX_X1), (TXT_X0, W - 1)):
-            for x, y in ((x0, ART_TOP), (x1, ART_TOP), (x0, ART_BOTTOM), (x1, ART_BOTTOM)):
-                c.px(x, y, 0)
-            c.px(x0 + 1, ART_TOP + 1); c.px(x1 - 1, ART_TOP + 1)
-            c.px(x0 + 1, ART_BOTTOM - 1); c.px(x1 - 1, ART_BOTTOM - 1)
-
-    # --- labels and dials under the firmware value boxes (page 1 knobs) --------
-    for (kid, kx, ky), label in zip(cc.knob_layout(3), LABELS):
-        cx = kx + 10
-        w = len(label) * 4 - 1
-        lx = max(2, cx - w // 2)
-        c.draw_text(label, lx, 37, scale=1, spacing=1)
-        cyd = ky + 7
-        sq = _VSquash(c, cyd)
-        sq.circle(cx, cyd, 6)
-        sq.vline(cx, cyd - 5, cyd)
-    return c                                  # no bottom rule
-
+    rnd=random.Random(5)
+    c=Canvas()
+    TITLE,TX,TY="DIRTBOX",38,8
+    # title: the pack's 3x5 font at scale 3 with DubSiren's stencil slit; worn, not wrecked:
+    # a few chipped pixels on the edges and one letter (T) sitting a pixel low, as if knocked
+    # the pack's chunky title letters (WaveFold's font scaling: 2 px stems)
+    COLS,ROWS,LG=(2,4,2),(3,2,3,2,3),2
+    main=set(); x=TX
+    for ch in TITLE:
+        yy=TY
+        for r,row in enumerate(Canvas._FONT[ch]):
+            xx=x
+            for k,bit in enumerate(row):
+                if bit=='1':
+                    for dy in range(ROWS[r]):
+                        for dx in range(COLS[k]): main.add((xx+dx,yy+dy))
+                xx+=COLS[k]
+            yy+=ROWS[r]
+        x+=sum(COLS)+LG
+    edge=[p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)))]
+    for p in rnd.sample(sorted(edge),3): main.discard(p)
+    # acid smiley where DubSiren has its woofer: a filled face, eyes and grin knocked out,
+    # one chip out of the rim and a drip running down from the chin
+    fx,fy,R=19,18,10.5
+    face=set()
+    for y in range(0,40):
+        for x in range(0,40):
+            if (x-fx)**2+((y-fy)*A)**2<=R*R: face.add((x,y))
+    for (x,y) in list(face):
+        if ((x-fx+3.5)**2+((y-fy+3)*A)**2<=3.2) or ((x-fx-3.5)**2+((y-fy+3)*A)**2<=3.2): face.discard((x,y))   # eyes
+        d=math.hypot(x-fx,(y-fy+1)*A)
+        if 5.0<=d<=6.4 and (y-fy+1)*A>2.0: face.discard((x,y))                                       # grin
+    for p in ((27,11),(28,11),(28,12),(27,12),(29,12)): face.discard(p)                              # chipped rim
+    for y in range(fy+7,fy+12): face.add((fx+3,y))                                                    # drip
+    face.add((fx+2,fy+11)); face.add((fx+4,fy+11)); face.add((fx+3,fy+12))
+    for p in face: c.px(*p)
+    # gap round the title so it stays readable, then the title
+    for (x,y) in main:
+        for dy in (-1,0,1):
+            for dx in (-1,0,1): c.px(x+dx,y+dy,0)
+    for p in main: c.px(*p)
+    # the metal case, DubSiren's construction, knocked about: the outer wall dented in
+    # along the top (a soft dip, not a gap), one corner folded in, the inner lip sprung loose
+    for x in range(2,126):
+        y=0+(1 if 72<=x<=82 else 0)+(1 if 75<=x<=79 else 0)
+        c.px(x,y)
+        if x>=7: c.px(x,63)
+    for y in range(2,62):
+        c.px(127,y)
+        if y<58: c.px(0,y)
+    line(c,0,58,5,63)                                                    # folded corner
+    c.px(1,1); c.px(126,1); c.px(126,62)
+    for x in range(2,126):
+        y=2+(1 if 74<=x<=80 else 0)
+        if not (100<=x<=104): c.px(x,y)                                  # lip sprung at one spot
+        if x>=8: c.px(x,61)
+    for y in range(2,62):
+        c.px(125,y)
+        if y<57: c.px(2,y)
+    line(c,2,57,6,61)
+    line(c,100,2,104,4)                                                  # the loose lip bends up
+    # screws: one left, one turned crooked, two gone (bare holes with rust round them)
+    def head(sx,sy,slot):
+        for (dx,dy) in ((-2,-1),(-2,0),(-2,1),(2,-1),(2,0),(2,1),(-1,-2),(0,-2),(1,-2),(-1,2),(0,2),(1,2)): c.px(sx+dx,sy+dy)
+        if slot=='-': c.hline(sx-1,sx+1,sy)
+        else: c.px(sx-1,sy+1); c.px(sx,sy); c.px(sx+1,sy-1)
+    def hole(sx,sy):
+        for (dx,dy) in ((-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)): c.px(sx+dx,sy+dy)
+    head(6,6,'-'); hole(121,6); head(121,57,'/'); hole(8,53)
+    rust=[(121,6,6),(8,53,7),(4,59,5)]
+    # circuit bending on the right: a drilled hole, two jumper wires looping out to croc clips,
+    # and a body-contact screw
+    hx,hy=118,27
+    for (dx,dy) in ((-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)): c.px(hx+dx,hy+dy)
+    for pts in (bez((hx,hy),(124,17),(110,11),(112,18)), bez((hx,hy),(124,35),(113,38),(110,31))):
+        for p in pts: c.px(*p)
+    for (ex,ey,s) in ((112,18,-1),(110,31,-1)):
+        c.px(ex,ey); c.px(ex+s,ey-1); c.px(ex+s,ey+1); c.px(ex+2*s,ey-1); c.px(ex+2*s,ey+1); c.px(ex+3*s,ey)
+    # labels and dials, as on every cover
+    for (kid,kx,ky),label in zip(cc.knob_layout(3),("MODEL","DRIVE","TONE")):
+        cx=kx+10; w=len(label)*4-1
+        c.draw_text(label,max(2,cx-w//2),37,scale=1,spacing=1)
+        sq=_VSquash(c,ky+7); sq.circle(cx,ky+7,6); sq.vline(cx,ky+2,ky+7)
+    def free(x,y,h):
+        return all(not c.pixels[yy][xx] for yy in range(max(0,y-h),min(64,y+h+1)) for xx in range(max(0,x-h),min(128,x+h+1)))
+    boxes=[(kx-5,41,kx+27,63) for (_k,kx,_y) in cc.knob_layout(3)]
+    inbox=lambda x,y: any(a<=x<=b and d<=y<=e for (a,d,b,e) in boxes)
+    # long scratches: thin, single-pixel, broken where they cross anything
+    scr=[(98,44,123,33),(30,32,44,29)]
+    marks=[]
+    for (a,b,d,e) in scr:
+        n=max(abs(d-a),abs(e-b))
+        for i in range(n+1):
+            x,y=round(a+(d-a)*i/n),round(b+(e-b)*i/n)
+            if free(x,y,1) and not inbox(x,y): marks.append((x,y))
+    # brushed-metal grain (DubSiren's staggered lattice), worn away in a scuffed patch
+    for y0 in range(4,60,3):
+        off=((y0//3)*2)%5
+        for x0 in range(4+off,123,5):
+            if inbox(x0,y0) or math.hypot(x0-88,(y0-30)*A)<9: continue
+            if free(x0,y0,3): marks.append((x0,y0))
+    # rust: clusters round the bare holes and the folded corner
+    for (rx,ry,r) in rust:
+        for _ in range(26):
+            a=rnd.random()*6.283; d=rnd.random()**0.6*r
+            x,y=round(rx+d*math.cos(a)),round(ry+d*math.sin(a)/A)
+            if 3<=x<=124 and 3<=y<=60 and free(x,y,0) and not inbox(x,y) and rnd.random()<0.6: marks.append((x,y))
+    for p in marks: c.px(*p)
+    return c
 
 if __name__ == "__main__":
     c = build()
