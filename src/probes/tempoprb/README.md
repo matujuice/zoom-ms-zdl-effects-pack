@@ -28,6 +28,8 @@ Put TempoPrb alone in a patch, feed it nothing (or a quiet sound), Level about 5
    SysEx from the iPhone (it showed no effect in the iPhone test, 2026-10-05; a beep
    here would mean it does reach the pedal). Beeps when the tempo changes = some value
    the probe can read follows it.
+   From the PC instead of the iPhone: `py tools/zoom_sysex.py tempo 140` (close
+   Effect Manager first); `py tools/zoom_sysex.py listen` shows what the pedal sends.
    High beep = second table, low beep = first table. Constant beeping = something
    changes all the time (note that too). Repeat with Watch ROW and Watch X.
 4. **The TAPEECH3 recipe** (Mode CLICK, Watch RCPE, Sync S4, then Call ON last): clicks
