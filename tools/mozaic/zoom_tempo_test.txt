@@ -1,0 +1,300 @@
+// Zoom MS tempo sync test v1, for Mozaic (AUM).
+// Talks to an original Zoom MS pedal (MS-50G / MS-60B / MS-70CDR) over USB SysEx.
+// AUM routing: Mozaic MIDI out -> Zoom, Zoom MIDI out -> Mozaic in.
+//
+// Knobs: 0 Tempo (100..227 BPM)   1 Offset (0..254 ms, how early edits are sent)
+//        2 Slot (1..6, the effect slot to poke)   3 Param (0 on/off, 2..10 = knob 1..9)
+// Pads (Mozaic shows 4): 0 Sweep Param 0..100..0   1 Latency test on/off
+//        2 Ping: USB round trip in ms   3 Hello: ask the pedal its model, sets the ID
+// (Send tempo, Follow host, ID swap and Edit enable are in the code as hidden pads 4..7;
+// the knob BPM still sends the patch tempo when turned.)
+// All results go to the Mozaic log (the "Log" view).
+//
+// SysEx (Mozaic adds F0/F7 itself):
+//   edit enable  52 00 id 50
+//   param edit   52 00 id 31 slot param LSB MSB   (slot 0-based, only slots 0..2 accept edits)
+//   patch tempo  52 00 id 31 03 08 LSB MSB
+//   ping         52 00 id 33   (get bank/patch number, the pedal replies)
+//   identity     7E 7F 06 01   (reply 7E ch 06 02 52 <model> ..., 58 = MS-50G, 5F = MS-60B)
+
+@OnLoad
+  zid = 0x58
+  tempo = 160
+  lastsent = 0
+  offset = 0
+  slot = 0
+  param = 2
+  follow = 0
+  lat = 0
+  onpending = 0
+  offpending = 0
+  sweep = 0
+  sweepval = 0
+  sweepdir = 1
+  nextsweep = 0
+  t0 = 0
+  waiting = 0
+  // Mozaic wants every variable set here before other events use it
+  onat = 0
+  offat = 0
+  barlen = 0
+  nextbar = 0
+  now = 0
+  ps = 0
+  pp = 0
+  pv = 0
+  k = 0
+  v = 0
+  t = 0
+  p = 0
+  n = 0
+  s = 0
+  model = 0
+  wait = 0
+  SetKnobValue 0, tempo - 100
+  SetKnobValue 1, 0
+  SetKnobValue 2, 0
+  SetKnobValue 3, 24
+  LabelKnobs {Zoom tempo test}
+  LabelKnob 0, {BPM }, tempo
+  LabelKnob 1, {Early }, offset, {ms}
+  LabelKnob 2, {Slot }, slot + 1
+  LabelKnob 3, {Param }, param
+  LabelPad 0, {Sweep}
+  LabelPad 1, {Latency test}
+  LabelPad 2, {Ping}
+  LabelPad 3, {Hello}
+  LabelPad 6, {ID 58}
+  LabelPad 7, {Edit enable}
+  SetTimerInterval 5
+  StartTimer
+  Call @SendEnable
+  Log {Loaded. ID 58 (hex).}
+@End
+
+@SendEnable
+  syx[0] = 0x52
+  syx[1] = 0x00
+  syx[2] = zid
+  syx[3] = 0x50
+  SendSysex syx, 4
+@End
+
+// Sends ps / pp / pv as a parameter edit
+@SendParam
+  syx[0] = 0x52
+  syx[1] = 0x00
+  syx[2] = zid
+  syx[3] = 0x31
+  syx[4] = ps
+  syx[5] = pp
+  syx[6] = pv % 128
+  syx[7] = Div pv, 128
+  SendSysex syx, 8
+@End
+
+@SendTempo
+  ps = 3
+  pp = 8
+  pv = tempo
+  Call @SendParam
+  lastsent = tempo
+  Log {Tempo sent: }, tempo
+@End
+
+@OnKnobChange
+  k = LastKnob
+  v = GetKnobValue k
+  if k = 0
+    t = 100 + Round v
+    if t <> tempo
+      tempo = t
+      Call @SendTempo
+    endif
+    LabelKnob 0, {BPM }, tempo
+  elseif k = 1
+    offset = 2 * Round v
+    LabelKnob 1, {Early }, offset, {ms}
+  elseif k = 2
+    slot = RoundDown (v / 22)
+    if slot > 5
+      slot = 5
+    endif
+    LabelKnob 2, {Slot }, slot + 1
+  elseif k = 3
+    param = RoundDown (v / 12)
+    if param > 10
+      param = 10
+    endif
+    LabelKnob 3, {Param }, param
+  endif
+@End
+
+@OnPadDown
+  p = LastPad
+  // Only 4 pads show: map them to the actions below
+  if p = 0
+    p = 3
+  elseif p = 1
+    p = 5
+  elseif p = 3
+    p = 0
+  elseif p = 4
+    p = 1
+  elseif p = 5
+    p = 4
+  endif
+  if p = 0
+    syx[0] = 0x7E
+    syx[1] = 0x7F
+    syx[2] = 0x06
+    syx[3] = 0x01
+    t0 = SystemTime
+    waiting = 1
+    SendSysex syx, 4
+    Log {Hello sent (identity request)}
+  elseif p = 1
+    Call @SendEnable
+    Call @SendTempo
+  elseif p = 2
+    syx[0] = 0x52
+    syx[1] = 0x00
+    syx[2] = zid
+    syx[3] = 0x33
+    t0 = SystemTime
+    waiting = 1
+    SendSysex syx, 4
+    Log {Ping sent}
+  elseif p = 3
+    Call @SendEnable
+    sweep = 1
+    sweepval = 0
+    sweepdir = 1
+    nextsweep = SystemTime
+    Log {Sweep slot }, slot + 1, { param }, param
+  elseif p = 4
+    follow = 1 - follow
+    Log {Follow host: }, follow
+  elseif p = 5
+    lat = 1 - lat
+    onpending = 0
+    if lat = 0 and offpending = 1
+      ps = slot
+      pp = 0
+      pv = 0
+      Call @SendParam
+      offpending = 0
+    endif
+    Log {Latency test: }, lat, {  early }, offset, { ms}
+  elseif p = 6
+    if zid = 0x58
+      zid = 0x5F
+      LabelPad 6, {ID 5F}
+    else
+      zid = 0x58
+      LabelPad 6, {ID 58}
+    endif
+    Call @SendEnable
+    Log {ID now (decimal) }, zid, {  88 = 58, 95 = 5F}
+  elseif p = 7
+    Call @SendEnable
+    Log {Edit enable sent}
+  endif
+@End
+
+@OnSysex
+  ReceiveSysex rx
+  n = SysexSize
+  s = 0
+  if rx[0] = 0xF0
+    s = 1
+  endif
+  if waiting = 1
+    Log {Reply after }, SystemTime - t0, { ms}
+    waiting = 0
+  endif
+  Log {RX }, n, {: }, rx[s], { }, rx[s+1], { }, rx[s+2], { }, rx[s+3], { }, rx[s+4], { }, rx[s+5], { }, rx[s+6], { }, rx[s+7]
+  if rx[s] = 0x7E and rx[s+3] = 0x02 and rx[s+4] = 0x52
+    model = rx[s+5]
+    Log {Zoom model code (decimal) }, model, {  88 = MS-50G, 95 = MS-60B, 97 = MS-70CDR}
+    zid = model
+    if zid = 0x5F
+      LabelPad 6, {ID 5F}
+    elseif zid = 0x58
+      LabelPad 6, {ID 58}
+    endif
+    Call @SendEnable
+  endif
+  if rx[s] = 0x52 and rx[s+3] = 0x31 and rx[s+4] = 3 and rx[s+5] = 8
+    Log {Pedal says tempo }, rx[s+6] + 128 * rx[s+7]
+  endif
+@End
+
+// Stops Mozaic passing other MIDI straight through
+@OnMidiInput
+@End
+
+// Latency test: switch the slot's effect on now, off one beat later
+@LatOn
+  ps = slot
+  pp = 0
+  pv = 1
+  Call @SendParam
+  onpending = 0
+  offat = SystemTime + 60000 / HostTempo
+  offpending = 1
+  Log {ON sent}
+@End
+
+@OnNewBar
+  barlen = 240000 / HostTempo
+  nextbar = SystemTime + barlen
+  if follow = 1
+    t = Round HostTempo
+    if t <> lastsent
+      tempo = t
+      Call @SendTempo
+    endif
+  endif
+  if lat = 1
+    // The bar event can arrive just before the timer reaches onat: then the ON is due now
+    if onpending = 1
+      Call @LatOn
+    endif
+    // Effect on from (next downbeat - offset) for one beat
+    onat = nextbar - offset
+    onpending = 1
+    wait = Round (onat - SystemTime)
+    Log {Bar: effect on in }, wait, { ms}
+  endif
+@End
+
+@OnTimer
+  now = SystemTime
+  if sweep = 1 and now >= nextsweep
+    ps = slot
+    pp = param
+    pv = sweepval
+    Call @SendParam
+    nextsweep = now + 20
+    sweepval = sweepval + 2 * sweepdir
+    if sweepval > 100
+      sweepval = 100
+      sweepdir = -1
+    elseif sweepval < 0
+      sweep = 0
+      Log {Sweep done}
+    endif
+  endif
+  if onpending = 1 and now >= onat
+    Call @LatOn
+  endif
+  if offpending = 1 and now >= offat
+    ps = slot
+    pp = 0
+    pv = 0
+    Call @SendParam
+    offpending = 0
+    Log {OFF sent}
+  endif
+@End
