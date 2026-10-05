@@ -6,7 +6,8 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up one.
     crooked and two gone (bare holes with rust round them),
   * the classic acid smiley where DubSiren has its woofer,
   * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
-  * smiley and title centred together as one group, a short scratch, DubSiren's brushed-metal grain.
+  * smiley sticker (turned 10 degrees, lower right edge peeling) and title centred as one group;
+    the title one size up and dirtied; uneven grimy grain, heavier toward the edges.
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
 Also writes cover_preview.png next to this script (black on white).
@@ -35,11 +36,11 @@ def bez(p0,p1,p2,p3,n=40):
 def build():
     rnd=random.Random(5)
     c=Canvas()
-    TITLE,TX,TY="DIRTBOX",43,12        # smiley (21) + 5 + title (68): x 17..110, centred
-    # title: the pack's 3x5 font at scale 3 with DubSiren's stencil slit; worn, not wrecked:
-    # a few chipped pixels on the edges and one letter (T) sitting a pixel low, as if knocked
-    # the pack's chunky title letters (WaveFold's font scaling: 2 px stems)
-    COLS,ROWS,LG=(2,4,2),(3,2,3,2,3),2
+    TITLE,TX,TY="DIRTBOX",40,10        # sticker (~23) + 4 + title (75): x 13..114, centred
+    # title: the pack's chunky letters (WaveFold's scaling), one size up (9 x 16 per letter),
+    # then dirtied: rough chipped edges, a few pits in the paint, grime crept past the edges
+    # and one fine scratch through it
+    COLS,ROWS,LG=(2,5,2),(4,2,4,2,4),2
     main=set(); x=TX
     for ch in TITLE:
         yy=TY
@@ -52,34 +53,61 @@ def build():
                 xx+=COLS[k]
             yy+=ROWS[r]
         x+=sum(COLS)+LG
-    edge=[p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)))]
-    for p in rnd.sample(sorted(edge),3): main.discard(p)
-    # the classic acid smiley where DubSiren has its woofer, drawn by hand (rows are 1.4x
-    # taller than columns on the screen, so 21 x 16 pixels reads as round): a 2 px rim,
-    # upright oval eyes, a wide grin with the little creases at its ends
-    SMILEY = (".......#######.......",
-              "....####.....####....",
-              "...##...........##...",
-              "..##..##.....##..##..",
-              ".##...##.....##...##.",
-              ".##...##.....##...##.",
-              "##....##.....##....##",
-              "##.................##",
-              "##.#.............#.##",
-              "##..##.........##..##",
-              ".##...##.....##...##.",
-              ".##.....#####.....##.",
-              "..##.............##..",
-              "...##...........##...",
-              "....####.....####....",
-              ".......#######.......")
-    face = set((17 + x, 10 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
-    for p in face: c.px(*p)
-    # gap round the title so it stays readable, then the title
+    N4=((1,0),(-1,0),(0,1),(0,-1))
+    edge=sorted(p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in N4))
+    inner=sorted(p for p in main if p not in set(edge))
+    for p in rnd.sample(edge,len(edge)//16): main.discard(p)                 # chipped edges
+    for p in rnd.sample(inner,len(inner)//70): main.discard(p)              # pits
+    for k in range(24):                                                     # the scratch
+        main.discard((round(84+k*0.9),round(22-k*0.35)))
+    outside=sorted(set((x+dx,y+dy) for (x,y) in edge for dx,dy in N4) - main)
+    grime=set(rnd.sample(outside,len(outside)//40))
+    # the smiley is a sticker: the classic acid face (round rim, upright oval eyes, grin with
+    # creases), stuck on a little crooked (turned 10 degrees), its lower right edge peeling:
+    # that part is folded back over the face, showing its dithered backing.
+    # Drawn as shapes in screen-true units (y x 1.4), sampled 8 x 8 per pixel.
+    scx,scy,R,TH=24.5,17.5*A,10.5,math.radians(-10)
+    nx,ny,cut=0.7071,0.7071,7.4                                             # fold line (local)
+    ct,st=math.cos(TH),math.sin(TH)
+    def local(X,Y):
+        X-=scx; Y-=scy
+        return X*ct+Y*st, -X*st+Y*ct
+    def in_disc(u,v): return u*u+v*v<=R*R
+    def sample(u,v):
+        """'ink', 'back' (folded flap), 'paper' (sticker face) or None (bare metal)"""
+        d=u*nx+v*ny
+        if in_disc(u,v) and d<=cut:
+            pu,pv=u-2*(d-cut)*nx,v-2*(d-cut)*ny                            # mirror over the fold
+            if in_disc(pu,pv) and pu*nx+pv*ny>cut and d>cut-(R-cut)-0.1:
+                if abs(math.hypot(pu,pv)-R)<1.3 or d>cut-1.0: return 'ink'  # flap edge and fold
+                return 'back'
+            r=math.hypot(u,v)
+            if r>=R-1.7: return 'ink'                                       # rim
+            if ((abs(u)-3.4)/1.45)**2+((v+3.0)/2.7)**2<=1.0: return 'ink'   # eyes
+            g=math.hypot(u,v+0.4)
+            if 5.0<=g<=6.5 and v+0.4>1.6: return 'ink'                      # grin
+            for sx in (-1,1):                                               # creases
+                if abs(u-sx*6.9)<0.75 and 0.2<v<2.6: return 'ink'
+            return 'paper'
+        return None
+    face=set(); back=set(); sticker=set()
+    for y in range(4,33):
+        for x in range(8,42):
+            cnt={'ink':0,'back':0,'paper':0}
+            for sy in range(8):
+                for sx in range(8):
+                    k=sample(*local(x+(sx+0.5)/8.0,(y+(sy+0.5)/8.0)*A))
+                    if k: cnt[k]+=1
+            tot=cnt['ink']+cnt['back']+cnt['paper']
+            if tot>=20: sticker.add((x,y))
+            if cnt['ink']>=26: face.add((x,y))
+            elif cnt['back']>=24 and (x+y)%2==0: back.add((x,y))
+    for p in face|back: c.px(*p)
+    # gap round the title so it stays readable, then the title and its grime
     for (x,y) in main:
         for dy in (-1,0,1):
             for dx in (-1,0,1): c.px(x+dx,y+dy,0)
-    for p in main: c.px(*p)
+    for p in main|grime: c.px(*p)
     # the metal case, DubSiren's construction, knocked about: the outer wall dented in
     # along the top (a soft dip, not a gap), one corner folded in, the inner lip sprung loose
     for x in range(2,126):
@@ -117,7 +145,7 @@ def build():
     def free(x,y,h):
         return all(not c.pixels[yy][xx] for yy in range(max(0,y-h),min(64,y+h+1)) for xx in range(max(0,x-h),min(128,x+h+1)))
     boxes=[(kx-5,41,kx+27,63) for (_k,kx,_y) in cc.knob_layout(3)]
-    inbox=lambda x,y: any(a<=x<=b and d<=y<=e for (a,d,b,e) in boxes)
+    inbox=lambda x,y: (x,y) in sticker or any(a<=x<=b and d<=y<=e for (a,d,b,e) in boxes)
     # long scratches: thin, single-pixel, broken where they cross anything
     scr=[(4,44,13,40)]
     marks=[]
@@ -126,12 +154,24 @@ def build():
         for i in range(n+1):
             x,y=round(a+(d-a)*i/n),round(b+(e-b)*i/n)
             if free(x,y,1) and not inbox(x,y): marks.append((x,y))
-    # brushed-metal grain (DubSiren's staggered lattice)
-    for y0 in range(4,60,3):
-        off=((y0//3)*2)%5
-        for x0 in range(4+off,123,5):
-            if inbox(x0,y0): continue
-            if free(x0,y0,3): marks.append((x0,y0))
+    # uneven, grimy metal: grain on a jittered grid whose density follows a few soft blobs
+    # of dirt (heavier toward the edges and the bent corner, light in the middle), with an
+    # occasional short brushed streak where it is dirtiest
+    blobs=[(8,40,16,0.9),(118,22,14,0.8),(30,6,12,0.6),(64,30,18,0.35),(100,8,10,0.6),(10,12,10,0.7)]
+    def dirt(x,y):
+        v=0.22
+        for (bx,by,br,bw) in blobs:
+            d=math.hypot(x-bx,(y-by)*A)/br
+            if d<1.6: v+=bw*math.exp(-d*d)
+        return min(v,0.85)
+    for y0 in range(4,60,2):
+        for x0 in range(4,123,3):
+            x,y=x0+rnd.randint(-1,1),y0
+            if inbox(x,y) or not free(x,y,2): continue
+            dv=dirt(x,y)
+            if rnd.random()<dv*0.7:
+                marks.append((x,y))
+                if dv>0.55 and rnd.random()<0.3 and free(x+1,y,2): marks.append((x+1,y))
     # rust: clusters round the bare holes and the folded corner
     for (rx,ry,r) in rust:
         for _ in range(26):
