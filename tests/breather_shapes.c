@@ -1,7 +1,7 @@
-/* Pump: labels, the three shapes, Targt routing, Shift, Div, and the reverb (host test).
+/* Breather: labels, the three shapes, Targt routing, Shift, Div, and the reverb (host test).
  * Runs pu_prepare / pu_process directly on a heap state; checks levels, not sound. */
-#define PUMP_HOST_TEST
-#include "../src/custom/pump/pump.c"
+#define BREATHER_HOST_TEST
+#include "../src/custom/breather/breather.c"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

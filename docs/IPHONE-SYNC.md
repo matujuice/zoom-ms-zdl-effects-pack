@@ -1,6 +1,6 @@
 # Keeping the effects on the bar from an iPhone
 
-The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away from your drum machine. The Mozaic script **Zoom MS bar sync** fixes that: it restarts DualShft, Choral, EuGate, DubSiren, Scrub and Pump on every downbeat. Get it from [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) or from this repo ([zoom_bar_sync.mozaic](../tools/mozaic/zoom_bar_sync.mozaic); plain text in [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt)).
+The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away from your drum machine. The Mozaic script **Zoom MS bar sync** fixes that: it restarts DualShft, Choral, EuGate, DubSiren, Scrub and Breather on every downbeat. Get it from [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) or from this repo ([zoom_bar_sync.mozaic](../tools/mozaic/zoom_bar_sync.mozaic); plain text in [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt)).
 
 **How it works.** Every Tempo knob holds each BPM twice (40..240, then 40..240 again). Jumping from a BPM to its twin copy restarts the effect without changing the tempo. On each downbeat the script flips the Tempo knob of the effects in slots 1 to 3 to its other copy, over USB SysEx. It sends the edit a little early (Early, default 17 ms) so it lands on the beat. When the host tempo changes, it sends the new BPM to the same knobs.
 
@@ -15,9 +15,9 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 | EuGate | Reset SYNC (works like OFF). | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
 | DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |
 | Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
-| Pump | Any Targt, Shape, Div and Shift. | Nothing: while the script runs, switching it on keeps the bar (it restarts on the one only when no restart has come for 8 s). |
+| Breather | Any Targt, Shape, Div and Shift. | Nothing: while the script runs, switching it on keeps the bar (it restarts on the one only when no restart has come for 8 s). |
 
-WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate, DubSiren and Pump keep their clock running while switched off, so they come back on the bar when you switch them on.
+WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate, DubSiren and Breather keep their clock running while switched off, so they come back on the bar when you switch them on.
 
 **Tested** (script v1) on an MS-60B running MS-50G firmware, iPhone with AUM and Mozaic, Digitakt mk1 following AUM over USB (2026-10-05). Measured edit latency about 12 ms. Script v2 (slot on/off pads, Tempo always the 8th knob) needs the effects with Tempo on the 8th knob (release v1.4 and later); it works on the pedal too (Luca, 2026-10-05).
 
@@ -40,7 +40,7 @@ WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script 
 | Every (knob 2) | Restart every 1, 2, 4 or 8 bars. |
 | BPM (knob 3) | Tempo to send when Follow host is off. |
 | Follow host (knob 4) | Right half: the effects follow AUM's tempo. Left half: they use the BPM knob. |
-| Slot 1..3 (pads 1..3) | Sync on or off for each slot. Off for any slot without DualShft, Choral, EuGate, DubSiren, Scrub or Pump. |
+| Slot 1..3 (pads 1..3) | Sync on or off for each slot. Off for any slot without DualShft, Choral, EuGate, DubSiren, Scrub or Breather. |
 | Sync (pad 4) | Restarts on or off. |
 
 ## Measuring Early

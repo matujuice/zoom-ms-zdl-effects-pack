@@ -1,5 +1,5 @@
 /*
- * pump.c - "Pump": tempo-synced pump with a small built-in reverb, mono
+ * breather.c - "Breather": tempo-synced pump with a small built-in reverb, mono
  *
  * For synth pads, basses, percussion and drum machines (tekno at ~160 BPM). On every
  * Div (a 16th up to a bar) the pump moves a level: your sound, the reverb, both, or
@@ -69,7 +69,7 @@
  *   7 Tempo 0..441  BPM 40..240 (below 40 reads as 40); 241..441 = the twin copy
  *   8 Size  0..100  reverb length, short room to long wash (bigger = darker)
  *
- * TESTED: host tests only (tests/pump_*.c). Not heard on the pedal, CPU never measured.
+ * TESTED: host tests only (tests/breather_*.c). Not heard on the pedal, CPU never measured.
  */
 
 #include <stdint.h>
@@ -397,18 +397,18 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 }
 
 /* ---- pedal entry point ---------------------------------------------------- */
-#ifndef PUMP_HOST_TEST
+#ifndef BREATHER_HOST_TEST
 
-#include "pump_params.h"
+#include "breather_params.h"
 
-#ifndef PUMP_AUDIO_FUNC
-#define PUMP_AUDIO_FUNC Fx_DLY_Pump
+#ifndef BREATHER_AUDIO_FUNC
+#define BREATHER_AUDIO_FUNC Fx_DLY_Breather
 #endif
 
 #define ZDL_PTR(type, word) ((type)(uintptr_t)(word))
 
-PU_CODE_SECTION(PUMP_AUDIO_FUNC)
-void PUMP_AUDIO_FUNC(unsigned int *ctx)
+PU_CODE_SECTION(BREATHER_AUDIO_FUNC)
+void BREATHER_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
@@ -440,15 +440,15 @@ void PUMP_AUDIO_FUNC(unsigned int *ctx)
 
     s = (PuState *)stateBase;
 
-    u[0] = pu_ui(params[PUMP_TARGT_SLOT], (float)PUMP_TARGT_UI_DEFAULT, 3.0f);
-    u[1] = pu_ui(params[PUMP_SHAPE_SLOT], (float)PUMP_SHAPE_UI_DEFAULT, 2.0f);
-    u[2] = pu_ui(params[PUMP_DEPTH_SLOT], (float)PUMP_DEPTH_UI_DEFAULT, 100.0f);
-    u[3] = pu_ui(params[PUMP_DIV_SLOT],   (float)PUMP_DIV_UI_DEFAULT,   4.0f);
-    u[4] = pu_ui(params[PUMP_SHIFT_SLOT], (float)PUMP_SHIFT_UI_DEFAULT, 100.0f);
-    u[5] = pu_ui(params[PUMP_CURVE_SLOT], (float)PUMP_CURVE_UI_DEFAULT, 100.0f);
-    u[6] = pu_ui(params[PUMP_VERB_SLOT],  (float)PUMP_VERB_UI_DEFAULT,  100.0f);
-    u[7] = pu_tempo_ui(params[PUMP_TEMPO_SLOT], (float)PUMP_TEMPO_UI_DEFAULT);
-    u[8] = pu_ui(params[PUMP_SIZE_SLOT],  (float)PUMP_SIZE_UI_DEFAULT,  100.0f);
+    u[0] = pu_ui(params[BREATHER_TARGT_SLOT], (float)BREATHER_TARGT_UI_DEFAULT, 3.0f);
+    u[1] = pu_ui(params[BREATHER_SHAPE_SLOT], (float)BREATHER_SHAPE_UI_DEFAULT, 2.0f);
+    u[2] = pu_ui(params[BREATHER_DEPTH_SLOT], (float)BREATHER_DEPTH_UI_DEFAULT, 100.0f);
+    u[3] = pu_ui(params[BREATHER_DIV_SLOT],   (float)BREATHER_DIV_UI_DEFAULT,   4.0f);
+    u[4] = pu_ui(params[BREATHER_SHIFT_SLOT], (float)BREATHER_SHIFT_UI_DEFAULT, 100.0f);
+    u[5] = pu_ui(params[BREATHER_CURVE_SLOT], (float)BREATHER_CURVE_UI_DEFAULT, 100.0f);
+    u[6] = pu_ui(params[BREATHER_VERB_SLOT],  (float)BREATHER_VERB_UI_DEFAULT,  100.0f);
+    u[7] = pu_tempo_ui(params[BREATHER_TEMPO_SLOT], (float)BREATHER_TEMPO_UI_DEFAULT);
+    u[8] = pu_ui(params[BREATHER_SIZE_SLOT],  (float)BREATHER_SIZE_UI_DEFAULT,  100.0f);
 
     pu_prepare(&P, u);
     if (s->magic != PU_MAGIC) pu_init(s);
@@ -474,4 +474,4 @@ void PUMP_AUDIO_FUNC(unsigned int *ctx)
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
 }
 
-#endif /* PUMP_HOST_TEST */
+#endif /* BREATHER_HOST_TEST */

@@ -1,10 +1,10 @@
 {
-  "effect_name": "Pump",
-  "comment": "Pump - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (opens on the beat, then cuts) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
+  "effect_name": "Breather",
+  "comment": "Breather - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (opens on the beat, then cuts) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 493,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox (in development), 493 Pump (this pack). 492 was used by the dropped Metro branch. Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox (in development), 493 Breather (this pack, first named Pump). 492 was used by the dropped Metro branch. Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -63,7 +63,7 @@
       "comment": "Reverb length, from a short room to a long wash; bigger is also darker. Default 50."
     }
   ],
-  "audio_func_name": "Fx_DLY_Pump",
+  "audio_func_name": "Fx_DLY_Breather",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
 }

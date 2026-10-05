@@ -108,7 +108,7 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### Pump: tempo-synced pump with a reverb (new, not in a release yet)
+### Breather: tempo-synced pump with a reverb (new, not in a release yet)
 On every beat (or every Div) something moves: your sound, the built-in reverb, both, or what goes into the reverb. Targt picks what, Shape picks how. Made for pads, basses, percussion and drum machines around 160 BPM.
 
 | Knob | Range | What it does |
