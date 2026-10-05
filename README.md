@@ -18,11 +18,6 @@ Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
 Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk. Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other MS pedals are untested, so reports are welcome.
 
-## Demo
-Each effect on an MS-60B, played with a Meeblip Triode and a Digitakt, then a short jam. Sound on.
-
-https://github.com/user-attachments/assets/e6a70eba-e9a3-40d4-ad5b-9a042b79e75a
-
 ## Use the effects
 
 Download the `.ZDL` files from the [Releases](../../releases) page, then follow [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md) (Zoom Effect Manager, "Read Effects from folder").
