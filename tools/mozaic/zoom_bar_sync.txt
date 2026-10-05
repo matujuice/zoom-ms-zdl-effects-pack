@@ -257,6 +257,11 @@
       Call @SendTempo
     endif
   endif
+  // The bar event can arrive just before the timer reaches fireat: then the flip is due now
+  if armed = 1
+    armed = 0
+    Call @Flip
+  endif
   // Arm the flip for the next downbeat if that bar starts a group of Every bars
   // (host bars 0, Every, 2 x Every ...)
   if syncon = 1 and (bar + 1) % every = 0
