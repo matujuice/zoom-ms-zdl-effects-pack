@@ -4,6 +4,8 @@ The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away fro
 
 **How it works.** Every Tempo knob holds each BPM twice (40..240, then 40..240 again). Jumping from a BPM to its twin copy restarts the effect without changing the tempo. On each downbeat the script flips the Tempo knob of the effects in slots 1 to 3 to its other copy, over USB SysEx. It sends the edit a little early (Early, default 17 ms) so it lands on the beat. When the host tempo changes, it sends the new BPM to the same knobs.
 
+**DubSiren:** set Trig to SHold or SPuls. Then a press of the footswitch waits for the next beat, and the siren's tones stay in step with the bar. With Hold or Pulse the siren starts the moment you press, and the press restarts its LFO.
+
 **Tested** on an MS-60B running MS-50G firmware, iPhone with AUM and Mozaic, Digitakt mk1 following AUM over USB (2026-10-05). Measured edit latency about 12 ms.
 
 ## Setup

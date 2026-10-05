@@ -65,7 +65,7 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 
 | Knob | Range | What it does |
 |---|---|---|
-| Trig | Hold / Pulse | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. |
+| Trig | Hold / Pulse / SHold / SPuls | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. SHold and SPuls do the same on the beat: the siren waits for the next beat of the Tempo clock (re-aligned by each twin flip from a host) and the siren tones stay in step with the bar. |
 | Mode | Wail, Fast, Slow, Laser | LFO shape. Fast is twice the Rate, Slow is half. |
 | Pitch | 110 Hz..1760 Hz | Base pitch. |
 | Rate | Man, 0.15..15 Hz, note values | LFO speed. The top of the knob syncs to Tempo as note values (4 bars .. 1/32). |
@@ -73,7 +73,7 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
-| Tempo | 40..240 BPM, twice | Only used when Rate is set to a note value. Jumping to the second copy of the same BPM restarts the LFO (see above). |
+| Tempo | 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
 
 ### S.GN_L: broken digital line
 The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.

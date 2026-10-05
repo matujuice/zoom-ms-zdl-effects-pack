@@ -39,6 +39,11 @@
  *                     on), releases when you switch it OFF; the echo rings out
  *              Pulse  each press (OFF -> ON only) fires one ~0.6 s burst, however
  *                     long the effect stays on
+ *              SHold  Hold on the beat: the siren starts and stops on the next beat
+ *              SPuls  Pulse on the beat: a press fires the burst on the next beat
+ *            The synced two (S = sync) wait for a beat of the Tempo knob's clock, which
+ *            restarts at each twin flip (see TEMPO SYNC), and the press does not
+ *            restart the LFO, so the siren comes in where the bar puts it.
  *            The effect only sees the on/off state. The footswitch latches
  *            (each press toggles), so "held down" is not visible; Hold means
  *            "while switched on".
@@ -62,7 +67,8 @@
  *   6 Time   echo time, ms = 50 + 0.095*screen^2 (50 ms .. 1 s), shown on screen
  *   7 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
  *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
- *   8 Tempo  BPM, 40..240 (the pedal's own number). Only used when Rate is set to a note value.
+ *   8 Tempo  BPM, 40..240 (the pedal's own number). Used when Rate is set to a note value,
+ *            and for the beat that Trig SHold / SPuls wait for.
  *            Screen 0..441: 241..441 is a twin copy of the same BPMs (see TEMPO SYNC),
  *            shown as the BPM
  *
@@ -75,6 +81,11 @@
  *            Flipping between a BPM and its twin (120 <-> 321) restarts the LFO without
  *            changing the tempo, so a host can send one knob edit on each downbeat.
  *            A plain tempo change does not restart it.
+ *   Trig SHold / SPuls: the effect keeps a beat clock at the Tempo BPM that restarts at
+ *            each twin flip. A press waits for its next beat (at most one beat), and the
+ *            LFO keeps running instead of restarting, so with a host flipping the twin
+ *            each bar the siren comes in on the beat and its tones stay with the bar.
+ *            Needs the pedal to keep calling the effect while it is switched off.
  *   Fdbk 0 = echo off; the echo level is fixed (it used to be the Echo knob).
  *
  * DEFAULTS = A CLASSIC DANCEHALL TWO-TONE SIREN: Trig Pulse (one short
@@ -106,7 +117,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523037u         /* "SR07"                        */
+#define SR_MAGIC         0x53523038u         /* "SR08"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
@@ -143,6 +154,9 @@ typedef struct {
     float hpl;             /* echo high-pass state                            */
     float lp1, lp2;        /* echo low-pass poles                             */
     int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
+    int   armed;           /* SPuls: pressed, waiting for the next beat       */
+    int   latch;           /* SHold: footswitch state taken at the last beat  */
+    float beat_ph;         /* beat clock, 0..1 per beat; 0 at each twin flip  */
     float ring[RING_SIZE]; /* siren-only echo line                            */
 } SirenState;
 
@@ -150,6 +164,7 @@ typedef struct {
     int   gate;            /* siren sounding                                  */
     int   retrig;          /* Off->ON edge (or Trig-mode change)              */
     int   resync;          /* Tempo flipped to its twin copy: LFO phase -> 0  */
+    int   synced;          /* Trig SHold / SPuls: the press never resets the LFO */
     int   mode;            /* 0 Wail, 1 Fast, 2 Slow, 3 Laser                 */
     int   manual;          /* Rate knob at 0 (Man)                            */
     int   mdir;            /* manual envelope: -1 drop (Pulse), +1 rise       */
@@ -277,46 +292,67 @@ static inline void sr_init(SirenState *s)
     s->y1 = 0.0f; s->y2 = 0.0f; s->wow_ph = 0.0f; s->flut_ph = 0.37f;
     s->dly = -1.0f; s->hpl = 0.0f; s->lp1 = 0.0f; s->lp2 = 0.0f;
     s->twin = -1;
+    s->armed = 0; s->latch = 0; s->beat_ph = 0.0f;
     s->magic = SR_MAGIC;
 }
 
 /* ---- once per 8-sample block -------------------------------------------
  * k[] are 0..1 (by each knob's own max). foot = 1 while the footswitch has the
  * effect ON. Trigger state tracking: Hold follows the footswitch, Pulse arms a 0.6 s counter on each OFF -> ON press (ON -> OFF does nothing). A gate
- * rising edge (or a change of Trig mode) sets retrig. */
+ * rising edge (or a change of Trig mode) sets retrig.
+ * SHold / SPuls do the same on the beat: a beat clock runs at the Tempo BPM and restarts
+ * at each twin flip, so its beats sit on the host's grid. SHold takes the footswitch
+ * state at each beat; SPuls remembers a press and fires the burst at the next beat. */
 SR_ALWAYS_INLINE(sr_prepare)
 static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int foot)
 {
-    int   fm   = (int)(k[0] + 0.5f);                 /* 0 Hold, 1 Pulse       */
+    int   fm   = (int)(k[0] * 3.0f + 0.5f);          /* 0 Hold, 1 Pulse, 2 SHold, 3 SPuls */
+    int   sync = (fm >= 2);                         /* start on the beat     */
+    int   fp   = (fm == 1 || fm == 3);              /* pulse (else hold)     */
     int   np   = (int)(k[2] * 100.0f + 0.5f);        /* pitch                 */
     int   nr   = (int)(k[3] * 112.0f + 0.5f);        /* rate: 0 Man, 1..100 Hz, 101..112 synced */
     int   nt   = (int)(k[6] * 100.0f + 0.5f);
     int   nf   = (int)(k[7] * 125.0f + 0.5f);
     int   ntp  = (int)(k[8] * TEMPO_MAX_F + 0.5f);   /* Tempo screen 0..441    */
     int   tw   = (ntp > 240);                       /* on the twin copy       */
+    int   beat;                                     /* a beat starts in this block */
     float lfo_hz, bpm;
 
-    if (fm == 1 && foot && !s->prev_foot) s->pulse_left = PULSE_SAMPLES;
-    if (fm != 1) s->pulse_left = 0;
-    if (fm == 0) P->gate = foot;
-    else         P->gate = (s->pulse_left > 0);
+    /* beat clock: restarts at each twin flip, otherwise one beat per 60/BPM s */
+    bpm = (float)sr_tempo_bpm(ntp);                  /* Tempo knob = the BPM (40..240) on both copies */
+    P->resync = (s->twin >= 0 && tw != s->twin);     /* sync reset: flipped to the other copy */
+    s->twin = tw;
+    s->beat_ph += bpm * SYNC_INC_PER_BPM * 8.0f;
+    beat = (s->beat_ph >= 1.0f) || P->resync;
+    if (s->beat_ph >= 1.0f) s->beat_ph -= 1.0f;
+    if (P->resync) s->beat_ph = 0.0f;
+
+    if (fp && foot && !s->prev_foot) {               /* OFF -> ON press        */
+        if (sync) s->armed = 1;                      /* SPuls: wait for the beat */
+        else      s->pulse_left = PULSE_SAMPLES;
+    }
+    if (fm != 3) s->armed = 0;
+    if (beat && s->armed) { s->armed = 0; s->pulse_left = PULSE_SAMPLES; }
+    if (!fp) s->pulse_left = 0;
+    if (beat) s->latch = foot;                       /* SHold: on and off on the beat */
+    if (fm == 0)      P->gate = foot;
+    else if (fm == 2) P->gate = s->latch;
+    else              P->gate = (s->pulse_left > 0);
     if (s->pulse_left > 0) s->pulse_left -= 8;
     P->retrig = P->gate && (!s->prev_gate || fm != s->prev_mode);
+    P->synced = sync;
     s->prev_gate = P->gate;
     s->prev_foot = foot;
     s->prev_mode = fm;
 
     P->mode   = (int)(k[1] * 3.0f + 0.5f);
     P->manual = (nr == 0);
-    P->mdir   = (fm == 1) ? -1 : 1;
+    P->mdir   = fp ? -1 : 1;
 
     /* 110 Hz * 2^(n/25): 110 .. 1760 Hz */
     P->f0_inc = 110.0f * exp2_oct((float)np * 0.04f) * HZ_TO_INC;
 
     /* 0.15 Hz * 2^(n*0.0664): 0.15 .. 15 Hz; Fast x2, Slow x0.5 */
-    bpm = (float)sr_tempo_bpm(ntp);                  /* Tempo knob = the BPM (40..240) on both copies */
-    P->resync = (s->twin >= 0 && tw != s->twin);     /* sync reset: flipped to the other copy */
-    s->twin = tw;
     if (nr > 100) {                                  /* synced: one LFO cycle = the division; Fast x2 and Slow x0.5 as in free mode */
         lfo_hz = bpm * SYNC_INC_PER_BPM * rate_cpb(nr - 101);
         if (P->mode == 1) lfo_hz += lfo_hz;
@@ -367,7 +403,7 @@ static inline void sr_process(SirenState *s, const SirenParams *P, float *buf, i
     if (dly < 0.0f) dly = P->dlySamp;
     if (P->resync) lfo_ph = 0.0f;                  /* sync reset: LFO restarts on the downbeat */
     if (P->retrig) {                               /* trigger edge            */
-        lfo_ph = 0.0f;                             /* LFO phase -> 0          */
+        if (!P->synced) lfo_ph = 0.0f;             /* LFO phase -> 0; synced Trig keeps the bar's phase */
         menv = (P->mdir < 0) ? 1.0f : 0.0f;        /* manual envelope start   */
     }
 
@@ -448,13 +484,15 @@ static inline void sr_process(SirenState *s, const SirenParams *P, float *buf, i
 }
 
 /* ---- on-screen text (knob index = ZDL_GetLabel_<index>) ----------------- */
-/* 0 Trig: Hold Pulse */
+/* 0 Trig: Hold Pulse SHold SPuls */
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     char c0, c1, c2, c3, c4 = 0;
     int len = 4;
-    if (value == 0u) { c0 = 'H'; c1 = 'o'; c2 = 'l'; c3 = 'd'; }
-    else             { c0 = 'P'; c1 = 'u'; c2 = 'l'; c3 = 's'; c4 = 'e'; len = 5; }
+    if (value == 0u)      { c0 = 'H'; c1 = 'o'; c2 = 'l'; c3 = 'd'; }
+    else if (value == 1u) { c0 = 'P'; c1 = 'u'; c2 = 'l'; c3 = 's'; c4 = 'e'; len = 5; }
+    else if (value == 2u) { c0 = 'S'; c1 = 'H'; c2 = 'o'; c3 = 'l'; c4 = 'd'; len = 5; }
+    else                  { c0 = 'S'; c1 = 'P'; c2 = 'u'; c3 = 'l'; c4 = 's'; len = 5; }
     out[0] = c0; out[1] = c1; out[2] = c2; out[3] = c3; out[4] = c4; out[len] = 0;
     return len;
 }
@@ -617,7 +655,7 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
 
     s = (SirenState *)stateBase;
 
-    k[0] = sr_knob(params[DUBSIREN_TRIG_SLOT],   (float)DUBSIREN_TRIG_UI_DEFAULT,   1.0f);
+    k[0] = sr_knob(params[DUBSIREN_TRIG_SLOT],   (float)DUBSIREN_TRIG_UI_DEFAULT,   0.3333333f);
     k[1] = sr_knob(params[DUBSIREN_MODE_SLOT],   (float)DUBSIREN_MODE_UI_DEFAULT,   0.3333333f);
     k[2] = sr_knob(params[DUBSIREN_PITCH_SLOT],  (float)DUBSIREN_PITCH_UI_DEFAULT,  0.01f);
     k[3] = sr_knob(params[DUBSIREN_RATE_SLOT],   (float)DUBSIREN_RATE_UI_DEFAULT,   0.008928571f);
