@@ -40,8 +40,9 @@
  *   NOTE: a note that starts after a moment of silence, so every phrase you play
  *   begins on the downbeat of the pattern.
  *   PEDAL: the footswitch being turned on, so the pattern starts exactly when you step
- *   on the pedal. (While the effect is off the pedal still calls the effect, which only
- *   records that it was off; nothing is processed.)
+ *   on the pedal. (While the effect is off the pedal still calls the effect; the input
+ *   is untouched, but the pattern clock keeps running and follows Tempo flips, so with
+ *   OFF or NOTE the pattern comes back in time with the bar.)
  *   Whatever Reset says, a SYNC RESET restarts it too: the Tempo knob runs 0..441 and
  *   holds every BPM twice (0..240 = the BPM, 241..441 = a twin copy, BPM = screen - 201,
  *   so past 240 the screen shows 40 again). Flipping between a BPM and its twin
@@ -243,6 +244,18 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf, int n)
     s->pp = pp; s->g = g; s->pos = pos; s->quiet = quiet;
 }
 
+/* Effect switched off: nothing is processed, but the pattern clock keeps running (n samples
+ * on), so the pattern comes back in time with the host's bar flips. */
+CH_ALWAYS_INLINE(ch_idle)
+static inline void ch_idle(ChState *s, const ChParams *P, int n)
+{
+    s->pp += P->inc * (float)n;
+    if (s->pp >= 2.0f) {
+        s->pp -= 2.0f; s->pos += 2u;
+        while (s->pos >= P->steps) s->pos -= P->steps;
+    }
+}
+
 /* ---- on-screen text ------------------------------------------------------ */
 /* knob 0 Notes: screen 0..63 -> "1".."64" */
 int ZDL_GetLabel_0(unsigned int value, char *out)
@@ -335,11 +348,6 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
 
     s = (ChState *)stateBase;
 
-    if (params[0] < 0.5f) {                      /* effect bypassed: just remember it */
-        if (s->magic == CH_MAGIC) s->was_off = 1u;
-        return;
-    }
-
     u[0] = ch_ui(params[EUGATE_NOTES_SLOT],  (float)EUGATE_NOTES_UI_DEFAULT,  63.0f);
     u[1] = ch_ui(params[EUGATE_STEPS_SLOT], (float)EUGATE_STEPS_UI_DEFAULT, 63.0f);
     u[2] = ch_ui(params[EUGATE_SHIFT_SLOT], (float)EUGATE_SHIFT_UI_DEFAULT, 63.0f);
@@ -352,6 +360,12 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
 
     ch_prepare(&P, u);
     if (s->magic != CH_MAGIC) ch_init(s);
+    if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
+        s->was_off = 1u;
+        if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* still follows the bar */
+        ch_idle(s, &P, 8);                       /* and the pattern clock keeps running */
+        return;
+    }
     if (s->was_off) {                            /* the pedal was just turned on */
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;

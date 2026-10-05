@@ -55,7 +55,8 @@
  *   restarts the LFO without changing the tempo, so a host can send one knob
  *   edit on each downbeat to keep the sweep on the bar.
  *
- * FOOTSWITCH: off = untouched input (early return, like DualShft).
+ * FOOTSWITCH: off = untouched input, but the LFO keeps running and follows
+ *   Tempo flips, so the sweep comes back on the bar.
  *
  * CONTROLS (screen values), in pedal order: page 1 = cover, LFO and Mix last
  *   0 Vowel  0.0..4.0 in tenths: A E I O U with morphs in between. The screen
@@ -1103,8 +1104,6 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
-    if (params[0] < 0.5f) return;                /* effect bypassed: input untouched */
-
     desc = ZDL_PTR(volatile unsigned int *, ctx[3]);
     if (!desc) return;
 
@@ -1131,7 +1130,12 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     k[8] = sr_knob(params[FORMANT_SHAPE_SLOT],  (float)FORMANT_SHAPE_UI_DEFAULT,  0.1f);
 
     if (s->magic != FM_MAGIC) fm_init(s);
-    fm_prepare(s, &P, k);
+    fm_prepare(s, &P, k);                        /* restarts the LFO on a Tempo flip */
+    if (params[0] < 0.5f) {                      /* effect switched off: input untouched, */
+        s->lfo_ph += P.lfo_inc;                  /* but the LFO keeps time with the bar   */
+        if (s->lfo_ph >= 1.0f) s->lfo_ph -= 1.0f;
+        return;
+    }
     fm_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     SR_NOUNROLL

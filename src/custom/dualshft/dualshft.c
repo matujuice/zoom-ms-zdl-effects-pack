@@ -59,6 +59,8 @@
  *   number. Flipping between a BPM and its twin (120 <-> 321) restarts the
  *   LFO without changing the tempo, so a host (iPhone, MIDI box) can send
  *   one knob edit on each downbeat to keep the LFO on the bar.
+ *   While the effect is switched off the input is untouched, but the LFO
+ *   keeps running and follows Tempo flips, so it comes back on the bar.
  *
  * ON-SCREEN TEXT (ZDL_GetLabel_<knob index>, value = screen number)
  *   Ptch1/2    -24 .. -1, -0.9 .. -0.1, 0, +0.1 .. +0.9, +1 .. +24      Dly1/Dly2  12ms .. 1.00s
@@ -839,8 +841,6 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
-    if (params[0] < 0.5f) return;                /* effect bypassed            */
-
     desc = ZDL_PTR(volatile unsigned int *, ctx[3]);
     if (!desc) return;
 
@@ -867,6 +867,12 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     k[8] = ds_knob(params[DUALSHFT_MIX_SLOT],    (float)DUALSHFT_MIX_UI_DEFAULT,    0.01f);
 
     ds_prepare(s, &P, k);
+    if (params[0] < 0.5f) {                      /* effect switched off: input untouched, */
+        if (P.retrig) s->lfo_phase = 0.0f;       /* but the LFO keeps time with the bar   */
+        s->lfo_phase += P.lfo_inc * 8.0f;
+        if (s->lfo_phase >= 1.0f) s->lfo_phase -= 1.0f;
+        return;
+    }
     ds_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

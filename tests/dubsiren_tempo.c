@@ -5,6 +5,7 @@ typedef SirenState STATE;
 #define ENTRY Fx_DLY_DubSiren
 #define TEMPO_SLOT DUBSIREN_TEMPO_SLOT
 #define PLAIN_RESETS 0
+#define OFF_DRY 0
 #define D(n) params[DUBSIREN_##n##_SLOT] = DUBSIREN_##n##_UI_DEFAULT / 100.0f
 static float *params;
 static void defaults(void) { D(TRIG); D(MODE); D(PITCH); D(RATE); D(DEPTH); D(VOL); D(TIME); D(FDBK); D(TEMPO);
