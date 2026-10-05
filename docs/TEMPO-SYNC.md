@@ -379,6 +379,10 @@ What is still unresolved:
 * What the firmware does when the user activates sync mode while
   TAPEECH3 is loaded — does it re-call the `_edit` handler?
 
+Hardware probe for all of this (2026-10-05): `src/probes/tempoprb/` runs the
+§4 chain from a custom effect's audio function and makes the results audible.
+Results go here once it has been tried on the pedal.
+
 ## 8. SDK shape for a custom sync-aware effect
 
 Putting the pieces together, a custom tempo-aware delay can be written

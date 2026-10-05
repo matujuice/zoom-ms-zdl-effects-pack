@@ -13,6 +13,7 @@ Seven custom effects (WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scru
 - `tests/`: host tests (`python3 tests/run.py [name]`).
 - `release/`: pack README, cover sheet. `make_release.py` zips `dist/*.ZDL` with them.
 - fxids: DualShft 480, DubSiren 485, Choral 486, WaveFold 487, EuGate 488, S.GN_L 489, Scrub 490.
+- `src/probes/<probe>/`: hardware probes, never released; `build_all.py` builds one only when named. TempoPrb (fxid 499) tests whether a custom effect can follow the pedal's tempo the TAPEECH3 way.
 - S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name).
 
 ## Building and testing
