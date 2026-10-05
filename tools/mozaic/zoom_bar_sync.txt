@@ -13,9 +13,10 @@
 // Knobs: 0 Early (0..254 ms; the value found with zoom_tempo_test)
 //        1 Every (1, 2, 4 or 8 bars)
 //        2 Tempo (100..227 BPM, used when Follow host is off)
-// Pads:  0..2 what is in slot 1..3 (tap to cycle: -, DualShft, Choral, EuGate, DubSiren, Scrub)
-//        3 Follow host on/off   4 Sync now   5 Sync on/off
-//        6 Swap ID 58/5F   7 Edit enable
+//        3 Follow host (left half off, right half on)
+// Pads (Mozaic shows 4): 0..2 what is in slot 1..3 (tap to cycle: -, DualShft,
+//        Choral, EuGate, DubSiren, Scrub)   3 Sync on/off
+// (Sync now, ID swap and Edit enable stay in the code as hidden pads 4, 6, 7.)
 // Log shows what was sent.
 
 @OnLoad
@@ -47,26 +48,27 @@
   p = 0
   i = 0
   pad = 0
+  f = 0
   SetKnobValue 0, early / 2
   SetKnobValue 1, 0
   SetKnobValue 2, manual - 100
+  SetKnobValue 3, 127
   LabelKnobs {Zoom bar sync}
   LabelKnob 0, {Early }, early, {ms}
   LabelKnob 1, {Every }, every, { bar}
   LabelKnob 2, {BPM }, manual
+  LabelKnob 3, {Follow host ON}
   for i = 0 to 2
     pad = i
     Call @LabelSlot
   endfor
-  LabelPad 3, {Follow host ON}
-  LabelPad 4, {Sync now}
-  LabelPad 5, {Sync ON}
+  LabelPad 3, {Sync ON}
   LabelPad 6, {ID 58}
   LabelPad 7, {Edit enable}
   SetTimerInterval 5
   StartTimer
   Call @SendEnable
-  Log {Loaded. Set slots on pads 0..2, then start AUM.}
+  Log {Loaded. Set slots on the first 3 pads, then start AUM.}
 @End
 
 @LabelSlot
@@ -171,6 +173,21 @@
       tempo = manual
       Call @SendTempo
     endif
+  elseif k = 3
+    f = 0
+    if v >= 64
+      f = 1
+    endif
+    if f <> follow
+      follow = f
+      if follow = 1
+        LabelKnob 3, {Follow host ON}
+      else
+        LabelKnob 3, {Follow host OFF}
+        tempo = manual
+        Call @SendTempo
+      endif
+    endif
   endif
 @End
 
@@ -185,25 +202,16 @@
     Call @LabelSlot
     Call @SendEnable
     Call @SendKnobs
-  elseif p = 3
-    follow = 1 - follow
-    if follow = 1
-      LabelPad 3, {Follow host ON}
-    else
-      LabelPad 3, {Follow host OFF}
-      tempo = manual
-      Call @SendTempo
-    endif
   elseif p = 4
     Call @Flip
     Log {Sync now}
-  elseif p = 5
+  elseif p = 3
     syncon = 1 - syncon
     armed = 0
     if syncon = 1
-      LabelPad 5, {Sync ON}
+      LabelPad 3, {Sync ON}
     else
-      LabelPad 5, {Sync OFF}
+      LabelPad 3, {Sync OFF}
     endif
   elseif p = 6
     if zid = 0x58

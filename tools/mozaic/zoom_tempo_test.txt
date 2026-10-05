@@ -4,10 +4,10 @@
 //
 // Knobs: 0 Tempo (100..227 BPM)   1 Offset (0..254 ms, how early edits are sent)
 //        2 Slot (1..6, the effect slot to poke)   3 Param (0 on/off, 2..10 = knob 1..9)
-// Pads:  0 Hello: ask the pedal its model, sets the ID
-//        1 Send tempo   2 Ping: USB round trip in ms   3 Sweep Param 0..100..0
-//        4 Follow host tempo on/off   5 Latency test on/off
-//        6 Swap ID 58/5F   7 Edit enable
+// Pads (Mozaic shows 4): 0 Sweep Param 0..100..0   1 Latency test on/off
+//        2 Ping: USB round trip in ms   3 Hello: ask the pedal its model, sets the ID
+// (Send tempo, Follow host, ID swap and Edit enable are in the code as hidden pads 4..7;
+// the knob BPM still sends the patch tempo when turned.)
 // All results go to the Mozaic log (the "Log" view).
 //
 // SysEx (Mozaic adds F0/F7 itself):
@@ -59,18 +59,16 @@
   LabelKnob 1, {Early }, offset, {ms}
   LabelKnob 2, {Slot }, slot + 1
   LabelKnob 3, {Param }, param
-  LabelPad 0, {Hello}
-  LabelPad 1, {Send tempo}
+  LabelPad 0, {Sweep}
+  LabelPad 1, {Latency test}
   LabelPad 2, {Ping}
-  LabelPad 3, {Sweep}
-  LabelPad 4, {Follow host}
-  LabelPad 5, {Latency test}
+  LabelPad 3, {Hello}
   LabelPad 6, {ID 58}
   LabelPad 7, {Edit enable}
   SetTimerInterval 5
   StartTimer
   Call @SendEnable
-  Log {Loaded. ID 58 (hex). Press Hello first.}
+  Log {Loaded. ID 58 (hex).}
 @End
 
 @SendEnable
@@ -133,6 +131,18 @@
 
 @OnPadDown
   p = LastPad
+  // Only 4 pads show: map them to the actions below
+  if p = 0
+    p = 3
+  elseif p = 1
+    p = 5
+  elseif p = 3
+    p = 0
+  elseif p = 4
+    p = 1
+  elseif p = 5
+    p = 4
+  endif
   if p = 0
     syx[0] = 0x7E
     syx[1] = 0x7F
