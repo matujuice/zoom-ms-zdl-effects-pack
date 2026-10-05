@@ -7,7 +7,7 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up, circuit-bent
   * the classic acid smiley where DubSiren has its woofer,
   * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
   * circuit bending on the right: a drilled hole with two jumper wires to croc clips,
-  * a couple of long scratches, DubSiren's brushed-metal grain worn away in one patch.
+  * smiley and title centred together as one group, a short scratch, DubSiren's brushed-metal grain.
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
 Also writes cover_preview.png next to this script (black on white).
@@ -36,7 +36,7 @@ def bez(p0,p1,p2,p3,n=40):
 def build():
     rnd=random.Random(5)
     c=Canvas()
-    TITLE,TX,TY="DIRTBOX",38,8
+    TITLE,TX,TY="DIRTBOX",41,12        # smiley (21) + 5 + title (68): x 15..108, centred between the lips with the wires
     # title: the pack's 3x5 font at scale 3 with DubSiren's stencil slit; worn, not wrecked:
     # a few chipped pixels on the edges and one letter (T) sitting a pixel low, as if knocked
     # the pack's chunky title letters (WaveFold's font scaling: 2 px stems)
@@ -74,7 +74,7 @@ def build():
               "...##...........##...",
               "....####.....####....",
               ".......#######.......")
-    face = set((9 + x, 9 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
+    face = set((15 + x, 10 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
     for p in face: c.px(*p)
     # gap round the title so it stays readable, then the title
     for (x,y) in main:
@@ -112,11 +112,11 @@ def build():
     rust=[(121,6,6),(8,53,7),(4,59,5)]
     # circuit bending on the right: a drilled hole, two jumper wires looping out to croc clips,
     # and a body-contact screw
-    hx,hy=118,27
+    hx,hy=117,26
     for (dx,dy) in ((-1,-1),(0,-1),(1,-1),(-1,0),(1,0),(-1,1),(0,1),(1,1)): c.px(hx+dx,hy+dy)
-    for pts in (bez((hx,hy),(124,17),(110,11),(112,18)), bez((hx,hy),(124,35),(113,38),(110,31))):
+    for pts in (bez((hx,hy),(124,16),(112,6),(115,12)), bez((hx,hy),(124,33),(116,37),(113,32))):
         for p in pts: c.px(*p)
-    for (ex,ey,s) in ((112,18,-1),(110,31,-1)):
+    for (ex,ey,s) in ((115,12,-1),(113,32,-1)):
         c.px(ex,ey); c.px(ex+s,ey-1); c.px(ex+s,ey+1); c.px(ex+2*s,ey-1); c.px(ex+2*s,ey+1); c.px(ex+3*s,ey)
     # labels and dials, as on every cover
     for (kid,kx,ky),label in zip(cc.knob_layout(3),("MODEL","DRIVE","TONE")):
@@ -128,18 +128,18 @@ def build():
     boxes=[(kx-5,41,kx+27,63) for (_k,kx,_y) in cc.knob_layout(3)]
     inbox=lambda x,y: any(a<=x<=b and d<=y<=e for (a,d,b,e) in boxes)
     # long scratches: thin, single-pixel, broken where they cross anything
-    scr=[(98,44,123,33),(30,32,44,29)]
+    scr=[(4,44,13,40)]
     marks=[]
     for (a,b,d,e) in scr:
         n=max(abs(d-a),abs(e-b))
         for i in range(n+1):
             x,y=round(a+(d-a)*i/n),round(b+(e-b)*i/n)
             if free(x,y,1) and not inbox(x,y): marks.append((x,y))
-    # brushed-metal grain (DubSiren's staggered lattice), worn away in a scuffed patch
+    # brushed-metal grain (DubSiren's staggered lattice)
     for y0 in range(4,60,3):
         off=((y0//3)*2)%5
         for x0 in range(4+off,123,5):
-            if inbox(x0,y0) or math.hypot(x0-88,(y0-30)*A)<9: continue
+            if inbox(x0,y0): continue
             if free(x0,y0,3): marks.append((x0,y0))
     # rust: clusters round the bare holes and the folded corner
     for (rx,ry,r) in rust:
