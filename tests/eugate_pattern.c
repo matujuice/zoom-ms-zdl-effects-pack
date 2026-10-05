@@ -14,7 +14,7 @@ int main(void){
   }
   printf("pattern mismatches vs formula: %d\n",bad);
   /* 2: run audio, record step sequence for steps=12/5 notes and steps=5/3, shift 0 and 3, swing 0 */
-  int cfg[3][3]={{5,12,0},{3,5,0},{5,12,3}};
+  int cfg[3][3]={{5,12,0},{3,5,0},{5,12,3}}; static char lines[3][80];
   for(int c=0;c<3;c++){
     ChState s; ChParams P; float u[9]={cfg[c][0]-1,cfg[c][1]-1,cfg[c][2],0,0,0,0,120,100};
     ch_prepare(&P,u); ch_init(&s); s.g=0;
@@ -25,5 +25,9 @@ int main(void){
       while(smp<target){for(int i=0;i<8;i++)buf[i]=0.3f;ch_process(&s,&P,buf,8);smp+=8;}
       line[n++]=buf[7]>0.15f?'X':'.';
     } line[n]=0; printf("steps %2d notes %d shift %d: %s\n",cfg[c][1],cfg[c][0],cfg[c][2],line);
+    for(int i=0;i<=n;i++)lines[c][i]=line[i];
   }
-  return 0;}
+  /* 3: Shift starts the pattern LATER: shift 3 at step t plays what shift 0 played at t - 3 */
+  {int late=0; for(int t=3;t<30;t++) if(lines[2][t]!=lines[0][t-3]) late++;
+   printf("shift 3 vs shift 0 delayed by 3: %d mismatches\n",late); bad+=late;}
+  return bad?1:0;}

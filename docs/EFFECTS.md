@@ -2,7 +2,7 @@
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo knobs hold every BPM twice.** On DualShft, Choral, EuGate, DubSiren and Scrub the Tempo knob runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy.
+**Tempo knobs hold every BPM twice.** On DualShft, Choral, EuGate, DubSiren and Scrub the Tempo knob runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy. Tempo is the 8th knob on all five, so the host sends the same knob number whatever the effect. While one of these effects is switched off its LFO or pattern keeps running in the background, so it comes back in time (DubSiren needs Trig SHold or SPuls for that, EuGate Reset OFF, NOTE or SYNC).
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
@@ -21,11 +21,11 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Knob | Range | What it does |
 |---|---|---|
 | Ptch1 / Ptch2 | -24..+24 semitones | Pitch of each voice, with tenths of a semitone around 0. |
-| Dly1 / Dly2 | 12 ms..1 s | Echo time of each voice (free, not synced). |
-| Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
+| Dly1 / Dly2 | 12 ms..1 s, note values | Echo time of each voice. The top of the knob syncs to Tempo as note values (1/32 .. 1 bar). A synced time too long for the 3.9 s buffer is halved (1 bar below about 62 BPM). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
+| Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: vowel choir
@@ -37,10 +37,10 @@ Filters tuned to the vowels A E I O U turn the input into a small choir. Five vo
 | Reso | 0..100 | How sharp the vowel is. Higher = more vocal. |
 | Chord | OFF, detune, 2..7 semitones, 35 chords | The pitch of the side voices relative to the main voice. |
 | Param | 0..100 | Changes meaning with Shape (lag, glide, independence, chance, speed ...). |
-| Tempo | 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle. |
 | Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
 | Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
+| Tempo | 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
@@ -52,7 +52,7 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 | Steps | 1..64 | Pattern length. Anything other than 16, 32 or 64 runs against the bar: polymeters. |
 | Shift | 0..63 | Starts the pattern later by this many steps. |
 | Swing | 0..100 | Delays only the weak 16ths. |
-| Reset | OFF, NOTE, PEDAL | What restarts the pattern: nothing, every new note after silence, or turning the effect on. |
+| Reset | OFF, NOTE, PEDAL, SYNC | What restarts the pattern: nothing, every new note after silence, or turning the effect on. SYNC is the setting for bar sync from a host: the same as OFF, only the host's restarts count. |
 | Gap | 0..50 % of a step | Small silence at the end of a note that is followed by another note. |
 | Soft | 0..100 | Softness of the note edges. 0 = hard chop. |
 | Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pattern at step 1 (see above). |
@@ -65,15 +65,15 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 
 | Knob | Range | What it does |
 |---|---|---|
-| Trig | Hold / Pulse | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. |
+| Trig | Hold / Pulse / SHold / SPuls | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. SHold and SPuls do the same on the beat: the siren waits for the next beat of the Tempo clock (re-aligned by each twin flip from a host) and the siren tones stay in step with the bar. |
 | Mode | Wail, Fast, Slow, Laser | LFO shape. Fast is twice the Rate, Slow is half. |
 | Pitch | 110 Hz..1760 Hz | Base pitch. |
 | Rate | Man, 0.15..15 Hz, note values | LFO speed. The top of the knob syncs to Tempo as note values (4 bars .. 1/32). |
 | Depth | 0..100 | How far the LFO sweeps the pitch. |
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
+| Tempo | 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
-| Tempo | 40..240 BPM, twice | Only used when Rate is set to a note value. Jumping to the second copy of the same BPM restarts the LFO (see above). |
 
 ### S.GN_L: broken digital line
 The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.

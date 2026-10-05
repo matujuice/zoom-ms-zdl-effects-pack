@@ -4,6 +4,9 @@
  *   - the twin copy runs at the same speed as its BPM (also read from raw 4.41)
  *   - flipping a BPM to its twin (1.20 -> 3.21) restarts the phase, and only once
  *   - a plain tempo change restarts it only where PLAIN_RESETS is 1 (DualShft, Choral)
+ *   - switched off, the input passes untouched while the phase keeps running at the same
+ *     speed and a flip still restarts it (skipped where OFF_RUNS is 0: Scrub; the input
+ *     check is skipped where OFF_DRY is 0: DubSiren, whose echo rings out)
  * The including file defines: STATE, PHASE(s), ENTRY, TEMPO_SLOT, PLAIN_RESETS,
  * defaults(), label(). */
 #include <stdio.h>
@@ -36,13 +39,23 @@ static void setup(void)
     st = (STATE *)(((uintptr_t)arena + 3u) & ~(uintptr_t)3u);
 }
 
+#ifndef OFF_RUNS
+#define OFF_RUNS 1
+#endif
+#ifndef OFF_DRY
+#define OFF_DRY 1
+#endif
+
 static unsigned int rng = 12345u;
+static int changed;                    /* output samples that differ from the input */
 static void run(long blocks)
 {
     long b; int j;
+    float in[8];
     for (b = 0; b < blocks; b++) {
-        for (j = 0; j < 8; j++) { rng = rng * 1664525u + 1013904223u; fx[j] = 0.3f * (float)(int)(rng >> 9) * 1.1920929e-7f - 0.3f; fx[j + 8] = fx[j]; }
+        for (j = 0; j < 8; j++) { rng = rng * 1664525u + 1013904223u; fx[j] = 0.3f * (float)(int)(rng >> 9) * 1.1920929e-7f - 0.3f; fx[j + 8] = fx[j]; in[j] = fx[j]; }
         ENTRY(ctx);
+        for (j = 0; j < 8; j++) if (fx[j] != in[j]) changed++;
     }
 }
 
@@ -92,6 +105,22 @@ int main(void)
     printf("plain change 120 -> 121: phase %.4f -> %.4f (restart expected: %d)\n", before, after, PLAIN_RESETS);
     if (PLAIN_RESETS) CHECK(after <= 1.5f * d120, "plain tempo change did not restart");
     else              CHECK(after > before, "plain tempo change restarted the phase");
+
+    if (OFF_RUNS) {                                          /* switched off */
+        float doff;
+        params[TEMPO_SLOT] = 1.20f; run(3000);
+        params[0] = 0.0f; changed = 0;
+        run(3000);
+        doff = step(); if (doff < 0.0f) doff = step();
+        printf("switched off: phase per block %.6g (on: %.6g), changed samples %d\n", doff, d120, changed);
+        if (OFF_DRY) CHECK(changed == 0, "switched off but the input was changed");
+        CHECK(fabsf(doff - d120) < 1e-5f, "switched off, the phase does not keep running");
+        run(3000);
+        params[TEMPO_SLOT] = 3.21f; before = PHASE(st); run(1); after = PHASE(st);
+        printf("flip while off: phase %.4f -> %.4f\n", before, after);
+        CHECK(after <= 1.5f * d120 && before > 2.0f * d120, "flip while off did not restart the phase");
+        params[0] = 1.0f;
+    }
 
     printf("%d failed checks\n", fails);
     return fails ? 1 : 0;

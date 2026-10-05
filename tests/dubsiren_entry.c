@@ -35,11 +35,11 @@ int main(int argc,char**argv){
   /* synced LFO: check the increment directly */
   { SirenState *s=(SirenState*)(((uintptr_t)arena+3)&~3); (void)s; SirenParams P; float k[9]; SirenState *st=(SirenState*)calloc(1,sizeof(SirenState)); sr_init(st);
     int rates[5]={107,106,102,111,112}; int bpms[5]={120,120,90,200,60};
-    for(int q=0;q<5;q++){ k[0]=1;k[1]=MODEK;k[2]=.48f;k[3]=rates[q]*0.008928571f;k[4]=.34f;k[5]=.5f;k[6]=.4f;k[7]=.55f*1.0f/0.8f*0.8f;k[8]=bpms[q]*0.0022675737f; sr_prepare(st,&P,k,0);
+    for(int q=0;q<5;q++){ k[0]=0.3333333f;k[1]=MODEK;k[2]=.48f;k[3]=rates[q]*0.008928571f;k[4]=.34f;k[5]=.5f;k[6]=.4f;k[7]=.55f*1.0f/0.8f*0.8f;k[8]=bpms[q]*0.0022675737f; sr_prepare(st,&P,k,0);
       printf("Rate %d @%d BPM: LFO cycle = %.1f samples = %.4f beats\n",rates[q],bpms[q],1.0/P.lfo_inc,(1.0/P.lfo_inc)/(2646000.0/bpms[q])); } }
   { char b[8]; unsigned v[]={0,1,67,100,101,104,106,107,109,111,112}; for(int i=0;i<11;i++){ZDL_GetLabel_3(v[i],b); printf("R%u=%s ",v[i],b);} printf("\n");
     unsigned w[]={0,40,100}; for(int i=0;i<3;i++){ZDL_GetLabel_6(w[i],b); printf("T%u=%s ",w[i],b);} printf("\n");
-    unsigned x[]={0,1,55,100,125}; for(int i=0;i<5;i++){ZDL_GetLabel_7(x[i],b); printf("F%u=%s ",x[i],b);} printf("\n"); }
+    unsigned x[]={0,1,55,100,125}; for(int i=0;i<5;i++){ZDL_GetLabel_8(x[i],b); printf("F%u=%s ",x[i],b);} printf("\n"); }
   /* sweep: no NaN / limits for all rate+time values */
   { int bad=0; float pk=0; for(int r=0;r<=112;r+=7) for(int tm=0;tm<=100;tm+=9){ setup(); setk(0,r%4,48,r,34,100,tm,125,40+r); run(10000,60000); for(int t=0;t<N;t++){ if(!(out[t]==out[t])) bad++; if(fabsf(out[t])>pk) pk=fabsf(out[t]); } } printf("sweep: nan=%d peak=%.2f\n",bad,pk); }
   return 0;

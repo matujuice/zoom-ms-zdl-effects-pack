@@ -33,12 +33,6 @@
       "comment": "A parameter whose meaning follows the Shape (0..100). Sine: Lag (side voices ahead of / behind the main voice, on slightly different vowels). Step: Glide (hard steps .. smooth). Rand: Independence (0 all voices change together .. 100 each on its own clock). Solo: Soloists (1..4 voices move together each cycle, in turn). Some: Chance that a voice changes (10..90%). Canon: Lag, the entries are smeared in time. Ripl: Ripple speed (delay between voices). Fan: Glide (how fast the voices open and gather). Walk: Step size (small blends .. whole-vowel leaps). Swell: Attack (how much of the cycle the rise takes). Spot: Width of the spotlight."
     },
     {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "BPM for the LFO (40..240, below 40 acts as 40), shown on screen. The LFO restarts whenever it changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
-    },
-    {
       "name": "Div",
       "max": 16,
       "default": 8,
@@ -55,6 +49,12 @@
       "max": 100,
       "default": 100,
       "comment": "How far the LFO shape reaches from Vowel, 0..100 = 0..4 vowels (0 = the shape does nothing)."
+    },
+    {
+      "name": "Tempo",
+      "max": 441,
+      "default": 120,
+      "comment": "BPM for the LFO (40..240, below 40 acts as 40), shown on screen. The LFO restarts whenever it changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
     },
     {
       "name": "Mix",

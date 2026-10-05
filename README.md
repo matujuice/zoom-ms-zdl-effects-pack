@@ -7,7 +7,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | Effect | What it is |
 |---|---|
 | **WaveFold** | Buchla-style wavefolder with automatic level matching. |
-| **DualShft** | Two tempo-synced pitch shifters, each with its own echo time, and an LFO that bends them in opposite directions. |
+| **DualShft** | Two tempo-synced pitch shifters, each with its own echo time (free or synced), and an LFO that bends them in opposite directions. |
 | **Choral** | Turns the input into a vowel choir: five voices, 35 chords, 11 ways for the vowels to move. |
 | **EuGate** | Euclidean rhythm gate. Steps and Notes up to 64 each, so polymeters are possible. Swing, Gap and Soft too. |
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
@@ -16,7 +16,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat: [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
+**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat. Get the script on [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (or [tools/mozaic/](tools/mozaic/)); setup and the best knob settings for it (for example EuGate Reset SYNC, DubSiren Trig SHold or SPuls) are in [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -49,7 +49,7 @@ src/airwindows/common/ shared cover and parameter helpers; covers/*.json are the
 build/                 the ZDL linker and tools (from ZoomMultistompZDL, see Credits)
 docs/                  knob reference, install guide, DSP rules
 tests/                 host tests: python3 tests/run.py
-tools/mozaic/          iPhone (Mozaic) scripts for bar sync and testing the USB connection
+tools/mozaic/          iPhone (Mozaic) bar sync (.mozaic + text) and a USB connection test script
 ```
 
 To change a cover, edit that effect's `make_cover.py` and run it; it rewrites the cover JSON and a preview image. The pedal's pixels are 1.4 times taller than wide, so round shapes are drawn squashed.

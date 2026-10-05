@@ -12,9 +12,9 @@
  *   - ring indexing wraps with a compare, never % or a division
  *
  * Signal flow (mono)
- *   in -> one delay ring (65,536 samples, about 1.5 s)
- *   Voice 1: pitch-shifted echo, delay 1  (12 ms .. 1 s, free time in ms)
- *   Voice 2: pitch-shifted echo, delay 2  (12 ms .. 1 s, free time in ms)
+ *   in -> one delay ring (172,032 samples, about 3.9 s)
+ *   Voice 1: pitch-shifted echo, delay 1  (12 ms .. 1 s free, or a synced note value)
+ *   Voice 2: pitch-shifted echo, delay 2  (12 ms .. 1 s free, or a synced note value)
  *   Each voice reads two taps half a grain apart with a triangle crossfade
  *   (the overlapping-crossfade granular shifter, no clicks).
  *   wet = 0.5 * (A + B), then dry/wet Mix (DJ-style: dry full up to 50,
@@ -25,8 +25,11 @@
  *   with very fine steps at the bottom, and from 3 semitones up it snaps to
  *   whole semitones (screen 71..80 = 3 .. 12 st).
  *
- * DELAY 1 / DELAY 2 (free time, NOT tempo synced)
- *   Screen 0..100. Milliseconds = 12 + 0.0988 * screen^2, rounded, so the
+ * DELAY 1 / DELAY 2 (free time, or synced at the top of the knob)
+ *   Screen 101..112 = synced to the Tempo knob as a note value: 1/32 1/16T 1/16
+ *   1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar. A synced time longer than the
+ *   ring (3.9 s) is halved until it fits, so 1bar below about 62 BPM plays a 1/2.
+ *   Screen 0..100 free. Milliseconds = 12 + 0.0988 * screen^2, rounded, so the
  *   bottom of the knob is fine-grained (12 ms) and the top is 1000 ms.
  *   The pedal shows the exact time ("12ms" .. "999ms", "1.00s") through the
  *   ZDL_GetLabel_2 / _3 callbacks at the bottom of the DSP section.
@@ -59,9 +62,12 @@
  *   number. Flipping between a BPM and its twin (120 <-> 321) restarts the
  *   LFO without changing the tempo, so a host (iPhone, MIDI box) can send
  *   one knob edit on each downbeat to keep the LFO on the bar.
+ *   While the effect is switched off the input is untouched, but the LFO
+ *   keeps running and follows Tempo flips, so it comes back on the bar.
  *
  * ON-SCREEN TEXT (ZDL_GetLabel_<knob index>, value = screen number)
- *   Ptch1/2    -24 .. -1, -0.9 .. -0.1, 0, +0.1 .. +0.9, +1 .. +24      Dly1/Dly2  12ms .. 1.00s
+ *   Ptch1/2    -24 .. -1, -0.9 .. -0.1, 0, +0.1 .. +0.9, +1 .. +24
+ *   Dly1/Dly2  12ms .. 1.00s, then 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar
  *   Depth      0 .. 2.00 st in fine steps, then whole semitones 3 .. 12
  *   Div        4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64
  *   Shape      Tri Sqr Rand Step Sine Rise Fall   Tempo: the BPM, 40 .. 240, on both copies
@@ -70,9 +76,12 @@
  *   tables, no calls), so they need no data relocations.
  *
  * KNOBS (9 = the maximum, 3 pages x 3), each scaled to 0..1 by ds_knob()
- *   page 1: k[0] Ptch1     k[1] Ptch2     k[2] Dly1
- *   page 2: k[3] Dly2   k[4] Tempo     k[5] Div
- *   page 3: k[6] Depth     k[7] Shape     k[8] Mix   (default 50)
+ *   On the pedal: page 1 Ptch1 Ptch2 Dly1, page 2 Dly2 Div Depth, page 3 Shape
+ *   Tempo Mix. Tempo is the 8th knob on every twin-Tempo effect of the pack, so a
+ *   sync host sends one knob number whatever the effect (Luca, 2026-10-05).
+ *   Inside the code k[] keeps its own order:
+ *     k[0] Ptch1  k[1] Ptch2  k[2] Dly1  k[3] Dly2  k[4] Tempo  k[5] Div
+ *     k[6] Depth  k[7] Shape  k[8] Mix   (default 50)
  *
  * DEFAULTS: the value the pedal shows at load lives in the effect's
  * manifest (manifest_pedal.json), not in this file. Because the repo notes
@@ -108,11 +117,12 @@
 #endif
 
 #define FS_HZ            44100.0f
-#define RING_SIZE        65536               /* 64 * 1024 floats = 262,144 B   */
+#define RING_SIZE        172032              /* 168 * 1024 floats = 688,128 B, 3.9 s (arena >= 705,536 B) */
 #define GRAIN_LEN        1024.0f             /* crossfade window W, ~23 ms     */
 #define HALF_GRAIN       512.0f
 #define INV_GRAIN_LEN    0.0009765625f       /* 1/1024, written as a literal   */
 #define MAX_DLY_SAMPLES  44200.0f            /* safety clamp (1 s = 44100)     */
+#define MAX_SYNC_DLY     171000.0f           /* synced delays: ring minus a grain */
 #define MS_TO_SAMPLES    44.1f               /* samples per millisecond        */
 #define BPM_TO_INC       3.77929e-7f         /* 1 / (60 * 44100)               */
 #define FADE_STEP        0.005f              /* wet fade per sample, ~4.5 ms   */
@@ -129,7 +139,7 @@
 #define TEMPO_MAX_F      441.0f
 #define TEMPO_TWIN       201                 /* twin copy = BPM + 201          */
 
-#define DS_MAGIC         0x44533035u         /* "DS05": arena holds valid state */
+#define DS_MAGIC         0x44533036u         /* "DS06": arena holds valid state */
 
 #define SHAPE_TRI        0
 #define SHAPE_SQUARE     1
@@ -142,8 +152,8 @@
 /* Fallback knob values when the whole parameter table reads 0. */
 #define DEF_PITCH_A      0.7424242f          /* screen 49 = +7 st              */
 #define DEF_PITCH_B      0.2878788f          /* screen 19 = -5 st              */
-#define DEF_DELAY_A      0.70f               /* screen 70 = 496 ms             */
-#define DEF_DELAY_B      0.50f               /* screen 50 = 259 ms             */
+#define DEF_DELAY_A      0.625f              /* screen 70 = 496 ms (70/112)    */
+#define DEF_DELAY_B      0.44642857f         /* screen 50 = 259 ms (50/112)    */
 #define DEF_TEMPO        0.27210884f         /* 120 BPM (120/441)              */
 #define DEF_DIV          0.5f                /* screen 8 = quarter note LFO    */
 #define DEF_DEPTH        0.3625f             /* screen 29 = 0.43 semitone      */
@@ -284,6 +294,59 @@ static inline float subdiv_mult(int idx)
     if (idx == 14) return 8.0f;
     if (idx == 15) return 12.0f;
     return 16.0f;
+}
+
+/* Synced delay (Dly knob 101..112): the delay as a note value, in beats (quarter notes):
+ * 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar */
+DS_ALWAYS_INLINE(dly_note_beats)
+static inline float dly_note_beats(int d)
+{
+    if (d <= 0) return 0.125f;
+    if (d == 1) return 0.16666667f;
+    if (d == 2) return 0.25f;
+    if (d == 3) return 0.33333334f;
+    if (d == 4) return 0.375f;
+    if (d == 5) return 0.5f;
+    if (d == 6) return 0.6666667f;
+    if (d == 7) return 0.75f;
+    if (d == 8) return 1.0f;
+    if (d == 9) return 1.5f;
+    if (d == 10) return 2.0f;
+    return 4.0f;
+}
+
+/* 1 / x for x > 0: a first guess from the float bits, then three Newton steps (no divide) */
+DS_ALWAYS_INLINE(ds_recip)
+static inline float ds_recip(float x)
+{
+    union { float f; unsigned int u; } c;
+    float y;
+    c.f = x;
+    c.u = 0x7EF311C7u - c.u;
+    y = c.f;
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    return y;
+}
+
+/* Delay knob screen 0..112 -> delay in samples. 0..100 free: whole milliseconds,
+ * 12 + 0.0988 * screen^2 (the label callbacks use the same expression); 101..112 a
+ * note value at the Tempo BPM, halved until it fits the ring (1 bar below ~62 BPM). */
+DS_ALWAYS_INLINE(dly_samples)
+static inline float dly_samples(int n, float spb)
+{
+    float d;
+    int   ms;
+    if (n > 100) {
+        d = dly_note_beats(n - 101) * spb;
+        while (d > MAX_SYNC_DLY) d *= 0.5f;
+        return d;
+    }
+    ms = (int)(12.0f + 0.0988f * (float)(n * n) + 0.5f);
+    d  = (float)ms * MS_TO_SAMPLES;
+    if (d > MAX_DLY_SAMPLES) d = MAX_DLY_SAMPLES;
+    return d;
 }
 
 /* Pitch knob, screen 0..66 -> tenths of a semitone (-240 .. +240). Whole semitones
@@ -463,8 +526,8 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
 {
     float k[9];
     int   i, allzero = 1;
-    int   sa, sb, ia, ib, idx, msA, msB;
-    float bpm, da, db;
+    int   sa, sb, ia, ib, idx;
+    float bpm, spb;
     int   tempo_i;
 
     ds_ensure_init(s);
@@ -483,8 +546,8 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
 
     sa  = pitch_tenths((int)(k[0] * 66.0f + 0.5f));   /* screen 0..66 -> tenths of a semitone */
     sb  = pitch_tenths((int)(k[1] * 66.0f + 0.5f));
-    ia  = (int)(k[2] * 100.0f + 0.5f);            /* screen 0..100 */
-    ib  = (int)(k[3] * 100.0f + 0.5f);
+    ia  = (int)(k[2] * 112.0f + 0.5f);            /* screen 0..112: free ms, then note values */
+    ib  = (int)(k[3] * 112.0f + 0.5f);
     idx = (int)(k[5] * 16.0f + 0.5f);            /* screen 0..16 */
 
     tempo_i = (int)(k[4] * TEMPO_MAX_F + 0.5f);   /* screen number 0..441     */
@@ -496,19 +559,12 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     } else {
         P->retrig = 0;
     }
-    /* Free delay time, whole milliseconds. The label callbacks below use
-     * exactly the same expression, so the screen text is the real delay. */
-    msA = (int)(12.0f + 0.0988f * (float)(ia * ia) + 0.5f);
-    msB = (int)(12.0f + 0.0988f * (float)(ib * ib) + 0.5f);
-    da  = (float)msA * MS_TO_SAMPLES;
-    db  = (float)msB * MS_TO_SAMPLES;
-    if (da > MAX_DLY_SAMPLES) da = MAX_DLY_SAMPLES;
-    if (db > MAX_DLY_SAMPLES) db = MAX_DLY_SAMPLES;
+    spb = 2646000.0f * ds_recip(bpm);             /* samples per beat (60 x 44100 / BPM) */
 
     P->ratioA  = semis_to_ratio_wide(0.1f * (float)sa);
     P->ratioB  = semis_to_ratio_wide(0.1f * (float)sb);
-    P->dlyA    = da;                     /* average delay of the voice */
-    P->dlyB    = db;
+    P->dlyA    = dly_samples(ia, spb);   /* average delay of the voice */
+    P->dlyB    = dly_samples(ib, spb);
     P->lfo_inc = bpm * subdiv_mult(idx) * BPM_TO_INC;
     P->depth = depth_st((int)(k[6] * 80.0f + 0.5f));   /* see depth_st */
     P->shape   = (int)(k[7] * 6.0f + 0.5f);         /* screen 0..6 */
@@ -645,7 +701,7 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
 /* Each function is self-contained: characters are stored one by one (no  */
 /* string literals, no tables), no division, no calls. At most 5 chars    */
 /* are used so the text fits the pedal column. Knob indices: 0 Ptch1,    */
-/* 1 Ptch2, 2 Dly1, 3 Dly2, 4 Tempo, 5 Div, 6 Depth, 7 Shape, 8 Mix.      */
+/* 1 Ptch2, 2 Dly1, 3 Dly2, 4 Div, 5 Depth, 6 Shape, 7 Tempo, 8 Mix.      */
 /* Mix has no callback and shows a plain number.                          */
 /* ------------------------------------------------------------------ */
 
@@ -677,12 +733,33 @@ int fn(unsigned int value, char *out)                                      \
 }
 
 /* Delay: screen 0..100 -> "12ms" .. "999ms", "1.00s". Same millisecond
- * expression as ds_prepare(), so the text is the real delay time. */
+ * expression as dly_samples(), so the text is the real delay time.
+ * 101..112 -> the note value: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar */
 #define DS_DELAY_LABEL(fn)                                                 \
 int fn(unsigned int value, char *out)                                      \
 {                                                                          \
     int v, ms, h = 0, t = 0, len = 0;                                      \
-    if (value > 100u) value = 100u;                                        \
+    if (value > 112u) value = 112u;                                        \
+    if (value > 100u) {                                                    \
+        v = (int)value - 101;                                              \
+        if (v == 11) {                                                     \
+            out[0] = '1'; out[1] = 'b'; out[2] = 'a'; out[3] = 'r';        \
+            out[4] = 0; return 4;                                          \
+        }                                                                  \
+        out[0] = '1'; out[1] = '/'; len = 2;                               \
+        if (v <= 1)      { out[2] = '3'; out[3] = '2'; len = 4; }          \
+        else if (v <= 4) { out[2] = '1'; out[3] = '6'; len = 4; }          \
+        else if (v <= 7) { out[2] = '8'; len = 3; }                        \
+        else if (v <= 9) { out[2] = '4'; len = 3; }                        \
+        else             { out[2] = '2'; len = 3; }                        \
+        if (v == 1) { out[2] = '1'; out[3] = '6'; out[4] = 'T'; len = 5; } \
+        if (v == 3) { out[2] = '8'; out[3] = 'T'; len = 4; }               \
+        if (v == 4) { out[4] = '.'; len = 5; }                             \
+        if (v == 6) { out[2] = '4'; out[3] = 'T'; len = 4; }               \
+        if (v == 7 || v == 9) { out[3] = '.'; len = 4; }                   \
+        out[len] = 0;                                                      \
+        return len;                                                        \
+    }                                                                      \
     v = (int)value;                                                        \
     ms = (int)(12.0f + 0.0988f * (float)(v * v) + 0.5f);                   \
     if (ms >= 1000) {                                                      \
@@ -703,11 +780,11 @@ int fn(unsigned int value, char *out)                                      \
 
 DS_PITCH_LABEL(ZDL_GetLabel_0)   /* Ptch1 -24..+24 with tenths near 0 */
 DS_PITCH_LABEL(ZDL_GetLabel_1)   /* Ptch2 */
-DS_DELAY_LABEL(ZDL_GetLabel_2)                 /* Dly1 12ms .. 1.00s */
-DS_DELAY_LABEL(ZDL_GetLabel_3)                 /* DlyB 12ms .. 1.00s */
+DS_DELAY_LABEL(ZDL_GetLabel_2)                 /* Dly1 12ms .. 1.00s, 1/32 .. 1bar */
+DS_DELAY_LABEL(ZDL_GetLabel_3)                 /* Dly2 12ms .. 1.00s, 1/32 .. 1bar */
 /* Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
  * the same numbers again (ds_tempo_bpm, as in ds_prepare). */
-int ZDL_GetLabel_4(unsigned int value, char *out)
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value > 441u) value = 441u;
@@ -724,7 +801,7 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
  * three decimals below 1 st; "1.00" .. "2.00" with two decimals; then the
  * whole semitones "3" .. "12" (screen 71..80). The value is computed with the
  * same expression as the DSP, so the text is the real swing. */
-int ZDL_GetLabel_6(unsigned int value, char *out)
+int ZDL_GetLabel_5(unsigned int value, char *out)
 {
     int n, a = 0, b = 0, c = 0, len = 0;
     if (value > 80u) value = 80u;
@@ -765,7 +842,7 @@ int ZDL_GetLabel_6(unsigned int value, char *out)
 
 /* Div: screen 0..16 -> length of one LFO cycle: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4
  * 1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 */
-int ZDL_GetLabel_5(unsigned int value, char *out)
+int ZDL_GetLabel_4(unsigned int value, char *out)
 {
     int n = (int)value, len = 0;
     if (n > 16) n = 16;
@@ -791,7 +868,7 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
 }
 
 /* Shape: screen 0..6 -> Tri / Sqr / Rand / Step / Sine / Rise / Fall */
-int ZDL_GetLabel_7(unsigned int value, char *out)
+int ZDL_GetLabel_6(unsigned int value, char *out)
 {
     char c0, c1, c2, c3 = 0;
     int len = 4;
@@ -839,8 +916,6 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
-    if (params[0] < 0.5f) return;                /* effect bypassed            */
-
     desc = ZDL_PTR(volatile unsigned int *, ctx[3]);
     if (!desc) return;
 
@@ -858,8 +933,8 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
 
     k[0] = ds_knob(params[DUALSHFT_PTCH1_SLOT], (float)DUALSHFT_PTCH1_UI_DEFAULT, 0.0151515152f);
     k[1] = ds_knob(params[DUALSHFT_PTCH2_SLOT], (float)DUALSHFT_PTCH2_UI_DEFAULT, 0.0151515152f);
-    k[2] = ds_knob(params[DUALSHFT_DLY1_SLOT],   (float)DUALSHFT_DLY1_UI_DEFAULT,   0.01f);
-    k[3] = ds_knob(params[DUALSHFT_DLY2_SLOT],   (float)DUALSHFT_DLY2_UI_DEFAULT,   0.01f);
+    k[2] = ds_knob(params[DUALSHFT_DLY1_SLOT],   (float)DUALSHFT_DLY1_UI_DEFAULT,   0.008928571f);
+    k[3] = ds_knob(params[DUALSHFT_DLY2_SLOT],   (float)DUALSHFT_DLY2_UI_DEFAULT,   0.008928571f);
     k[4] = ds_tempo_ui(params[DUALSHFT_TEMPO_SLOT], (float)DUALSHFT_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
     k[5] = ds_knob(params[DUALSHFT_DIV_SLOT],    (float)DUALSHFT_DIV_UI_DEFAULT,    0.0625f);
     k[6] = ds_knob(params[DUALSHFT_DEPTH_SLOT],  (float)DUALSHFT_DEPTH_UI_DEFAULT,  0.0125f);
@@ -867,6 +942,12 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     k[8] = ds_knob(params[DUALSHFT_MIX_SLOT],    (float)DUALSHFT_MIX_UI_DEFAULT,    0.01f);
 
     ds_prepare(s, &P, k);
+    if (params[0] < 0.5f) {                      /* effect switched off: input untouched, */
+        if (P.retrig) s->lfo_phase = 0.0f;       /* but the LFO keeps time with the bar   */
+        s->lfo_phase += P.lfo_inc * 8.0f;
+        if (s->lfo_phase >= 1.0f) s->lfo_phase -= 1.0f;
+        return;
+    }
     ds_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

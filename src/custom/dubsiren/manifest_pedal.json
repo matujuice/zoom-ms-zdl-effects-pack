@@ -10,9 +10,9 @@
   "params": [
     {
       "name": "Trig",
-      "max": 1,
+      "max": 3,
       "default": 1,
-      "comment": "Trigger: how the FOOT PEDAL (the effect's on/off footswitch) triggers the siren. 0 Hold (sounds while the effect is on, releases when off, echo rings out), 1 Pulse (each OFF -> ON press = one ~0.6 s burst, the ON -> OFF press does nothing). The footswitch latches, so only on/off is visible, not 'held down'."
+      "comment": "Trigger: how the FOOT PEDAL (the effect's on/off footswitch) triggers the siren. 0 Hold (sounds while the effect is on, releases when off, echo rings out), 1 Pulse (each OFF -> ON press = one ~0.6 s burst, the ON -> OFF press does nothing), 2 SHold and 3 SPuls = the same two on the beat: the siren starts (and SHold stops) on the next beat of the Tempo knob's clock, which restarts at each twin flip, and the press does not restart the LFO. The footswitch latches, so only on/off is visible, not 'held down'."
     },
     {
       "name": "Mode",
@@ -51,16 +51,16 @@
       "comment": "Echo time, ms = 50 + 0.095*screen^2 (50ms..1.00s), shown on screen. Default 40 = 202 ms, one LFO cycle at the default Rate. Changes glide like tape. Never synced to Tempo."
     },
     {
+      "name": "Tempo",
+      "max": 441,
+      "default": 120,
+      "comment": "Speed in BPM (40 to 240; below 40 reads as 40), shown on screen. It sets the LFO speed when Rate is set to a note value (the top of its range, 101..112) and the beat that Trig SHold / SPuls wait for. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the LFO without changing the tempo: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
+    },
+    {
       "name": "Fdbk",
       "max": 125,
       "default": 70,
       "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "Speed in BPM (40 to 240; below 40 reads as 40), shown on screen. It only sets the speed when Rate is set to a note value (the top of its range, 101..112). Flipping to the twin copy of the same BPM (120 <-> 321) restarts the LFO without changing the tempo: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
     }
   ],
   "audio_func_name": "Fx_DLY_DubSiren",
