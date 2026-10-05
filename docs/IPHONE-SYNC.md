@@ -26,7 +26,7 @@ WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script 
 2. AUM is the master clock. In AUM's clock settings, send MIDI clock to the drum machine. On a Digitakt: SETTINGS > MIDI CONFIG > SYNC, Clock receive and Transport receive on; PORT CONFIG, Input from USB.
 3. Add Mozaic to an AUM channel, paste `zoom_bar_sync.txt` into its code view and tap Upload.
 4. In AUM's MIDI routing: Mozaic out to the Zoom.
-5. Tap the first three pads until each shows the effect in that slot (Slot 1: EuGate, and so on). Only the first three effects of a patch accept edits from outside.
+5. The first three pads switch sync on or off for slots 1 to 3 (all ON at load). Tempo is the 8th knob on all five synced effects, so the script doesn't need to know which one is where. Turn a slot OFF if it holds any other effect, or the script will move that effect's 8th knob. Only the first three effects of a patch accept edits from outside.
 6. Press play in AUM.
 
 ## Controls
@@ -37,7 +37,7 @@ WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script 
 | Every (knob 2) | Restart every 1, 2, 4 or 8 bars. |
 | BPM (knob 3) | Tempo to send when Follow host is off. |
 | Follow host (knob 4) | Right half: the effects follow AUM's tempo. Left half: they use the BPM knob. |
-| Slot 1..3 (pads 1..3) | Which effect is in each slot. |
+| Slot 1..3 (pads 1..3) | Sync on or off for each slot. Off for any slot without DualShft, Choral, EuGate, DubSiren or Scrub. |
 | Sync (pad 4) | Restarts on or off. |
 
 ## Measuring Early

@@ -65,12 +65,12 @@
  *            (15 semitones), 100 = up to 5x the base pitch. All modes.
  *   5 Vol    siren level
  *   6 Time   echo time, ms = 50 + 0.095*screen^2 (50 ms .. 1 s), shown on screen
- *   7 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
- *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
- *   8 Tempo  BPM, 40..240 (the pedal's own number). Used when Rate is set to a note value,
+ *   7 Tempo  BPM, 40..240 (the pedal's own number). Used when Rate is set to a note value,
  *            and for the beat that Trig SHold / SPuls wait for.
  *            Screen 0..441: 241..441 is a twin copy of the same BPMs (see TEMPO SYNC),
- *            shown as the BPM
+ *            shown as the BPM. The 8th knob, as on every twin-Tempo effect of the pack.
+ *   8 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
+ *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
  *
  * TEMPO SYNC (no clock comes from the pedal, so it follows the BPM you dial in Tempo):
  *   Rate 101..112 = one whole LFO cycle lasts a note value: 4bar 2bar 1bar 1/2. 1/2 1/4.
@@ -578,7 +578,7 @@ int ZDL_GetLabel_6(unsigned int value, char *out)
 }
 
 /* 7 Fdbk: "Off" at 0 (no echo at all), then the percent 1..125 */
-int ZDL_GetLabel_7(unsigned int value, char *out)
+int ZDL_GetLabel_8(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value == 0u) { out[0] = 'O'; out[1] = 'f'; out[2] = 'f'; out[3] = 0; return 3; }
@@ -595,7 +595,7 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 
 /* 8 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
  * same numbers again */
-int ZDL_GetLabel_8(unsigned int value, char *out)
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value > 441u) value = 441u;

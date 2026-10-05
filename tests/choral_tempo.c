@@ -8,5 +8,5 @@ typedef FmState STATE;
 #define D(n) params[FORMANT_##n##_SLOT] = FORMANT_##n##_UI_DEFAULT / 100.0f
 static float *params;
 static void defaults(void) { D(VOWEL); D(RESO); D(CHORD); D(PARAM); D(TEMPO); D(DIV); D(SHAPE); D(DEPTH); D(MIX); }
-static int label(unsigned v, char *o) { return ZDL_GetLabel_4(v, o); }
+static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
 #include "tempo_twin.h"

@@ -76,9 +76,12 @@
  *   tables, no calls), so they need no data relocations.
  *
  * KNOBS (9 = the maximum, 3 pages x 3), each scaled to 0..1 by ds_knob()
- *   page 1: k[0] Ptch1     k[1] Ptch2     k[2] Dly1
- *   page 2: k[3] Dly2   k[4] Tempo     k[5] Div
- *   page 3: k[6] Depth     k[7] Shape     k[8] Mix   (default 50)
+ *   On the pedal: page 1 Ptch1 Ptch2 Dly1, page 2 Dly2 Div Depth, page 3 Shape
+ *   Tempo Mix. Tempo is the 8th knob on every twin-Tempo effect of the pack, so a
+ *   sync host sends one knob number whatever the effect (Luca, 2026-10-05).
+ *   Inside the code k[] keeps its own order:
+ *     k[0] Ptch1  k[1] Ptch2  k[2] Dly1  k[3] Dly2  k[4] Tempo  k[5] Div
+ *     k[6] Depth  k[7] Shape  k[8] Mix   (default 50)
  *
  * DEFAULTS: the value the pedal shows at load lives in the effect's
  * manifest (manifest_pedal.json), not in this file. Because the repo notes
@@ -698,7 +701,7 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
 /* Each function is self-contained: characters are stored one by one (no  */
 /* string literals, no tables), no division, no calls. At most 5 chars    */
 /* are used so the text fits the pedal column. Knob indices: 0 Ptch1,    */
-/* 1 Ptch2, 2 Dly1, 3 Dly2, 4 Tempo, 5 Div, 6 Depth, 7 Shape, 8 Mix.      */
+/* 1 Ptch2, 2 Dly1, 3 Dly2, 4 Div, 5 Depth, 6 Shape, 7 Tempo, 8 Mix.      */
 /* Mix has no callback and shows a plain number.                          */
 /* ------------------------------------------------------------------ */
 
@@ -781,7 +784,7 @@ DS_DELAY_LABEL(ZDL_GetLabel_2)                 /* Dly1 12ms .. 1.00s, 1/32 .. 1b
 DS_DELAY_LABEL(ZDL_GetLabel_3)                 /* Dly2 12ms .. 1.00s, 1/32 .. 1bar */
 /* Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
  * the same numbers again (ds_tempo_bpm, as in ds_prepare). */
-int ZDL_GetLabel_4(unsigned int value, char *out)
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value > 441u) value = 441u;
@@ -798,7 +801,7 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
  * three decimals below 1 st; "1.00" .. "2.00" with two decimals; then the
  * whole semitones "3" .. "12" (screen 71..80). The value is computed with the
  * same expression as the DSP, so the text is the real swing. */
-int ZDL_GetLabel_6(unsigned int value, char *out)
+int ZDL_GetLabel_5(unsigned int value, char *out)
 {
     int n, a = 0, b = 0, c = 0, len = 0;
     if (value > 80u) value = 80u;
@@ -839,7 +842,7 @@ int ZDL_GetLabel_6(unsigned int value, char *out)
 
 /* Div: screen 0..16 -> length of one LFO cycle: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4
  * 1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 */
-int ZDL_GetLabel_5(unsigned int value, char *out)
+int ZDL_GetLabel_4(unsigned int value, char *out)
 {
     int n = (int)value, len = 0;
     if (n > 16) n = 16;
@@ -865,7 +868,7 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
 }
 
 /* Shape: screen 0..6 -> Tri / Sqr / Rand / Step / Sine / Rise / Fall */
-int ZDL_GetLabel_7(unsigned int value, char *out)
+int ZDL_GetLabel_6(unsigned int value, char *out)
 {
     char c0, c1, c2, c3 = 0;
     int len = 4;

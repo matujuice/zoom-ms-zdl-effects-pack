@@ -51,16 +51,16 @@
       "comment": "Echo time, ms = 50 + 0.095*screen^2 (50ms..1.00s), shown on screen. Default 40 = 202 ms, one LFO cycle at the default Rate. Changes glide like tape. Never synced to Tempo."
     },
     {
-      "name": "Fdbk",
-      "max": 125,
-      "default": 70,
-      "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
-    },
-    {
       "name": "Tempo",
       "max": 441,
       "default": 120,
       "comment": "Speed in BPM (40 to 240; below 40 reads as 40), shown on screen. It sets the LFO speed when Rate is set to a note value (the top of its range, 101..112) and the beat that Trig SHold / SPuls wait for. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the LFO without changing the tempo: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
+    },
+    {
+      "name": "Fdbk",
+      "max": 125,
+      "default": 70,
+      "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
     }
   ],
   "audio_func_name": "Fx_DLY_DubSiren",

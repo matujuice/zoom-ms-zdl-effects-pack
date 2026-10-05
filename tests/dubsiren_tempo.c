@@ -10,5 +10,5 @@ typedef SirenState STATE;
 static float *params;
 static void defaults(void) { D(TRIG); D(MODE); D(PITCH); D(RATE); D(DEPTH); D(VOL); D(TIME); D(FDBK); D(TEMPO);
                              params[DUBSIREN_TRIG_SLOT] = 0.0f; params[DUBSIREN_RATE_SLOT] = 1.07f; }
-static int label(unsigned v, char *o) { return ZDL_GetLabel_8(v, o); }
+static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
 #include "tempo_twin.h"

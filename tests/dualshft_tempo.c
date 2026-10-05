@@ -8,5 +8,5 @@ typedef DualShift STATE;
 #define D(n) params[DUALSHFT_##n##_SLOT] = DUALSHFT_##n##_UI_DEFAULT / 100.0f
 static float *params;
 static void defaults(void) { D(PTCH1); D(PTCH2); D(DLY1); D(DLY2); D(TEMPO); D(DIV); D(DEPTH); D(SHAPE); D(MIX); }
-static int label(unsigned v, char *o) { return ZDL_GetLabel_4(v, o); }
+static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
 #include "tempo_twin.h"

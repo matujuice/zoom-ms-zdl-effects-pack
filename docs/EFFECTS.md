@@ -22,10 +22,10 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 |---|---|---|
 | Ptch1 / Ptch2 | -24..+24 semitones | Pitch of each voice, with tenths of a semitone around 0. |
 | Dly1 / Dly2 | 12 ms..1 s, note values | Echo time of each voice. The top of the knob syncs to Tempo as note values (1/32 .. 1 bar). A synced time too long for the 3.9 s buffer is halved (1 bar below about 62 BPM). |
-| Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
+| Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: vowel choir
@@ -37,10 +37,10 @@ Filters tuned to the vowels A E I O U turn the input into a small choir. Five vo
 | Reso | 0..100 | How sharp the vowel is. Higher = more vocal. |
 | Chord | OFF, detune, 2..7 semitones, 35 chords | The pitch of the side voices relative to the main voice. |
 | Param | 0..100 | Changes meaning with Shape (lag, glide, independence, chance, speed ...). |
-| Tempo | 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle. |
 | Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
 | Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
+| Tempo | 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
@@ -72,8 +72,8 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Depth | 0..100 | How far the LFO sweeps the pitch. |
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
-| Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
 | Tempo | 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
+| Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
 
 ### S.GN_L: broken digital line
 The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.

@@ -84,12 +84,10 @@
  *              Walk   Step size: from small blends to whole-vowel leaps
  *              Swell  Attack: how much of the cycle the rise takes
  *              Spot   Width of the spotlight
- *   4 Tempo  BPM for the LFO, 40..240; screen 0..441, the second half (241..441) is the
- *            twin copy of the same BPMs (see TEMPO SYNC); shown as the BPM on both
- *   5 Div    length of one LFO cycle: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8.
+ *   4 Div    length of one LFO cycle: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8.
  *            1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 (bar = 4 beats = 16 steps, so 4bar =
  *            64 steps, 3bar = 48, 2bar = 32, 1.5b = 24, 1bar = 16, 1/2. = 12 ...)
- *   6 Shape  what the LFO does (Depth and Param apply to all):
+ *   5 Shape  what the LFO does (Depth and Param apply to all):
  *              Sine   smooth sweep each side of Vowel
  *              Step   hold a whole vowel, glide to the next: A E I O U O I E A ...
  *              Rand   every voice draws its own random vowels (own clocks via Param)
@@ -101,7 +99,10 @@
  *              Walk   every voice steps a vowel up or down, on its own
  *              Swell  slow eased rise, quick fall
  *              Spot   a spotlight of vowel travels through the voices
- *   7 Depth  0..100 = how far the shape reaches from Vowel, 0..4 vowels (0 = still)
+ *   6 Depth  0..100 = how far the shape reaches from Vowel, 0..4 vowels (0 = still)
+ *   7 Tempo  BPM for the LFO, 40..240; screen 0..441, the second half (241..441) is the
+ *            twin copy of the same BPMs (see TEMPO SYNC); shown as the BPM on both; the 8th knob, as on every
+ *            twin-Tempo effect of the pack
  *   8 Mix    dry / wet, DJ-style: dry full up to 50, wet full from 50
  *
  * SINGER'S FORMANT: the main (middle) voice has a 4th, fixed band at 3 kHz (x section scale),
@@ -1012,7 +1013,7 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
 
 /* 4 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
  * same numbers again (fm_tempo_bpm, as in fm_prepare) */
-int ZDL_GetLabel_4(unsigned int value, char *out)
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value > 441u) value = 441u;
@@ -1029,7 +1030,7 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
 /* 5 Div: length of one LFO cycle, 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8. 1/8
  * 1/8T 1/16 1/16T 1/32 1/32T 1/64 (bar = 4 beats = 16 steps: 4bar = 64 steps, 3bar = 48,
  * 2bar = 32, 1.5b = 24 = 3/4 of 2 bars, 1/2. = 12 = 3/4 of a bar ...) */
-int ZDL_GetLabel_5(unsigned int value, char *out)
+int ZDL_GetLabel_4(unsigned int value, char *out)
 {
     int n = (int)value, len = 0;
     if (n > 16) n = 16;
@@ -1055,7 +1056,7 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
 }
 
 /* 6 Shape: Sine Step Rand Solo Some Canon Ripl Fan Walk Swell Spot */
-int ZDL_GetLabel_6(unsigned int value, char *out)
+int ZDL_GetLabel_5(unsigned int value, char *out)
 {
     int n = (int)value, len = 0;
     if (n > 10) n = 10;

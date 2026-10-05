@@ -33,12 +33,6 @@
       "comment": "Voice 2 echo time, same ranges as Dly1 (free ms, then synced note values). Default 50 = 259ms."
     },
     {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "BPM for the LFO (40..240; 0..39 act as 40), shown on screen. The LFO restarts whenever this number changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). The delays do not use it. Default 120."
-    },
-    {
       "name": "Div",
       "max": 16,
       "default": 8,
@@ -55,6 +49,12 @@
       "max": 6,
       "default": 0,
       "comment": "LFO shape. Screen text: 0 Tri, 1 Sqr, 2 Rand (smooth sine-like glide between random peaks and valleys), 3 Step (random sample and hold, one hop per cycle), 4 Sine, 5 Rise (ramp up), 6 Fall (ramp down). Voice 2 always moves opposite to voice 1."
+    },
+    {
+      "name": "Tempo",
+      "max": 441,
+      "default": 120,
+      "comment": "BPM for the LFO (40..240; 0..39 act as 40), shown on screen. The LFO restarts whenever this number changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). The delays do not use it. Default 120."
     },
     {
       "name": "Mix",
