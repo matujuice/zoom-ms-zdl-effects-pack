@@ -34,9 +34,9 @@
     },
     {
       "name": "Reset",
-      "max": 2,
+      "max": 3,
       "default": 0,
-      "comment": "What restarts the pattern at step 1. OFF = nothing, the pattern keeps running. NOTE = each time a note starts after a moment of silence. PEDAL = when you turn the effect on with the footswitch. Default OFF."
+      "comment": "What restarts the pattern at step 1. OFF = nothing, the pattern keeps running. NOTE = each time a note starts after a moment of silence. PEDAL = when you turn the effect on with the footswitch. SYNC = the setting for bar sync from a host: same as OFF, only the Tempo twin flips restart the pattern. Default OFF."
     },
     {
       "name": "Gap",

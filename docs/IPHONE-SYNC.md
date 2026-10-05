@@ -12,7 +12,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 |---|---|---|
 | DualShft | Any Div. | Turning Tempo by hand: it restarts the LFO. |
 | Choral | Any Div. | Turning Tempo by hand: it restarts the LFO. |
-| EuGate | Reset OFF. | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
+| EuGate | Reset SYNC (works like OFF). | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
 | DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |
 | Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
 

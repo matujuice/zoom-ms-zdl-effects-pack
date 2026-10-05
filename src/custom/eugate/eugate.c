@@ -42,7 +42,9 @@
  *   PEDAL: the footswitch being turned on, so the pattern starts exactly when you step
  *   on the pedal. (While the effect is off the pedal still calls the effect; the input
  *   is untouched, but the pattern clock keeps running and follows Tempo flips, so with
- *   OFF or NOTE the pattern comes back in time with the bar.)
+ *   OFF, NOTE or SYNC the pattern comes back in time with the bar.)
+ *   SYNC: the setting for bar sync from a host. It does the same as OFF (only the
+ *   Tempo twin flips below restart the pattern); the name just says what to pick.
  *   Whatever Reset says, a SYNC RESET restarts it too: the Tempo knob runs 0..441 and
  *   holds every BPM twice (0..240 = the BPM, 241..441 = a twin copy, BPM = screen - 201,
  *   so past 240 the screen shows 40 again). Flipping between a BPM and its twin
@@ -55,7 +57,7 @@
  *   1 Steps 0..63   shown 1..64: how many 16th-note steps the pattern has before it repeats
  *   2 Shift 0..63   starts the pattern later by this many steps
  *   3 Swing 0..100  shuffle: delays only the weak 16ths (see TIMING)
- *   4 Reset 0..2    shown OFF / NOTE / PEDAL: what restarts the pattern (see RESET)
+ *   4 Reset 0..3    shown OFF / NOTE / PEDAL / SYNC: what restarts the pattern (see RESET)
  *   5 Gap   0..50   small silence at the end of a note that is followed by another note,
  *                   in percent of a step (0 = touching notes join, as before)
  *   6 Soft  0..100  how soft the edges of each note are
@@ -192,7 +194,7 @@ static inline void ch_prepare(ChParams *P, const float *u)
     e = 3.0f + 600.0f * k * k * k;                       /* slew rate in 1/steps */
     P->c = P->inc * e;
     if (P->c > 0.5f) P->c = 0.5f;
-    P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL */
+    P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL, 3 SYNC (= OFF) */
     P->dryG = 2.0f - 2.0f * (u[8] * 0.01f);            /* Mix: dry full up to 50, then fades out */
     if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * (u[8] * 0.01f);                    /* wet fades in up to 50, then full       */
@@ -278,10 +280,14 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return ZDL_GetLabel_0(value, out);
 }
 
-/* knob 4 Reset: 0 "OFF", 1 "NOTE", 2 "PEDAL" */
+/* knob 4 Reset: 0 "OFF", 1 "NOTE", 2 "PEDAL", 3 "SYNC" */
 int ZDL_GetLabel_4(unsigned int value, char *out)
 {
-    if (value >= 2u) {
+    if (value >= 3u) {
+        out[0] = 'S'; out[1] = 'Y'; out[2] = 'N'; out[3] = 'C'; out[4] = 0;
+        return 4;
+    }
+    if (value == 2u) {
         out[0] = 'P'; out[1] = 'E'; out[2] = 'D'; out[3] = 'A'; out[4] = 'L'; out[5] = 0;
         return 5;
     }
@@ -354,7 +360,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[1] = ch_ui(params[EUGATE_STEPS_SLOT], (float)EUGATE_STEPS_UI_DEFAULT, 63.0f);
     u[2] = ch_ui(params[EUGATE_SHIFT_SLOT], (float)EUGATE_SHIFT_UI_DEFAULT, 63.0f);
     u[3] = ch_ui(params[EUGATE_SWING_SLOT], (float)EUGATE_SWING_UI_DEFAULT, 100.0f);
-    u[4] = ch_ui(params[EUGATE_RESET_SLOT],  (float)EUGATE_RESET_UI_DEFAULT,  2.0f);
+    u[4] = ch_ui(params[EUGATE_RESET_SLOT],  (float)EUGATE_RESET_UI_DEFAULT,  3.0f);
     u[5] = ch_ui(params[EUGATE_GAP_SLOT], (float)EUGATE_GAP_UI_DEFAULT, 50.0f);
     u[6] = ch_ui(params[EUGATE_SOFT_SLOT],  (float)EUGATE_SOFT_UI_DEFAULT,  100.0f);
     u[7] = ch_tempo_ui(params[EUGATE_TEMPO_SLOT], (float)EUGATE_TEMPO_UI_DEFAULT);
