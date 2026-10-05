@@ -248,6 +248,7 @@
     onat = nextbar - offset
     offat = onat + 30000 / HostTempo
     latarmed = 1
+    Log {Bar: effect on in }, Round (onat - SystemTime), { ms}
   endif
 @End
 
@@ -274,6 +275,7 @@
     pv = 1
     Call @SendParam
     laton = 1
+    Log {ON sent}
   endif
   if laton = 1 and now >= offat
     ps = slot
@@ -282,5 +284,6 @@
     Call @SendParam
     laton = 0
     latarmed = 0
+    Log {OFF sent}
   endif
 @End
