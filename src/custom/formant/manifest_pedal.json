@@ -34,9 +34,9 @@
     },
     {
       "name": "Tempo",
-      "max": 240,
+      "max": 441,
       "default": 120,
-      "comment": "BPM for the LFO, read straight off the knob so the screen number IS the tempo (40..240, below 40 acts as 40). The LFO restarts whenever it changes."
+      "comment": "BPM for the LFO (40..240, below 40 acts as 40), shown on screen. The LFO restarts whenever it changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
     },
     {
       "name": "Div",

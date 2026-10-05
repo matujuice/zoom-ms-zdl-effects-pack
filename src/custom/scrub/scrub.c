@@ -96,7 +96,13 @@
  *                    both full at 50
  *   7 Tempo  40..240 BPM (the pedal's own number, below 40 reads as 40); only used when
  *                    Grain is a note value. The pedal gives effects no clock, so it is
- *                    dialled in, as on DubSiren and DualShft
+ *                    dialled in, as on DubSiren and DualShft.
+ *                    Screen 0..441: 241..441 is a twin copy of the same BPMs (BPM =
+ *                    screen - 201, so past 240 the screen shows 40 again). SYNC RESET:
+ *                    flipping between a BPM and its twin (120 <-> 321) starts a new
+ *                    grain at once (crossfaded like any seam) without changing the
+ *                    tempo, so a host can send one knob edit on each downbeat to keep
+ *                    a synced freeze on the bar. A plain tempo change does not.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -115,10 +121,12 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435233u        /* "SCR3": change whenever ScState changes */
+#define SC_MAGIC      0x53435234u        /* "SCR4": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
 #define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
+#define SC_TEMPO_MAX  441.0f             /* Tempo screen 0..441: the BPMs twice          */
+#define SC_TEMPO_TWIN 201.0f             /* twin copy = BPM + 201                        */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
 #define SC_TO16       16384.0f
 #define SC_FROM16     6.1035156e-5f      /* 1 / 16384 */
@@ -146,6 +154,7 @@ typedef struct {
     float aC, aO;          /* ages read by the current and the old voice      */
     int   bC, bO;          /* 1 = that voice plays backward                   */
     float fin;             /* wet fade-in 0..1                                */
+    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     short buf[SC_N];
 } ScState;
 
@@ -286,13 +295,49 @@ static inline float sc_ui_pos(float raw, float def_ui)
     return ui;
 }
 
+/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to 4.415
+ * (sc_ui's 3.05 guess would take 4.41 for an on-screen 4). Returns the screen number. */
+SC_ALWAYS_INLINE(sc_tempo_ui)
+static inline float sc_tempo_ui(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
+    else if (raw <= 4.415f) ui = raw * 100.0f;
+    else ui = raw;
+    ui = (float)(int)(ui + 0.5f);
+    if (ui > SC_TEMPO_MAX) ui = SC_TEMPO_MAX;
+    return ui;
+}
+
+/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
+ * (screen - 201), so both copies give 40..240. */
+SC_ALWAYS_INLINE(sc_tempo_bpm)
+static inline float sc_tempo_bpm(float ui)
+{
+    if (ui > 240.0f) ui -= SC_TEMPO_TWIN;
+    if (ui < 40.0f) ui = 40.0f;
+    if (ui > 240.0f) ui = 240.0f;
+    return ui;
+}
+
+/* Sync reset: 1 when Tempo moved over to the other copy since the last block (the
+ * first block after loading only takes note of the copy). */
+SC_ALWAYS_INLINE(sc_twin_flip)
+static inline int sc_twin_flip(ScState *s, float tempo_ui)
+{
+    int tw = (tempo_ui > 240.0f) ? 1 : 0;
+    int flip = (s->twin >= 0 && tw != s->twin);
+    s->twin = tw;
+    return flip;
+}
+
 SC_ALWAYS_INLINE(sc_init)
 static inline void sc_init(ScState *s)
 {
     s->rng = 0x5C2B1A37u;
     s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0;
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
-    s->bC = 0; s->bO = 0;
+    s->bC = 0; s->bO = 0; s->twin = -1;
     s->magic = SC_MAGIC;
 }
 
@@ -305,9 +350,7 @@ static inline void sc_prepare(ScParams *P, const float *u)
     P->mode = (int)(u[2] + 0.5f);
     P->dir = (int)(u[4] + 0.5f);
     if (g > 100) {                               /* synced: the grain is a note at Tempo */
-        bpm = u[7];
-        if (bpm < 40.0f) bpm = 40.0f;
-        if (bpm > 240.0f) bpm = 240.0f;
+        bpm = sc_tempo_bpm(u[7]);                /* both copies: 40..240 */
         P->len = sc_note_beats(g - 101) * 2646000.0f * sc_recip(bpm);   /* 60 x 44100 */
         P->inc = sc_recip(P->len);
     } else {
@@ -426,6 +469,16 @@ static inline void sc_switched_on(ScState *s, const ScParams *P)
     s->aC = sc_new_voice(s, P);
     s->aO = s->aC; s->bO = s->bC;
     s->fin = 0.0f;
+}
+
+/* sync reset: start a new grain now, exactly as at the end of a cycle (the old voice
+ * fades out over the seam), so the loop restarts on the downbeat */
+SC_ALWAYS_INLINE(sc_restart)
+static inline void sc_restart(ScState *s, const ScParams *P)
+{
+    s->p = 0.0f;
+    s->aO = s->aC; s->bO = s->bC;
+    s->aC = sc_new_voice(s, P);
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -549,6 +602,17 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
     return ms;
 }
 
+/* knob 7 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
+ * same numbers again */
+int ZDL_GetLabel_7(unsigned int value, char *out)
+{
+    int len;
+    if (value > 441u) value = 441u;
+    len = sc_put_int((int)sc_tempo_bpm((float)(int)value), out);
+    out[len] = 0;
+    return len;
+}
+
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef SCRUB_HOST_TEST
 
@@ -574,7 +638,7 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     ScState *s;
     ScParams P;
     float u[8];
-    int i;
+    int i, flip;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -600,18 +664,20 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    3.0f);
     u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
     u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
-    u[7] = sc_ui(params[SCRUB_TEMPO_SLOT],  (float)SCRUB_TEMPO_UI_DEFAULT,  240.0f);
+    u[7] = sc_tempo_ui(params[SCRUB_TEMPO_SLOT], (float)SCRUB_TEMPO_UI_DEFAULT);
 
     if (s->magic != SC_MAGIC) sc_init(s);
     if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */
 
     sc_prepare(&P, u);
+    flip = sc_twin_flip(s, u[7]);                /* followed while off too */
     if (params[0] < 0.5f) {                      /* effect switched off */
         s->was_off = 1;
         sc_bypassed(s, P.mode, fxBuf, 8);
         return;
     }
     if (s->was_off) { sc_switched_on(s, &P); s->was_off = 0; }
+    else if (flip && s->started) sc_restart(s, &P);   /* sync reset: new grain now */
     sc_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

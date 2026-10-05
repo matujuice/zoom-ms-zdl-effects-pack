@@ -53,12 +53,19 @@
  *   (docs/TEMPO-SYNC.md), so the BPM comes from the Tempo knob, like the
  *   shipped Hydra / Spiral / Spool. The LFO phase restarts whenever the
  *   Tempo knob moves.
+ *   SYNC RESET: the knob runs 0..441 and holds every BPM twice. 0..240 is
+ *   the BPM (below 40 acts as 40); 241..441 is a twin copy, BPM = screen -
+ *   201, so past 240 the screen shows 40 again. Both copies show the same
+ *   number. Flipping between a BPM and its twin (120 <-> 321) restarts the
+ *   LFO without changing the tempo, so a host (iPhone, MIDI box) can send
+ *   one knob edit on each downbeat to keep the LFO on the bar.
  *
  * ON-SCREEN TEXT (ZDL_GetLabel_<knob index>, value = screen number)
  *   Ptch1/2    -24 .. -1, -0.9 .. -0.1, 0, +0.1 .. +0.9, +1 .. +24      Dly1/Dly2  12ms .. 1.00s
  *   Depth      0 .. 2.00 st in fine steps, then whole semitones 3 .. 12
  *   Div        4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64
- *   Shape      Tri Sqr Rand Step Sine Rise Fall   Tempo and Mix: plain numbers
+ *   Shape      Tri Sqr Rand Step Sine Rise Fall   Tempo: the BPM, 40 .. 240, on both copies
+ *   Mix: plain number
  *   The functions write characters one by one (no string literals, no
  *   tables, no calls), so they need no data relocations.
  *
@@ -112,14 +119,17 @@
 #define DLY_DEADBAND     1.0f                /* target move (samples) that counts */
 #define CLEAR_CHUNK      1024                /* lazy ring clear per call       */
 
-/* Tempo knob: declare its range as 0..240 in the manifest and the number on
- * the pedal's screen IS the BPM (whole BPM, 1 BPM per step). The pedal hands
- * over screen/100; ds_knob() turns that back into screen/240, so
- * bpm = round(knob * 240). Values below 40 act as 40. */
+/* Tempo knob: range 0..441 in the manifest, every BPM twice (sync reset).
+ * Screen 0..240 IS the BPM (below 40 acts as 40); 241..441 is the twin copy,
+ * BPM = screen - 201. The pedal hands over screen/100 (up to 4.41);
+ * ds_tempo_ui() turns that back into the screen number and ds_tempo_bpm()
+ * into the BPM. */
 #define BPM_MIN          40
-#define BPM_MAX_F        240.0f
+#define BPM_MAX          240
+#define TEMPO_MAX_F      441.0f
+#define TEMPO_TWIN       201                 /* twin copy = BPM + 201          */
 
-#define DS_MAGIC         0x44533034u         /* "DS04": arena holds valid state */
+#define DS_MAGIC         0x44533035u         /* "DS05": arena holds valid state */
 
 #define SHAPE_TRI        0
 #define SHAPE_SQUARE     1
@@ -134,7 +144,7 @@
 #define DEF_PITCH_B      0.2878788f          /* screen 19 = -5 st              */
 #define DEF_DELAY_A      0.70f               /* screen 70 = 496 ms             */
 #define DEF_DELAY_B      0.50f               /* screen 50 = 259 ms             */
-#define DEF_TEMPO        0.5f                /* 120 BPM (120/240)              */
+#define DEF_TEMPO        0.27210884f         /* 120 BPM (120/441)              */
 #define DEF_DIV          0.5f                /* screen 8 = quarter note LFO    */
 #define DEF_DEPTH        0.3625f             /* screen 29 = 0.43 semitone      */
 #define DEF_SHAPE        0.0f                /* triangle                       */
@@ -158,7 +168,7 @@ typedef struct {
     int   rsign;           /* smooth random: sign of the current target  */
     float dlyA, dlyB;      /* delays in use, samples, <0 = not set      */
     float gA, gB;          /* wet fade gain per voice, 0..1             */
-    float last_bpm;        /* BPM at the last LFO restart               */
+    float last_tempo;      /* Tempo screen number at the last LFO restart */
     float ring[RING_SIZE]; /* input history                             */
 } DualShift;
 
@@ -200,6 +210,31 @@ static inline float ds_knob(float raw, float def_ui, float inv_max)
     else ui = raw;                           /* already an on-screen number */
     ui = (float)(int)(ui + 0.5f);
     return clamp01(ui * inv_max);
+}
+
+/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100
+ * up to 4.415 (ds_knob's 3.0 guess would take 4.41 for an on-screen 4).
+ * Returns the screen number. */
+DS_ALWAYS_INLINE(ds_tempo_ui)
+static inline float ds_tempo_ui(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
+    else if (raw <= 4.415f) ui = raw * 100.0f;
+    else ui = raw;                           /* already an on-screen number */
+    ui = (float)(int)(ui + 0.5f);
+    if (ui > TEMPO_MAX_F) ui = TEMPO_MAX_F;
+    return ui;
+}
+
+/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin
+ * copy (screen - 201), so both copies give 40..240. */
+DS_ALWAYS_INLINE(ds_tempo_bpm)
+static inline int ds_tempo_bpm(int ui)
+{
+    if (ui > BPM_MAX) ui -= TEMPO_TWIN;
+    if (ui < BPM_MIN) ui = BPM_MIN;
+    return ui;
 }
 
 DS_ALWAYS_INLINE(semis_to_ratio)
@@ -393,7 +428,7 @@ static inline void ds_init(DualShift *s)
     s->dlyB = -1.0f;
     s->gA = 0.0f;              /* wet fades in after load */
     s->gB = 0.0f;
-    s->last_bpm = -1.0f;       /* forces one restart on the first block */
+    s->last_tempo = -1.0f;     /* forces one restart on the first block */
     s->magic = DS_MAGIC;
 }
 
@@ -414,13 +449,15 @@ static inline void ds_ensure_init(DualShift *s)
  * the header comment).
  *
  * Timing, no division anywhere:
- *   bpm        = round(Tempo * 240), at least 40   (= the number on screen)
+ *   tempo      = round(Tempo * 441)                (= the screen number)
+ *   bpm        = tempo, or tempo - 201 on the twin copy; at least 40
  *   LFO inc    = bpm * div_mult * (1 / (60 * FS))              [per sample]
  *   delay      = round(12 + 0.0988 * screen^2) ms * 44.1  [samples]
  *
  * "Tap" replacement: the pedal's tap button is invisible to a ZDL, so the
  * LFO phase restarts whenever the Tempo knob moves. Set the tempo, stop
- * turning, and the cycle starts from zero at that moment.               */
+ * turning, and the cycle starts from zero at that moment. Flipping to the
+ * twin copy of the same BPM restarts it too, with no change of tempo.   */
 DS_ALWAYS_INLINE(ds_prepare)
 static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kraw)
 {
@@ -428,7 +465,7 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     int   i, allzero = 1;
     int   sa, sb, ia, ib, idx, msA, msB;
     float bpm, da, db;
-    int   bpm_i;
+    int   tempo_i;
 
     ds_ensure_init(s);
 
@@ -450,13 +487,12 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     ib  = (int)(k[3] * 100.0f + 0.5f);
     idx = (int)(k[5] * 16.0f + 0.5f);            /* screen 0..16 */
 
-    bpm_i = (int)(k[4] * BPM_MAX_F + 0.5f);       /* whole BPM = screen value */
-    if (bpm_i < BPM_MIN) bpm_i = BPM_MIN;
-    bpm = (float)bpm_i;
+    tempo_i = (int)(k[4] * TEMPO_MAX_F + 0.5f);   /* screen number 0..441     */
+    bpm = (float)ds_tempo_bpm(tempo_i);
 
-    if (bpm != s->last_bpm) {                     /* Tempo moved: restart LFO */
+    if ((float)tempo_i != s->last_tempo) {        /* Tempo moved (or flipped to its twin): restart LFO */
         P->retrig = 1;
-        s->last_bpm = bpm;
+        s->last_tempo = (float)tempo_i;
     } else {
         P->retrig = 0;
     }
@@ -610,7 +646,7 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
 /* string literals, no tables), no division, no calls. At most 5 chars    */
 /* are used so the text fits the pedal column. Knob indices: 0 Ptch1,    */
 /* 1 Ptch2, 2 Dly1, 3 Dly2, 4 Tempo, 5 Div, 6 Depth, 7 Shape, 8 Mix.      */
-/* Tempo and Mix have no callback and show plain numbers.                 */
+/* Mix has no callback and shows a plain number.                          */
 /* ------------------------------------------------------------------ */
 
 /* Pitch text: screen 0..66 -> "-24" .. "-1", "-0.9" .. "-0.1", "0", "+0.1" .. "+0.9",
@@ -669,6 +705,21 @@ DS_PITCH_LABEL(ZDL_GetLabel_0)   /* Ptch1 -24..+24 with tenths near 0 */
 DS_PITCH_LABEL(ZDL_GetLabel_1)   /* Ptch2 */
 DS_DELAY_LABEL(ZDL_GetLabel_2)                 /* Dly1 12ms .. 1.00s */
 DS_DELAY_LABEL(ZDL_GetLabel_3)                 /* DlyB 12ms .. 1.00s */
+/* Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
+ * the same numbers again (ds_tempo_bpm, as in ds_prepare). */
+int ZDL_GetLabel_4(unsigned int value, char *out)
+{
+    int n, h = 0, t = 0, len = 0;
+    if (value > 441u) value = 441u;
+    n = ds_tempo_bpm((int)value);
+    while (n >= 100) { n -= 100; h++; }
+    while (n >= 10)  { n -= 10;  t++; }
+    if (h > 0) { out[len] = (char)('0' + h); len++; }
+    out[len] = (char)('0' + t); len++;
+    out[len] = (char)('0' + n); len++;
+    out[len] = 0;
+    return len;
+}
 /* Depth: screen 0..80 (law in ds_prepare). Text: "0"; "0.005" .. "0.999" with
  * three decimals below 1 st; "1.00" .. "2.00" with two decimals; then the
  * whole semitones "3" .. "12" (screen 71..80). The value is computed with the
@@ -809,7 +860,7 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     k[1] = ds_knob(params[DUALSHFT_PTCH2_SLOT], (float)DUALSHFT_PTCH2_UI_DEFAULT, 0.0151515152f);
     k[2] = ds_knob(params[DUALSHFT_DLY1_SLOT],   (float)DUALSHFT_DLY1_UI_DEFAULT,   0.01f);
     k[3] = ds_knob(params[DUALSHFT_DLY2_SLOT],   (float)DUALSHFT_DLY2_UI_DEFAULT,   0.01f);
-    k[4] = ds_knob(params[DUALSHFT_TEMPO_SLOT],  (float)DUALSHFT_TEMPO_UI_DEFAULT,  0.0041666667f);
+    k[4] = ds_tempo_ui(params[DUALSHFT_TEMPO_SLOT], (float)DUALSHFT_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
     k[5] = ds_knob(params[DUALSHFT_DIV_SLOT],    (float)DUALSHFT_DIV_UI_DEFAULT,    0.0625f);
     k[6] = ds_knob(params[DUALSHFT_DEPTH_SLOT],  (float)DUALSHFT_DEPTH_UI_DEFAULT,  0.0125f);
     k[7] = ds_knob(params[DUALSHFT_SHAPE_SLOT],  (float)DUALSHFT_SHAPE_UI_DEFAULT,  0.1666667f);
