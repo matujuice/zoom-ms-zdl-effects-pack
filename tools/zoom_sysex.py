@@ -9,6 +9,9 @@
     py tools/zoom_sysex.py patchdiff             patch dump now and after Enter, changed bytes
     py tools/zoom_sysex.py listen 30             log everything the pedal sends for 30 s
     py tools/zoom_sysex.py raw 52 00 58 33       send any SysEx (F0/F7 added)
+    py tools/zoom_sysex.py seq "52 00 58 50" 3 "52 00 58 31 03 08 0C 01"
+                                                 one connection: quoted hex = send, number =
+                                                 wait that many seconds (logging replies)
 
 Options: --id 58 (MS-50G; the MS-60B on 50G firmware answers to 58), --port NAME (part of
 the port name; default: the first port with ZOOM or MS in its name), --wait 1.5 (seconds
@@ -283,6 +286,13 @@ def main() -> None:
             a.wait = float(a.args[0]) if a.args else 30.0
         elif a.cmd == "raw":
             send([int(x, 16) for x in a.args])
+        elif a.cmd == "seq":
+            for step in a.args:
+                if " " in step.strip() or len(step.strip()) == 2 and not step.strip().isdigit():
+                    send([int(x, 16) for x in step.split()])
+                    drain(inp, 0.05, t0)
+                else:
+                    drain(inp, float(step), t0)
         else:
             sys.exit(__doc__)
         drain(inp, a.wait, t0)
