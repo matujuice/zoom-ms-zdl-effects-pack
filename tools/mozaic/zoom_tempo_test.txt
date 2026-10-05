@@ -34,6 +34,22 @@
   nextsweep = 0
   t0 = 0
   waiting = 0
+  // Mozaic wants every variable set here before other events use it
+  onat = 0
+  offat = 0
+  barlen = 0
+  nextbar = 0
+  now = 0
+  ps = 0
+  pp = 0
+  pv = 0
+  k = 0
+  v = 0
+  t = 0
+  p = 0
+  n = 0
+  s = 0
+  model = 0
   SetKnobValue 0, tempo - 100
   SetKnobValue 1, 0
   SetKnobValue 2, 0

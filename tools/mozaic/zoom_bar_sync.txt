@@ -33,6 +33,20 @@
   kind[0] = 0
   kind[1] = 0
   kind[2] = 0
+  // Mozaic wants every variable set here before other events use it
+  barlen = 0
+  nextbar = 0
+  bar = 0
+  ps = 0
+  pp = 0
+  pv = 0
+  k = 0
+  v = 0
+  e = 0
+  t = 0
+  p = 0
+  i = 0
+  pad = 0
   SetKnobValue 0, early / 2
   SetKnobValue 1, 0
   SetKnobValue 2, manual - 100
