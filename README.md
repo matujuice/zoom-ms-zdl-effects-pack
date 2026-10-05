@@ -16,6 +16,8 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
+**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat: [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
+
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
 Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
@@ -47,6 +49,7 @@ src/airwindows/common/ shared cover and parameter helpers; covers/*.json are the
 build/                 the ZDL linker and tools (from ZoomMultistompZDL, see Credits)
 docs/                  knob reference, install guide, DSP rules
 tests/                 host tests: python3 tests/run.py
+tools/mozaic/          iPhone (Mozaic) scripts for bar sync and testing the USB connection
 ```
 
 To change a cover, edit that effect's `make_cover.py` and run it; it rewrites the cover JSON and a preview image. The pedal's pixels are 1.4 times taller than wide, so round shapes are drawn squashed.
