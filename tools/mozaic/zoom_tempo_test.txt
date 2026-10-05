@@ -26,8 +26,8 @@
   param = 2
   follow = 0
   lat = 0
-  latarmed = 0
-  laton = 0
+  onpending = 0
+  offpending = 0
   sweep = 0
   sweepval = 0
   sweepdir = 1
@@ -50,6 +50,7 @@
   n = 0
   s = 0
   model = 0
+  wait = 0
   SetKnobValue 0, tempo - 100
   SetKnobValue 1, 0
   SetKnobValue 2, 0
@@ -176,13 +177,13 @@
     Log {Follow host: }, follow
   elseif p = 5
     lat = 1 - lat
-    latarmed = 0
-    if lat = 0 and laton = 1
+    onpending = 0
+    if lat = 0 and offpending = 1
       ps = slot
       pp = 0
       pv = 0
       Call @SendParam
-      laton = 0
+      offpending = 0
     endif
     Log {Latency test: }, lat, {  early }, offset, { ms}
   elseif p = 6
@@ -233,6 +234,18 @@
 @OnMidiInput
 @End
 
+// Latency test: switch the slot's effect on now, off one beat later
+@LatOn
+  ps = slot
+  pp = 0
+  pv = 1
+  Call @SendParam
+  onpending = 0
+  offat = SystemTime + 60000 / HostTempo
+  offpending = 1
+  Log {ON sent}
+@End
+
 @OnNewBar
   barlen = 240000 / HostTempo
   nextbar = SystemTime + barlen
@@ -244,11 +257,15 @@
     endif
   endif
   if lat = 1
-    // Effect on from (next downbeat - offset) for half a beat
+    // The bar event can arrive just before the timer reaches onat: then the ON is due now
+    if onpending = 1
+      Call @LatOn
+    endif
+    // Effect on from (next downbeat - offset) for one beat
     onat = nextbar - offset
-    offat = onat + 30000 / HostTempo
-    latarmed = 1
-    Log {Bar: effect on in }, Round (onat - SystemTime), { ms}
+    onpending = 1
+    wait = Round (onat - SystemTime)
+    Log {Bar: effect on in }, wait, { ms}
   endif
 @End
 
@@ -269,21 +286,15 @@
       Log {Sweep done}
     endif
   endif
-  if latarmed = 1 and laton = 0 and now >= onat
-    ps = slot
-    pp = 0
-    pv = 1
-    Call @SendParam
-    laton = 1
-    Log {ON sent}
+  if onpending = 1 and now >= onat
+    Call @LatOn
   endif
-  if laton = 1 and now >= offat
+  if offpending = 1 and now >= offat
     ps = slot
     pp = 0
     pv = 0
     Call @SendParam
-    laton = 0
-    latarmed = 0
+    offpending = 0
     Log {OFF sent}
   endif
 @End
