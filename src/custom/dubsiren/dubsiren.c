@@ -63,11 +63,18 @@
  *   7 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
  *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
  *   8 Tempo  BPM, 40..240 (the pedal's own number). Only used when Rate is set to a note value.
+ *            Screen 0..441: 241..441 is a twin copy of the same BPMs (see TEMPO SYNC),
+ *            shown as the BPM
  *
  * TEMPO SYNC (no clock comes from the pedal, so it follows the BPM you dial in Tempo):
  *   Rate 101..112 = one whole LFO cycle lasts a note value: 4bar 2bar 1bar 1/2. 1/2 1/4.
  *            1/4 1/8. 1/8 1/8T 1/16 1/32 (Fast = 2x, Slow = 0.5x, as in free mode).
  *   Rate 1..100 is the free (Hz) range, as before. The echo Time is never synced.
+ *   SYNC RESET: the Tempo knob holds every BPM twice (0..240 = the BPM, 241..441 = a
+ *            twin copy, BPM = screen - 201, so past 240 the screen shows 40 again).
+ *            Flipping between a BPM and its twin (120 <-> 321) restarts the LFO without
+ *            changing the tempo, so a host can send one knob edit on each downbeat.
+ *            A plain tempo change does not restart it.
  *   Fdbk 0 = echo off; the echo level is fixed (it used to be the Echo knob).
  *
  * DEFAULTS = A CLASSIC DANCEHALL TWO-TONE SIREN: Trig Pulse (one short
@@ -99,7 +106,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523036u         /* "SR06"                        */
+#define SR_MAGIC         0x53523037u         /* "SR07"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
@@ -115,6 +122,8 @@
 #define FLUT_DEPTH       1.3f                /* samples                       */
 
 #define SYNC_INC_PER_BPM 3.7793e-7f          /* 1 / (44100 * 60): beats per sample per BPM */
+#define TEMPO_MAX_F      441.0f              /* Tempo screen 0..441: the BPMs twice */
+#define TEMPO_TWIN       201                 /* twin copy = BPM + 201                */
 
 typedef struct {
     unsigned int magic;
@@ -133,12 +142,14 @@ typedef struct {
     float dly;             /* smoothed echo time in samples, <0 = not set     */
     float hpl;             /* echo high-pass state                            */
     float lp1, lp2;        /* echo low-pass poles                             */
+    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     float ring[RING_SIZE]; /* siren-only echo line                            */
 } SirenState;
 
 typedef struct {
     int   gate;            /* siren sounding                                  */
     int   retrig;          /* Off->ON edge (or Trig-mode change)              */
+    int   resync;          /* Tempo flipped to its twin copy: LFO phase -> 0  */
     int   mode;            /* 0 Wail, 1 Fast, 2 Slow, 3 Laser                 */
     int   manual;          /* Rate knob at 0 (Man)                            */
     int   mdir;            /* manual envelope: -1 drop (Pulse), +1 rise       */
@@ -170,6 +181,31 @@ static inline float sr_knob(float raw, float def_ui, float inv_max)
     else ui = raw;
     ui = (float)(int)(ui + 0.5f);
     return clamp01(ui * inv_max);
+}
+
+/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to
+ * 4.415 (sr_knob's 3.0 guess would take 4.41 for an on-screen 4). Returns the
+ * screen number. */
+SR_ALWAYS_INLINE(sr_tempo_ui)
+static inline float sr_tempo_ui(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
+    else if (raw <= 4.415f) ui = raw * 100.0f;
+    else ui = raw;
+    ui = (float)(int)(ui + 0.5f);
+    if (ui > TEMPO_MAX_F) ui = TEMPO_MAX_F;
+    return ui;
+}
+
+/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
+ * (screen - 201), so both copies give 40..240. */
+SR_ALWAYS_INLINE(sr_tempo_bpm)
+static inline int sr_tempo_bpm(int ui)
+{
+    if (ui > 240) ui -= TEMPO_TWIN;
+    if (ui < 40) ui = 40;
+    return ui;
 }
 
 /* 2^(semis/12), 5th-order Taylor, +-12 st, ~0.3 cent. No libm, no divide. */
@@ -240,6 +276,7 @@ static inline void sr_init(SirenState *s)
     s->osc_ph = 0.0f; s->lfo_ph = 0.0f; s->env = 0.0f; s->menv = 0.0f;
     s->y1 = 0.0f; s->y2 = 0.0f; s->wow_ph = 0.0f; s->flut_ph = 0.37f;
     s->dly = -1.0f; s->hpl = 0.0f; s->lp1 = 0.0f; s->lp2 = 0.0f;
+    s->twin = -1;
     s->magic = SR_MAGIC;
 }
 
@@ -255,6 +292,8 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
     int   nr   = (int)(k[3] * 112.0f + 0.5f);        /* rate: 0 Man, 1..100 Hz, 101..112 synced */
     int   nt   = (int)(k[6] * 100.0f + 0.5f);
     int   nf   = (int)(k[7] * 125.0f + 0.5f);
+    int   ntp  = (int)(k[8] * TEMPO_MAX_F + 0.5f);   /* Tempo screen 0..441    */
+    int   tw   = (ntp > 240);                       /* on the twin copy       */
     float lfo_hz, bpm;
 
     if (fm == 1 && foot && !s->prev_foot) s->pulse_left = PULSE_SAMPLES;
@@ -275,9 +314,9 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
     P->f0_inc = 110.0f * exp2_oct((float)np * 0.04f) * HZ_TO_INC;
 
     /* 0.15 Hz * 2^(n*0.0664): 0.15 .. 15 Hz; Fast x2, Slow x0.5 */
-    bpm = k[8] * 240.0f;                             /* Tempo knob = the BPM (40..240) */
-    if (bpm < 40.0f) bpm = 40.0f;
-    if (bpm > 240.0f) bpm = 240.0f;
+    bpm = (float)sr_tempo_bpm(ntp);                  /* Tempo knob = the BPM (40..240) on both copies */
+    P->resync = (s->twin >= 0 && tw != s->twin);     /* sync reset: flipped to the other copy */
+    s->twin = tw;
     if (nr > 100) {                                  /* synced: one LFO cycle = the division; Fast x2 and Slow x0.5 as in free mode */
         lfo_hz = bpm * SYNC_INC_PER_BPM * rate_cpb(nr - 101);
         if (P->mode == 1) lfo_hz += lfo_hz;
@@ -326,6 +365,7 @@ static inline void sr_process(SirenState *s, const SirenParams *P, float *buf, i
     }
 
     if (dly < 0.0f) dly = P->dlySamp;
+    if (P->resync) lfo_ph = 0.0f;                  /* sync reset: LFO restarts on the downbeat */
     if (P->retrig) {                               /* trigger edge            */
         lfo_ph = 0.0f;                             /* LFO phase -> 0          */
         menv = (P->mdir < 0) ? 1.0f : 0.0f;        /* manual envelope start   */
@@ -515,6 +555,22 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
     return len;
 }
 
+/* 8 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
+ * same numbers again */
+int ZDL_GetLabel_8(unsigned int value, char *out)
+{
+    int n, h = 0, t = 0, len = 0;
+    if (value > 441u) value = 441u;
+    n = sr_tempo_bpm((int)value);
+    while (n >= 100) { n -= 100; h++; }
+    while (n >= 10)  { n -= 10;  t++; }
+    if (h > 0) { out[len] = (char)('0' + h); len++; }
+    out[len] = (char)('0' + t); len++;
+    out[len] = (char)('0' + n); len++;
+    out[len] = 0;
+    return len;
+}
+
 /* ---- pedal entry point (same structure as DualShft, hardware-proven) ---- */
 #ifndef DUBSIREN_HOST_TEST
 
@@ -569,7 +625,7 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     k[5] = sr_knob(params[DUBSIREN_VOL_SLOT],    (float)DUBSIREN_VOL_UI_DEFAULT,    0.01f);
     k[6] = sr_knob(params[DUBSIREN_TIME_SLOT],   (float)DUBSIREN_TIME_UI_DEFAULT,   0.01f);
     k[7] = sr_knob(params[DUBSIREN_FDBK_SLOT],   (float)DUBSIREN_FDBK_UI_DEFAULT,   0.008f);
-    k[8] = sr_knob(params[DUBSIREN_TEMPO_SLOT],  (float)DUBSIREN_TEMPO_UI_DEFAULT,  0.004166667f);
+    k[8] = sr_tempo_ui(params[DUBSIREN_TEMPO_SLOT], (float)DUBSIREN_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
 
     if (s->magic != SR_MAGIC) sr_init(s);        /* prev_* must be valid       */
     sr_prepare(s, &P, k, foot);
