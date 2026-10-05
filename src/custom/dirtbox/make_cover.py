@@ -6,9 +6,11 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, broken but neat and intention
     crooked and two gone (bare holes),
   * a few straight cracks through the metal (and through the paint where they cross the
     title); no specks or grime,
-  * the classic acid smiley as a big, clean sticker on the left, turned 10 degrees,
+  * the classic acid smiley as a big sticker stuck on later by whoever modded it: over the
+    case's left edge and the D's lower left corner (the title still reads), turned 10
+    degrees, its upper right edge peeling,
   * DIRTBOX in thick, even letters: 3 px stems, 2 px bars (the same weight on screen once
-    the 1.4x tall pixels are counted), clean edges; smiley and title centred as one group.
+    the 1.4x tall pixels are counted), centred on the box, slightly worn (a few chips).
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
 Also writes cover_preview.png next to this script (black on white).
@@ -34,10 +36,11 @@ def line(c,x0,y0,x1,y1,v=1,skip=None):
 def bez(p0,p1,p2,p3,n=40):
     return [(round((1-t)**3*p0[0]+3*(1-t)**2*t*p1[0]+3*(1-t)*t*t*p2[0]+t**3*p3[0]),
              round((1-t)**3*p0[1]+3*(1-t)**2*t*p1[1]+3*(1-t)*t*t*p2[1]+t**3*p3[1])) for t in [i/n for i in range(n+1)]]
-SCX,SCY,SR=21.5,17.0,14.0             # sticker centre and radius (screen units)
+SCX,SCY,SR=13.5,26.5,14.0             # sticker centre and radius (screen units)
 def build():
     c=Canvas()
-    TITLE,TX,TY="DIRTBOX",39,10        # smiley x 8..34, title x 39..120: one centred group
+    rnd=random.Random(7)
+    TITLE,TX,TY="DIRTBOX",23,10        # title centred on the box, x 23..104
     # title: thick, even strokes, 3 px stems and 2 px bars, 4 px counters, 10 x 14 a letter
     COLS,ROWS,LG=(3,4,3),(2,4,2,4,2),2
     main=set(); x=TX
@@ -53,14 +56,19 @@ def build():
             yy+=ROWS[r]
         x+=sum(COLS)+LG
     N4=((1,0),(-1,0),(0,1),(0,-1))
+    # slight wear on the paint: a few chipped edge pixels and two small pits
+    edge=sorted(p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in N4))
+    for p in rnd.sample(edge,len(edge)//40): main.discard(p)
+    for p in ((58,16),(96,13)): main.discard(p)
     for p in main: c.px(*p)
     # the smiley sticker: the classic acid face (round rim, upright oval eyes, grin with
-    # creases), turned 10 degrees. (The peel fold is kept in the code but switched off:
-    # cut 99 is past the rim.) Shapes in screen-true units (y x 1.4),
+    # creases), turned 10 degrees, its upper right edge (the part over the title) peeling:
+    # that part is folded back over the face, showing its dithered backing, and the title
+    # shows where it lifted. Shapes in screen-true units (y x 1.4),
     # scaled from a radius-10.5 design, sampled 8 x 8 per pixel.
     R=SR; f=R/10.5
     scx,scy,TH=SCX,SCY*A,math.radians(-10)
-    nx,ny,cut=-0.7071,0.7071,99.0                                         # fold line (local)
+    nx,ny,cut=0.7071,-0.7071,9.6*f                                         # fold line (local)
     ct,st=math.cos(TH),math.sin(TH)
     def local(X,Y):
         X-=scx; Y-=scy
@@ -95,7 +103,6 @@ def build():
             if tot>=20: sticker.add((x,y))
             if cnt['ink']>=26: face.add((x,y))
             elif cnt['back']>=24 and (x+y)%2==0: back.add((x,y))
-    for p in face|back: c.px(*p)
     # the metal case, DubSiren's construction, knocked about: the outer wall dented in
     # along the top (a soft dip, not a gap), one corner folded in, the inner lip sprung loose
     for x in range(2,126):
@@ -137,6 +144,11 @@ def build():
     crack([(127,42),(116,52)])                                           # right wall, by Tone
     crack([(0,30),(9,35)])                                               # left wall
     crack([(84,63),(81,52)])                                             # bottom wall, between dials
+    # the sticker was stuck on later, over the title and the case edge: its paper (and a 1 px gap round it)
+    # hides what is under; where it peels, the title shows again
+    ring=set((x+dx,y+dy) for (x,y) in sticker for dx,dy in N4)-sticker
+    for p in sticker|ring: c.px(*p,0)
+    for p in face|back: c.px(*p)
     # labels and dials, as on every cover
     for (kid,kx,ky),label in zip(cc.knob_layout(3),("MODEL","DRIVE","TONE")):
         cx=kx+10; w=len(label)*4-1
