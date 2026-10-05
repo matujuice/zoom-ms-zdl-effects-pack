@@ -13,3 +13,10 @@ Moved from CLAUDE.md. Update when behaviour changes.
 - Tempo-knob sync reset (Luca, 2026-10-05): every Tempo knob (DualShft, Choral, EuGate, DubSiren, Scrub) runs 0..441 and holds each BPM twice: 0..240 = BPM (below 40 = 40), 241..441 = twin copy, BPM = screen - 201, label shows the BPM on both. Flipping between a BPM and its twin restarts the LFO / pattern / grain with no tempo change, so a MIDI host can send one knob edit per downbeat; no extra knob. DualShft and Choral still restart on any Tempo change; EuGate, DubSiren and Scrub only on a flip. Read Tempo as raw x 100 up to 4.41 (`*_tempo_ui`), never through the 3.05 guess. Tempo is the 8th knob on all five (Luca, 2026-10-05), so the Mozaic bar-sync script sends one knob number; keep it there on any new synced effect. Switched off, DualShft, Choral, EuGate and DubSiren leave the input untouched but keep their LFO / pattern / beat clock running and follow flips (Scrub restarts a grain on switch-on). docs/IPHONE-SYNC.md has the per-effect "settings for bar sync" table: keep it in step.
 - Every effect except DubSiren has a Mix knob, and it is a DJ-style crossfade: dry gain min(1, 2 - 2m), wet gain min(1, 2m), so both are at full level at 50. DubSiren adds its siren on top of the untouched input, so it has Vol instead.
 
+## Restored word for word from the pre-#20 CLAUDE.md
+
+- EuGate: Reset SYNC = OFF (named for bar sync users, Luca 2026-10-05). EuGate builds its Euclidean pattern as a 64-bit mask by adding `Notes` and subtracting `Steps` on overflow (no integer division or modulo).
+- WaveFold: the level match uses `ein * rsqrt(ein * elp)` instead of a divide.
+- No float-to-unsigned casts: the linker can't resolve `__c6xabi_fixfu`. Write `(unsigned int)(int)(x)`. (This broke the EuGate build once.)
+- S.GN_L: `effect_name` is SGNL (file SGNL.ZDL, symbols, SONAME); the manifest's `display_name` S.GN_L goes only into the descriptor name entry (LinkerConfig.display_name).
+- TempoPrb (fxid 499, `src/probes/`) is a hardware probe, never released; it tests whether a custom effect can follow the pedal's tempo the TAPEECH3 way. `build_all.py` builds one only when named.
