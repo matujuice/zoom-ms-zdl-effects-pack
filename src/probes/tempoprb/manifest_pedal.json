@@ -1,0 +1,52 @@
+{
+  "effect_name": "TempoPrb",
+  "comment": "TempoPrb - hardware probe, not a release effect. Tests whether a custom effect can read the pedal's own patch tempo through the call chain TAPEECH3 uses (docs/TEMPO-SYNC.md sections 4 and 8). Input passes through; the probe adds beeps (value changed), clicks (value as a delay time) or a data tone to record and decode (src/probes/tempoprb/decode_dump.py). Mode = BLIP / CLICK / DUMP; Watch = which value (RCPE = the TAPEECH3 result, X = the word it starts from, SYNC = our Sync knob in the host table, ROW, TABLE); Time = dummy free time; Level = probe sound level; Sync = TAPEECH3-style sync knob with pedal_flags 0x28; Call = OFF/ON, calls the firmware's state[24] helper (riskiest part).",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_, same category as TAPEECH3.",
+  "fxid": 499,
+  "fxid_comment": "Probe id, kept away from the pack's 480..490 so it never takes the next effect's number.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Mode",
+      "max": 2,
+      "default": 0,
+      "comment": "What you hear. BLIP = a beep when the watched value changes. CLICK = a click every N ms, N taken from the watched value (low hum if it is not a usable delay). DUMP = data tone to record and decode. Default BLIP."
+    },
+    {
+      "name": "Watch",
+      "max": 4,
+      "default": 2,
+      "comment": "Which value BLIP and CLICK follow. RCPE = the TAPEECH3 result y (needs Call ON), X = the second-table word TAPEECH3 starts from, SYNC = our Sync knob as the host table holds it (turn Sync: it must beep), ROW = our whole second-table row, TABLE = rows 0..15 of both tables. Default SYNC, the calibration check."
+    },
+    {
+      "name": "Time",
+      "max": 990,
+      "default": 490,
+      "comment": "Dummy free-time knob at descriptor entry 4, where TAPEECH3's B4 = 4 read looks. Does nothing to the sound; it shows up in the dump."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "comment": "Level of the probe sound. The input is never changed."
+    },
+    {
+      "name": "Sync",
+      "max": 15,
+      "default": 0,
+      "flags": 40,
+      "comment": "TAPEECH3-style sync knob at descriptor entry 6 (B4 = 6), max 15, pedal_flags 0x28 (40). OFF, S1..S15 = TAPEECH3's division index. The flag is what may make the pedal treat this as a tempo-synced effect."
+    },
+    {
+      "name": "Call",
+      "max": 1,
+      "default": 0,
+      "comment": "OFF = only reads memory. ON = also calls the firmware's state[24] helper with the second-table word, exactly as TAPEECH3 does. Riskiest step: turn it on last."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_TempoPrb",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build (loads the descriptor and the 0x28 flag without running the probe)."
+}

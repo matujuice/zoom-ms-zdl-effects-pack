@@ -379,6 +379,37 @@ What is still unresolved:
 * What the firmware does when the user activates sync mode while
   TAPEECH3 is loaded — does it re-call the `_edit` handler?
 
+Hardware probe for all of this (2026-10-05): `src/probes/tempoprb/` runs the
+§4 chain from a custom effect's audio function and makes the results audible.
+
+**Hardware results (MS-60B on MS-50G firmware 3.10, 2026-10-05):**
+
+* The probe loads and runs, and Call ON (calling `state[24]` from the audio
+  function) does not freeze the pedal.
+* Our own slot block was found (`state[1] == ctx[1] = 0x11F00000`, slot 0).
+  `state[0]` is **0**, so the recipe's second-table row `(state[0] - 1) & 0xff`
+  is row 255, which holds junk, and `state[24](x, 100)` returns **0** (the
+  `B4 = 100` integer is a denormal as a float, which probably trips the
+  helper's zero check). So the §4 reading of TAPEECH3 does not give a delay
+  from a custom audio function. Either the argument reading is wrong or the
+  chain only works in edit-handler context.
+* The first table row is confirmed to be the slot's parameter row: word 0 =
+  on/off, word 1 = `gid << 24 | fxid` (0x080001F3 = gid 8, fxid 499), word N =
+  the knob at descriptor entry N (Mode, Watch, Time, Level, Sync, Call read
+  2, 0, 0, 50, 4, 1, matching the knobs).
+* Tapping the tempo changed nothing in rows 0..15 of either table (one stray
+  beep across many tap steps), and nothing in the 32 dumped words.
+* The patch-tempo SysEx `31 03 08` is ignored as a tempo (the stored tempo,
+  patch-dump bytes 129..130, stays). It does land somewhere in the first table
+  (one low beep), probably as "slot 3, param 8". Knob edits (`31 slot param`)
+  work. The pedal *sends* `31 03 08 <tempo>` itself when the tempo is tapped
+  (after an edit enable). Tools: `tools/zoom_sysex.py`.
+* The dump also confirms 44.1 kHz and 8-sample blocks (41037 blocks per
+  328294-sample frame).
+
+Net: no route found for a custom effect to read the pedal's tempo. Bar sync
+uses the twin-Tempo knob trick and an external host instead.
+
 ## 8. SDK shape for a custom sync-aware effect
 
 Putting the pieces together, a custom tempo-aware delay can be written
