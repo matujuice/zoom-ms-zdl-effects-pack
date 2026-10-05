@@ -11,7 +11,7 @@ The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away fro
 1. Connect the pedal and the drum machine to the iPhone through a powered USB hub on the camera adapter.
 2. AUM is the master clock. In AUM's clock settings, send MIDI clock to the drum machine. On a Digitakt: SETTINGS > MIDI CONFIG > SYNC, Clock receive and Transport receive on; PORT CONFIG, Input from USB.
 3. On the iPhone, download `zoom_bar_sync.mozaic` from [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (Download button) into Files.
-4. Add Mozaic to an AUM channel and load the file from Files (or open it from Files and share it to Mozaic). It is ready to run: no code to paste.
+4. Open the file in Files and share it to Mozaic. Add Mozaic to an AUM channel and pick Zoom bar sync in its Presets tab. It is ready to run: no code to paste.
    No .mozaic? Open [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt), copy all of it, paste it into Mozaic's code view and tap Upload.
 5. In AUM's MIDI routing: Mozaic out to the Zoom.
 6. Tap the first three pads until each shows the effect in that slot (Slot 1: EuGate, and so on). Only the first three effects of a patch accept edits from outside.
