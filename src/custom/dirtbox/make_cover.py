@@ -6,8 +6,8 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, broken but neat and intention
     crooked and two gone (bare holes),
   * a few straight cracks through the metal (and through the paint where they cross the
     title); no specks or grime,
-  * the classic acid smiley as a big sticker stuck on later by whoever modded it: over the
-    case's left edge and the D's lower left corner (the title still reads), turned 10
+  * the classic acid smiley as a big sticker stuck on later by whoever modded it: wrapped round
+    the case's left edge (the wall stays visible) and the D's lower left corner (the title still reads), turned 10
     degrees, its upper right edge peeling,
   * DIRTBOX in thick, even letters: 3 px stems, 2 px bars (the same weight on screen once
     the 1.4x tall pixels are counted), centred on the box, slightly worn (a few chips).
@@ -144,11 +144,14 @@ def build():
     crack([(127,42),(116,52)])                                           # right wall, by Tone
     crack([(0,30),(9,35)])                                               # left wall
     crack([(84,63),(81,52)])                                             # bottom wall, between dials
-    # the sticker was stuck on later, over the title and the case edge: its paper (and a 1 px gap round it)
+    # the sticker was stuck on later, over the title, wrapped round the case edge: its paper (and a 1 px gap round it)
     # hides what is under; where it peels, the title shows again
+    # it wraps round the case's left edge: the wall and lip (x 0..2) stay on top of it
     ring=set((x+dx,y+dy) for (x,y) in sticker for dx,dy in N4)-sticker
-    for p in sticker|ring: c.px(*p,0)
-    for p in face|back: c.px(*p)
+    for (x,y) in sticker|ring:
+        if x>=3: c.px(x,y,0)
+    for (x,y) in face|back:
+        if x>=4: c.px(x,y)
     # labels and dials, as on every cover
     for (kid,kx,ky),label in zip(cc.knob_layout(3),("MODEL","DRIVE","TONE")):
         cx=kx+10; w=len(label)*4-1
