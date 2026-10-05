@@ -10,7 +10,7 @@
 // changes it sends the new BPM to those knobs and to the patch tempo.
 // Only the first 3 effects of a patch accept edits.
 //
-// Knobs: 0 Early (0..127 ms; default 20: 10 measured on the MS-60B + iPhone 2026-10-05, plus margin)
+// Knobs: 0 Early (0..127 ms; default 17: 12 measured on the MS-60B + iPhone 2026-10-05, plus 5)
 //        1 Every (1, 2, 4 or 8 bars)
 //        2 Tempo (100..227 BPM, used when Follow host is off)
 //        3 Follow host (left half off, right half on)
@@ -21,7 +21,7 @@
 
 @OnLoad
   zid = 0x58
-  early = 20
+  early = 17
   every = 1
   manual = 160
   tempo = 160
