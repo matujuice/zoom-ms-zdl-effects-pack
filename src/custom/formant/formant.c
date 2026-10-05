@@ -49,6 +49,11 @@
  *   DualShft, the BPM comes from the Tempo knob (screen number = BPM, 40..240)
  *   and Div picks the note value of one LFO cycle. The LFO restarts whenever
  *   Tempo moves, so you can line it up with the beat.
+ *   SYNC RESET: the knob runs 0..441 and holds every BPM twice: 0..240 is the
+ *   BPM, 241..441 a twin copy (BPM = screen - 201, so past 240 the screen
+ *   shows 40 again). Flipping between a BPM and its twin (120 <-> 321)
+ *   restarts the LFO without changing the tempo, so a host can send one knob
+ *   edit on each downbeat to keep the sweep on the bar.
  *
  * FOOTSWITCH: off = untouched input (early return, like DualShft).
  *
@@ -78,7 +83,8 @@
  *              Walk   Step size: from small blends to whole-vowel leaps
  *              Swell  Attack: how much of the cycle the rise takes
  *              Spot   Width of the spotlight
- *   4 Tempo  BPM for the LFO, 40..240
+ *   4 Tempo  BPM for the LFO, 40..240; screen 0..441, the second half (241..441) is the
+ *            twin copy of the same BPMs (see TEMPO SYNC); shown as the BPM on both
  *   5 Div    length of one LFO cycle: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8.
  *            1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 (bar = 4 beats = 16 steps, so 4bar =
  *            64 steps, 3bar = 48, 2bar = 32, 1.5b = 24, 1bar = 16, 1/2. = 12 ...)
@@ -123,11 +129,14 @@
 #define SR_NOUNROLL
 #endif
 
-#define FM_MAGIC        0x464D3230u          /* "FM20"                        */
+#define FM_MAGIC        0x464D3231u          /* "FM21"                        */
 #define FM_W0_PER_HZ    1.4247585e-4f        /* 2*pi / 44100                  */
 #define FM_BPM_BLOCK    3.0234e-6f           /* 8 / (60 * 44100): LFO phase per block per (BPM*mult) */
 #define FM_VSLEW        0.22f                /* vowel smoothing per block     */
 #define FM_BPM_MIN      40
+#define FM_BPM_MAX      240
+#define FM_TEMPO_MAX_F  441.0f               /* Tempo screen 0..441: the BPMs twice */
+#define FM_TEMPO_TWIN   201                  /* twin copy = BPM + 201           */
 #define FM_MAKEUP_A     2.6f                 /* wet gain = A + B*Reso, tuned by measurement */
 #define FM_MAKEUP_B     3.6f
 #define FM_RESO_LIFT    2.4f                 /* extra gain at Reso 100: x3.4              */
@@ -162,7 +171,7 @@ typedef struct {
     float dmain;           /* main voice vibrato-tap delay now (samples)      */
     float ein, eout, comp; /* loudness meters (input / output) and the auto-level gain */
     float lfo_ph;          /* LFO phase, 0..1                                 */
-    float last_bpm;        /* BPM at the last LFO restart                     */
+    float last_tempo;      /* Tempo screen number at the last LFO restart     */
     unsigned int rng;      /* random vowel generator (LCG)                    */
     float rcur[5], rnext[5], rph[5], rmul[5]; /* per voice: vowel now / next; Rand: own cycle phase and speed */
     float pprev[5];        /* per voice: last cycle phase (cycle-event detector) */
@@ -183,6 +192,7 @@ typedef struct {
     float dryG, wetG;      /* Mix gains, 0..1, both 1 at Mix 50               */
     float makeup;          /* wet gain compensation                           */
     float bpm;
+    float tempo;           /* Tempo screen number 0..441 (twin copy above 240) */
     int   shape;           /* LFO shape 0..13                                 */
     float hold;            /* steps: fraction of each step that is held       */
     float invg;            /* steps: 1 / glide fraction                       */
@@ -221,6 +231,31 @@ static inline float sr_knob(float raw, float def_ui, float inv_max)
     else ui = raw;
     ui = (float)(int)(ui + 0.5f);
     return clamp01(ui * inv_max);
+}
+
+/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to
+ * 4.415 (sr_knob's 3.05 guess would take 4.41 for an on-screen 4). Returns the
+ * screen number. */
+SR_ALWAYS_INLINE(fm_tempo_ui)
+static inline float fm_tempo_ui(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
+    else if (raw <= 4.415f) ui = raw * 100.0f;
+    else ui = raw;
+    ui = (float)(int)(ui + 0.5f);
+    if (ui > FM_TEMPO_MAX_F) ui = FM_TEMPO_MAX_F;
+    return ui;
+}
+
+/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
+ * (screen - 201), so both copies give 40..240. */
+SR_ALWAYS_INLINE(fm_tempo_bpm)
+static inline int fm_tempo_bpm(int ui)
+{
+    if (ui > FM_BPM_MAX) ui -= FM_TEMPO_TWIN;
+    if (ui < FM_BPM_MIN) ui = FM_BPM_MIN;
+    return ui;
 }
 
 /* 2^(semis/12) for +-24 st: 5th-order Taylor of half the interval, squared
@@ -326,7 +361,7 @@ SR_ALWAYS_INLINE(fm_init)
 static inline void fm_init(FmState *s)
 {
     int i;
-    s->lfo_ph = 0.0f; s->last_bpm = -1.0f; s->wr = 0; s->env = 0.0f; s->lp = 0.0f; s->dmain = FM_MAIN_DLY;
+    s->lfo_ph = 0.0f; s->last_tempo = -1.0f; s->wr = 0; s->env = 0.0f; s->lp = 0.0f; s->dmain = FM_MAIN_DLY;
     s->ein = 0.0f; s->eout = 0.0f; s->comp = 0.3f;
     SR_NOUNROLL
     for (i = 0; i < 5; i++) { s->vph[i] = 0.21f * (float)i; s->drift[i] = 0.0f; s->nz[i] = 0x9E3779B9u * (unsigned int)(i + 1); }
@@ -524,13 +559,13 @@ static inline float rnd_vowel(FmState *s, float vowel, float depth)
 SR_ALWAYS_INLINE(fm_prepare)
 static inline void fm_prepare(FmState *s, FmParams *P, const float *k)
 {
-    int bpm_i = (int)(k[1] * 240.0f + 0.5f);
+    int tempo_i = (int)(k[1] * FM_TEMPO_MAX_F + 0.5f);  /* screen 0..441 */
     int idx   = (int)(k[2] * 16.0f + 0.5f);
     int   nd    = (int)(k[3] * 100.0f + 0.5f);          /* Depth 0..100 = 0..4 vowels */
     float gl;
     int m;
-    if (bpm_i < FM_BPM_MIN) bpm_i = FM_BPM_MIN;
-    P->bpm     = (float)bpm_i;
+    P->tempo   = (float)tempo_i;
+    P->bpm     = (float)fm_tempo_bpm(tempo_i);
     P->vowel   = 4.0f * k[0];
     P->lfo_inc = P->bpm * subdiv_mult(idx) * FM_BPM_BLOCK;
     P->shape   = (int)(k[8] * 10.0f + 0.5f);
@@ -598,8 +633,8 @@ static inline void fm_prepare(FmState *s, FmParams *P, const float *k)
         SR_NOUNROLL
         for (m = 0; m < 5; m++) P->vg[m] *= y;
     }
-    if (P->bpm != s->last_bpm) {
-        s->lfo_ph = 0.0f; s->last_bpm = P->bpm;
+    if (P->tempo != s->last_tempo) {                  /* Tempo moved or flipped to its twin */
+        s->lfo_ph = 0.0f; s->last_tempo = P->tempo;
         SR_NOUNROLL
         for (m = 0; m < 5; m++) { s->rph[m] = 0.0f; s->rmul[m] = 1.0f; }   /* random mode restarts with the beat too */
     }
@@ -974,6 +1009,22 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return len;
 }
 
+/* 4 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
+ * same numbers again (fm_tempo_bpm, as in fm_prepare) */
+int ZDL_GetLabel_4(unsigned int value, char *out)
+{
+    int n, h = 0, t = 0, len = 0;
+    if (value > 441u) value = 441u;
+    n = fm_tempo_bpm((int)value);
+    while (n >= 100) { n -= 100; h++; }
+    while (n >= 10)  { n -= 10;  t++; }
+    if (h > 0) { out[len] = (char)('0' + h); len++; }
+    out[len] = (char)('0' + t); len++;
+    out[len] = (char)('0' + n); len++;
+    out[len] = 0;
+    return len;
+}
+
 /* 5 Div: length of one LFO cycle, 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8. 1/8
  * 1/8T 1/16 1/16T 1/32 1/32T 1/64 (bar = 4 beats = 16 steps: 4bar = 64 steps, 3bar = 48,
  * 2bar = 32, 1.5b = 24 = 3/4 of 2 bars, 1/2. = 12 = 3/4 of a bar ...) */
@@ -1070,7 +1121,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     s = (FmState *)stateBase;
 
     k[0] = sr_knob(params[FORMANT_VOWEL_SLOT], (float)FORMANT_VOWEL_UI_DEFAULT, 0.025f);
-    k[1] = sr_knob(params[FORMANT_TEMPO_SLOT], (float)FORMANT_TEMPO_UI_DEFAULT, 0.0041666667f);
+    k[1] = fm_tempo_ui(params[FORMANT_TEMPO_SLOT], (float)FORMANT_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
     k[2] = sr_knob(params[FORMANT_DIV_SLOT],   (float)FORMANT_DIV_UI_DEFAULT,   0.0625f);
     k[3] = sr_knob(params[FORMANT_DEPTH_SLOT], (float)FORMANT_DEPTH_UI_DEFAULT, 0.01f);
     k[4] = sr_knob(params[FORMANT_RESO_SLOT],  (float)FORMANT_RESO_UI_DEFAULT,  0.01f);

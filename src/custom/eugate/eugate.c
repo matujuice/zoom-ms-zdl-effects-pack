@@ -42,6 +42,12 @@
  *   PEDAL: the footswitch being turned on, so the pattern starts exactly when you step
  *   on the pedal. (While the effect is off the pedal still calls the effect, which only
  *   records that it was off; nothing is processed.)
+ *   Whatever Reset says, a SYNC RESET restarts it too: the Tempo knob runs 0..441 and
+ *   holds every BPM twice (0..240 = the BPM, 241..441 = a twin copy, BPM = screen - 201,
+ *   so past 240 the screen shows 40 again). Flipping between a BPM and its twin
+ *   (120 <-> 321) restarts the pattern at step 1 without changing the tempo, so a host
+ *   (iPhone, MIDI box) can send one knob edit on each downbeat. A plain tempo change
+ *   does not restart the pattern.
  *
  * KNOBS (screen values; the names are kept short and plain on purpose)
  *   0 Notes 0..63   shown 1..64: how many notes play (at or above the step count = every step)
@@ -52,7 +58,8 @@
  *   5 Gap   0..50   small silence at the end of a note that is followed by another note,
  *                   in percent of a step (0 = touching notes join, as before)
  *   6 Soft  0..100  how soft the edges of each note are
- *   7 Tempo 0..240  BPM, 40..240 (below 40 reads as 40)
+ *   7 Tempo 0..441  BPM, 40..240 (below 40 reads as 40); 241..441 = the same BPMs again
+ *                   (twin copy for the sync reset, see RESET), shown as the BPM
  *   8 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  */
 
@@ -68,9 +75,11 @@
 #define CH_CODE_SECTION(fn)
 #endif
 
-#define CH_MAGIC        0x43483033u          /* "CH03" */
+#define CH_MAGIC        0x43483034u          /* "CH04" */
 #define CH_BPM_MIN      40.0f
 #define CH_BPM_MAX      240.0f
+#define CH_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
+#define CH_TEMPO_TWIN   201.0f               /* twin copy = BPM + 201           */
 #define CH_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define CH_QUIET_LEN    2000                 /* samples of silence before a new note counts */
 #define CH_QUIET_LVL    0.002f               /* below this the input counts as silent */
@@ -83,6 +92,7 @@ typedef struct {
     float g;               /* smoothed gate level                    */
     unsigned int quiet;    /* consecutive quiet samples              */
     unsigned int was_off;  /* set while the footswitch is off (for Reset = PEDAL) */
+    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
 } ChState;
 
 typedef struct {
@@ -109,10 +119,46 @@ static inline float ch_ui(float raw, float def_ui, float max_ui)
     return ui;
 }
 
+/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to 4.415
+ * (ch_ui's 3.05 guess would take 4.41 for an on-screen 4). Returns the screen number. */
+CH_ALWAYS_INLINE(ch_tempo_ui)
+static inline float ch_tempo_ui(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
+    else if (raw <= 4.415f) ui = raw * 100.0f;
+    else ui = raw;
+    ui = (float)(int)(ui + 0.5f);
+    if (ui > CH_TEMPO_MAX) ui = CH_TEMPO_MAX;
+    return ui;
+}
+
+/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
+ * (screen - 201), so both copies give 40..240. */
+CH_ALWAYS_INLINE(ch_tempo_bpm)
+static inline float ch_tempo_bpm(float ui)
+{
+    if (ui > CH_BPM_MAX) ui -= CH_TEMPO_TWIN;
+    if (ui < CH_BPM_MIN) ui = CH_BPM_MIN;
+    if (ui > CH_BPM_MAX) ui = CH_BPM_MAX;
+    return ui;
+}
+
+/* Sync reset: 1 when Tempo moved over to the other copy since the last block (the
+ * first block after loading only takes note of the copy). */
+CH_ALWAYS_INLINE(ch_twin_flip)
+static inline int ch_twin_flip(ChState *s, float tempo_ui)
+{
+    int tw = (tempo_ui > CH_BPM_MAX) ? 1 : 0;
+    int flip = (s->twin >= 0 && tw != s->twin);
+    s->twin = tw;
+    return flip;
+}
+
 CH_ALWAYS_INLINE(ch_init)
 static inline void ch_init(ChState *s)
 {
-    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u;
+    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->twin = -1;
     s->magic = CH_MAGIC;
 }
 
@@ -135,9 +181,7 @@ static inline void ch_prepare(ChParams *P, const float *u)
         if (m >= steps) m -= steps;
     }
     P->steps = steps; P->shift = shift; P->lo = lo; P->hi = hi;
-    bpm = u[7];
-    if (bpm < CH_BPM_MIN) bpm = CH_BPM_MIN;
-    if (bpm > CH_BPM_MAX) bpm = CH_BPM_MAX;
+    bpm = ch_tempo_bpm(u[7]);                            /* both copies: 40..240 */
     P->inc   = bpm * 4.0f * CH_INC_PER_BPM;
     P->swing = u[3] * 0.005f;                            /* 0..0.5 */
     P->gap   = u[5] * 0.01f;                             /* Gap 0..50 % of a step */
@@ -231,6 +275,22 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
     return 3;
 }
 
+/* knob 7 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
+ * the same numbers again */
+int ZDL_GetLabel_7(unsigned int value, char *out)
+{
+    int n, h = 0, t = 0, len = 0;
+    if (value > 441u) value = 441u;
+    n = (int)ch_tempo_bpm((float)(int)value);
+    while (n >= 100) { n -= 100; h++; }
+    while (n >= 10)  { n -= 10;  t++; }
+    if (h > 0) { out[len] = (char)('0' + h); len++; }
+    out[len] = (char)('0' + t); len++;
+    out[len] = (char)('0' + n); len++;
+    out[len] = 0;
+    return len;
+}
+
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef EUGATE_HOST_TEST
 
@@ -287,7 +347,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[4] = ch_ui(params[EUGATE_RESET_SLOT],  (float)EUGATE_RESET_UI_DEFAULT,  2.0f);
     u[5] = ch_ui(params[EUGATE_GAP_SLOT], (float)EUGATE_GAP_UI_DEFAULT, 50.0f);
     u[6] = ch_ui(params[EUGATE_SOFT_SLOT],  (float)EUGATE_SOFT_UI_DEFAULT,  100.0f);
-    u[7] = ch_ui(params[EUGATE_TEMPO_SLOT], (float)EUGATE_TEMPO_UI_DEFAULT, 240.0f);
+    u[7] = ch_tempo_ui(params[EUGATE_TEMPO_SLOT], (float)EUGATE_TEMPO_UI_DEFAULT);
     u[8] = ch_ui(params[EUGATE_MIX_SLOT],   (float)EUGATE_MIX_UI_DEFAULT,   100.0f);
 
     ch_prepare(&P, u);
@@ -296,6 +356,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;
     }
+    if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* sync reset: step 1 now */
     ch_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

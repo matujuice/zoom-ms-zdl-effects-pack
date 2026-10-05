@@ -52,9 +52,9 @@
     },
     {
       "name": "Tempo",
-      "max": 240,
+      "max": 441,
       "default": 120,
-      "comment": "Speed in BPM, read straight off the knob so the pedal's own number is the tempo (40 to 240). Every step is a 16th note, so 120 = 125 ms per step. Default 120."
+      "comment": "Speed in BPM (40 to 240), shown on screen. Every step is a 16th note, so 120 = 125 ms per step. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the pattern at step 1 without changing the tempo, whatever Reset says: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
     },
     {
       "name": "Mix",
