@@ -24,8 +24,10 @@ Put TempoPrb alone in a patch, feed it nothing (or a quiet sound), Level about 5
    must beep. A warble once a second means the probe could not find its own data;
    then go straight to step 5.
 3. **Does anything follow the tempo?** (Mode BLIP, Watch TABLE, Call OFF, Sync S4):
-   change the patch tempo with the tempo menu or tap tempo (the 31 03 08 SysEx does
-   nothing on Luca's MS-60B, iPhone test 2026-10-05). Beeps when the tempo changes = some value the probe can read follows it.
+   change the patch tempo with the tempo menu or tap tempo, then send the 31 03 08
+   SysEx from the iPhone (it showed no effect in the iPhone test, 2026-10-05; a beep
+   here would mean it does reach the pedal). Beeps when the tempo changes = some value
+   the probe can read follows it.
    High beep = second table, low beep = first table. Constant beeping = something
    changes all the time (note that too). Repeat with Watch ROW and Watch X.
 4. **The TAPEECH3 recipe** (Mode CLICK, Watch RCPE, Sync S4, then Call ON last): clicks
