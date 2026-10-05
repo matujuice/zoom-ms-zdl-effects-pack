@@ -1,6 +1,6 @@
 # Keeping the effects on the bar from an iPhone
 
-The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away from your drum machine. The Mozaic script `tools/mozaic/zoom_bar_sync.txt` fixes that: it restarts DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat.
+The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away from your drum machine. The Mozaic script **Zoom MS bar sync** fixes that: it restarts DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat. Get it from [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) or from this repo ([zoom_bar_sync.mozaic](../tools/mozaic/zoom_bar_sync.mozaic); plain text in [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt)).
 
 **How it works.** Every Tempo knob holds each BPM twice (40..240, then 40..240 again). Jumping from a BPM to its twin copy restarts the effect without changing the tempo. On each downbeat the script flips the Tempo knob of the effects in slots 1 to 3 to its other copy, over USB SysEx. It sends the edit a little early (Early, default 17 ms) so it lands on the beat. When the host tempo changes, it sends the new BPM to the same knobs.
 
@@ -10,10 +10,12 @@ The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away fro
 
 1. Connect the pedal and the drum machine to the iPhone through a powered USB hub on the camera adapter.
 2. AUM is the master clock. In AUM's clock settings, send MIDI clock to the drum machine. On a Digitakt: SETTINGS > MIDI CONFIG > SYNC, Clock receive and Transport receive on; PORT CONFIG, Input from USB.
-3. Add Mozaic to an AUM channel, paste `zoom_bar_sync.txt` into its code view and tap Upload.
-4. In AUM's MIDI routing: Mozaic out to the Zoom.
-5. Tap the first three pads until each shows the effect in that slot (Slot 1: EuGate, and so on). Only the first three effects of a patch accept edits from outside.
-6. Press play in AUM.
+3. On the iPhone, download `zoom_bar_sync.mozaic` from [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (Download button) into Files.
+4. Add Mozaic to an AUM channel and load the file from Files (or open it from Files and share it to Mozaic). It is ready to run: no code to paste.
+   No .mozaic? Open [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt), copy all of it, paste it into Mozaic's code view and tap Upload.
+5. In AUM's MIDI routing: Mozaic out to the Zoom.
+6. Tap the first three pads until each shows the effect in that slot (Slot 1: EuGate, and so on). Only the first three effects of a patch accept edits from outside.
+7. Press play in AUM.
 
 ## Controls
 
@@ -35,3 +37,4 @@ The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away fro
 - The patch-tempo SysEx (`31 03 08`) did nothing on the MS-60B, so the script sets each effect's Tempo knob instead.
 - The pedal did not answer the identity request; ID 58 works for the MS-60B on MS-50G firmware.
 - Mozaic shows only 4 pads, wants every variable set in `@OnLoad`, and rejects expressions such as `Round (x)` inside `Log`.
+- `zoom_bar_sync.mozaic` is an export of `zoom_bar_sync.txt` from Mozaic. After changing the text, upload it in Mozaic, save, export the new .mozaic and update PatchStorage too.
