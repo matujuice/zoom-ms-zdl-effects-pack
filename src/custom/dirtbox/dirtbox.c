@@ -2,42 +2,47 @@
  * dirtbox.c - "DirtBox": three distortion models in one effect, plus an automatic
  * ZNR-style noise reducer that leaves kick tails alone. Mono.
  *
- * MODELS (one Model knob)
+ * MODELS (one Model knob). Each follows a published circuit analysis or digital
+ * recreation of the pedal, stage by stage; component values are in the comments
+ * next to the numbers. 1.0 in the pedal's audio = 1 V into the circuit.
  *   DS-1  the built-in distortion of the Behringer TD-3 (the TB-303 clone; the
- *         original 303 has none), which is a copy of the Boss DS-1: a transistor
- *         booster (all frequencies, up to 5.4x here), an op-amp stage whose gain
- *         only applies above 72 Hz (4.7k / 0.47u leg, up to 22x), a 7.2 kHz
- *         low-pass (2.2k / 0.01u) into two silicon diodes to ground (hard,
- *         symmetric), then the DS-1 tone: a pot blending a 234 Hz low-pass
- *         (6.8k / 0.1u) with a 1.06 kHz high-pass, so the middle of the knob
- *         scoops the mids. Values from the DS-1 circuit as widely documented
- *         (not measured on a TD-3).
- *   RAT   after the ProCo RAT: the op-amp gain only boosts above about 70 Hz (the
- *         560R/4.7u and 1k/2.2u legs), the LM308 loses treble as the gain goes up
- *         (bandwidth about 800 kHz / gain), hard symmetric diode clip, then the
- *         RAT's Filter: a one-pole low-pass 475 Hz .. 16 kHz (Tone up = brighter,
- *         the reverse of the real Filter knob).
- *   METAL after the Boss MT-2 Metal Zone: two clipping stages (60x then 6x), lows
- *         under 100 Hz kept out of the gain so it stays tight, a fixed -9 dB mid
- *         scoop at 750 Hz after the clip, Tone = low-pass 1.2 .. 12 kHz.
- *   Each is a sketch of the circuit's character, not a component-level model.
- *   No oversampling (too heavy for the pedal): the smooth clip curve and the
- *   models' own low-passes keep the aliasing down, but high notes at full Drive
- *   alias a little.
+ *         original 303 has none), which is a copy of the Boss DS-1. Stages from the
+ *         ElectroSmash DS-1 analysis and the DS1.lv2 nodal model (LiamLombard):
+ *         transistor booster, 35 dB (56x) above a 33 Hz high-pass, running out of
+ *         swing around 4 V; op-amp stage, gain 1 + Dist / 4.7k (Dist = 100k pot)
+ *         above 72 Hz (4.7k / 0.47u), treble trimmed by the 100p feedback cap,
+ *         output stuck inside the 9 V rails; 2.2k / 0.01u low-pass (7.2 kHz) into
+ *         two 1N4148s to ground; the Big Muff style tone: a pot blending a 234 Hz
+ *         low-pass (6.8k / 0.1u) with a 1.06 kHz high-pass, so noon scoops ~500 Hz.
+ *   RAT   the ProCo RAT, after the nodal model by Rudro085 (Proco-Rat, values as
+ *         in the ElectroSmash RAT analysis): op-amp gain 1 + Dist / 560R (4.7u,
+ *         from 60 Hz) + Dist / 47R (2.2u, from 1.54 kHz), Dist = 100k audio-taper
+ *         pot, 100p across it; the LM308's ~1 MHz gain-bandwidth cuts the treble as
+ *         the gain rises (corner = 1 MHz / gain, ~450 Hz at full); 9 V rails;
+ *         1k into two 1N914s (Is 2.52 nA, Rudro's sinh law); the Filter is
+ *         1.5k + 100k audio pot into 3.3n (475 Hz .. 32 kHz). Tone up = brighter
+ *         (the real Filter knob turns the other way).
+ *   METAL the Boss MT-2 Metal Zone, from guitarix's MetalTone (DK-method model of
+ *         the MT-2 schematic), its filters evaluated at 44.1 kHz: a fixed
+ *         pre-filter peaking +25 dB around 900 Hz (stages p0/p1), the Dist stage
+ *         (1.2x .. 55x on the pot's log taper, treble shelved -11 dB between 629 Hz
+ *         and 2.28 kHz, plus a low-pass that closes to ~4.8 kHz at full Dist), the
+ *         clipper's transfer curve (guitarix's table, fitted, 0.575 ceiling), then
+ *         the fixed post filter (p3: +5 dB at 100 Hz, +11 dB at 4.6 kHz). Low,
+ *         Middle and Freq sit at noon (flat in the model); Tone = the High knob,
+ *         a shelf from -20 to +20 dB above ~2 kHz, flat at 50.
+ *   Not oversampled (too heavy for the pedal): the models' own low-passes keep the
+ *   aliasing down, but high notes at full Drive alias a little. The diode curves
+ *   are fitted to the circuit equations (within 2 % of full scale; MT-2 within 3 %).
  *
- * SIGNAL PATH (per sample)
- *   lpH = one-pole low-pass of the input (corner fh), h = in - lpH
- *   v   = lowG * lpH + G * h            (bass gets less gain than the rest)
- *   v   -> one-pole low-pass (fl)       (RAT: fl follows the gain)
- *   y   = clip(v)   METAL: y = clip(6 y) again
- *         clip(v) = c * S(v / c), S(u) = u / (1 + u^4)^(1/4): a diode-like knee,
- *         ceiling cp above zero and cn below
- *   y   -> DC blocker -> mid peak/scoop (METAL) -> Tone
- *   wet = y * makeup * Level * ZNR gain     out = DJ crossfade of in and wet
- *   Makeup = REF / min(G * REF, ceiling): with an input peaking at REF (0.2, about
- *   -14 dBFS) the wet peak stays near REF whatever the Drive, so turning Drive up
- *   adds dirt, not mostly volume. Level 50 = that level.
- *   Turning Model mutes the wet for a moment and fades it back in over ~6 ms.
+ * DIODE CURVES: y = c S(g v / c) + m v / (1 + h |v|), S(u) = u / (1 + u^4)^(1/4):
+ *   a knee into a slow log-like rise, as a diode pair does. Fitted per model.
+ *
+ * LEVEL: Makeup = REF / min(gain x REF, ceiling) x trim: with an input peaking at
+ *   REF (0.2, about -14 dBFS) the wet level stays near the input level whatever the
+ *   Drive, so turning Drive up adds dirt, not mostly volume (trim per model, set
+ *   in the host test). Level 50 = that level.
+ *   Turning Model clears the filters, mutes the wet and fades it in over ~6 ms.
  *
  * ZNR (automatic noise reducer, wet path only; the dry path is never touched)
  *   - The detector listens to the clean input, not the distorted signal, so it
@@ -61,11 +66,12 @@
  *
  * KNOBS (screen values)
  *   0 Model 0..2    DS-1 / RAT / METAL
- *   1 Drive 0..100  gain 0.5 x (2 Gmax)^(n/100): 0.5x .. Gmax (DS-1 120, RAT 300,
- *                   METAL 60 into the 6x second stage)
- *   2 Tone  0..100  per model, see MODELS; 100 = brightest on all three
+ *   1 Drive 0..100  the pedal's own Dist / Distortion pot, 0 = fully left. RAT at 0
+ *                   is nearly clean; DS-1 and METAL still distort at 0, as the real
+ *                   pedals do (DS-1's booster and MT-2's fixed gain come first)
+ *   2 Tone  0..100  DS-1 Tone, RAT Filter, METAL High; 100 = brightest on all three
  *   3 ZNR   0..100  noise reducer margin above the measured noise floor, 0 = off
- *   4 Level 0..100  wet level 0 .. 2x, 50 = about the input level (see Makeup)
+ *   4 Level 0..100  wet level 0 .. 2x, 50 = about the input level (see LEVEL)
  *   5 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  *                   (50 = parallel distortion: the clean kick stays under the dirt)
  */
@@ -82,7 +88,7 @@
 #define DB_CODE_SECTION(fn)
 #endif
 
-#define DB_MAGIC        0x44423032u          /* "DB02" */
+#define DB_MAGIC        0x44423033u          /* "DB03" */
 #define DB_W            0.00014247585f       /* 2 pi / 44100: Hz -> radians per sample */
 #define DB_DC_R         0.9993f              /* DC blocker pole                  */
 #define DB_REF          0.2f                 /* makeup reference input peak      */
@@ -95,31 +101,55 @@
 #define DB_HOLD         2205                 /* 50 ms before the expander starts */
 #define DB_G_ATT        0.05f                /* ZNR gain opens in under 1 ms     */
 #define DB_G_REL        0.000151f            /* .. and closes over ~150 ms       */
-/* METAL's mid scoop: Chamberlin state-variable filter, 750 Hz, Q 0.7, -9 dB */
-#define DB_MID_F        0.106806f            /* 2 sin(pi 750 / 44100)            */
-#define DB_MID_Q        1.428571f            /* 1 / Q                            */
-#define DB_MID_K        (-0.921718f)         /* (10^(-9/20) - 1) / Q             */
+#define DB_RAIL         4.5f                 /* op-amp swing on 9 V (DS-1, RAT)  */
+#define DB_FMAX         16000.0f             /* highest corner db_pole handles   */
+
+/* MT-2 filters from guitarix MetalTone, evaluated at 44.1 kHz and split into
+ * biquads (b0 b1 b2 / a1 a2). Pre-filter p1 (DC block p0 is the 33 Hz stage's job): */
+#define MT_A_B0  0.08033098f
+#define MT_A_B1  0.11920252f
+#define MT_A_B2  0.03887154f
+#define MT_A_A1 (-0.31981578f)
+#define MT_B_B1 (-0.4018711f)
+#define MT_B_A1 (-1.91582123f)
+#define MT_B_A2  0.93307778f
+#define MT_C_B1 (-1.99623994f)
+#define MT_C_B2  0.99623994f
+#define MT_C_A1 (-1.89294488f)
+#define MT_C_A2  0.894326f
+/* .. post filter p3 (its third section is a 1.6 Hz DC blocker: our DC blocker) */
+#define MT_D_B0  1.49892177f
+#define MT_D_B1 (-1.56357181f)
+#define MT_D_B2  0.42906255f
+#define MT_D_A1 (-1.36107743f)
+#define MT_D_A2  0.71247088f
+#define MT_E_B1 (-1.99045965f)
+#define MT_E_B2  0.99065458f
+#define MT_E_A1 (-1.99658585f)
+#define MT_E_A2  0.99678836f
+#define MT_SHELF 0.2763f                     /* Dist stage treble: 629 Hz / 2277 Hz */
 
 typedef struct {
     unsigned int magic;
-    int model;             /* last model, to fade in after a change  */
-    float lpH, lpA;        /* drive split, pre-clip low-pass          */
+    int model;             /* last model, to clear the filters after a change */
+    float h1, h2, fb, lc;  /* one-pole states: high-pass legs, gain roll-off, pre-clip */
     float dcx, dcy;        /* DC blocker                              */
-    float lpS, bpS;        /* mid filter                              */
-    float lpT, lpU;        /* tone: low-pass and the high-pass's pole */
+    float t1, t2;          /* tone                                    */
+    float qa1, qa2, qb1, qb2, qc1, qc2, qd1, qd2, qe1, qe2;   /* MT-2 biquads */
     float fade;            /* wet fade-in after a Model change        */
     float env, nf, gz;     /* ZNR: input envelope, noise floor, gain  */
     int hold;              /* ZNR hold counter, samples               */
 } DbState;
 
 typedef struct {
-    int model, stage2, znr;
-    float aH, lowG, G, aL;     /* drive split and pre-clip low-pass      */
-    float cp, icp, cn, icn;    /* clip ceilings and their inverses       */
-    float midK;                /* mid peak (0 = flat)                    */
-    float aT, aU, wl, wh;      /* tone: wl x LP(aT) + wh x HP(aU)        */
-    float wetScale;            /* makeup x Level                         */
-    float margin;              /* ZNR threshold / noise floor            */
+    int model, znr;
+    float pre, a1, a2;         /* DS-1 booster gain; high-pass legs' poles      */
+    float gA, gB, aF, aC;      /* leg gains, gain roll-off pole, pre-clip pole  */
+    float c, ic, cg, cm, ch, cap;   /* diode curve                              */
+    float aT, aU, wl, wh;      /* tone: wl x LP(aT) + wh x HP(aU)               */
+    float sk;                  /* METAL High shelf: x + sk x HP(aT)             */
+    float wetScale;            /* makeup x Level                                */
+    float margin;              /* ZNR threshold / noise floor                   */
     float dryG, wetG;
 } DbParams;
 
@@ -171,12 +201,14 @@ static inline float db_exp2(float x)
     return r;
 }
 
-/* One-pole coefficient 1 - e^(-2 pi fc / fs), fc up to ~16 kHz: e^(-w/8) by a
- * Taylor series, then squared three times. */
+/* One-pole coefficient 1 - e^(-2 pi fc / fs), fc up to 16 kHz (clamped): e^(-w/8)
+ * by a Taylor series, then squared three times. */
 DB_ALWAYS_INLINE(db_pole)
 static inline float db_pole(float hz)
 {
-    float w = hz * DB_W * 0.125f, e;
+    float w, e;
+    if (hz > DB_FMAX) hz = DB_FMAX;
+    w = hz * DB_W * 0.125f;
     e = 1.0f - w * (1.0f - w * (0.5f - w * (0.16666667f - w * 0.041666668f)));
     e = e * e; e = e * e; e = e * e;
     return 1.0f - e;
@@ -195,8 +227,7 @@ static inline float db_knob(float raw, float def_ui, float inv_max)
     return db_clamp01(ui * inv_max);
 }
 
-/* Diode-like clip: c * S(v / c), S(u) = u (1 + u^4)^(-1/4). Slope 1 at zero, flat
- * at c, a knee between soft and hard. */
+/* Knee: c * S(v / c), S(u) = u (1 + u^4)^(-1/4). Slope 1 at zero, flat at c. */
 DB_ALWAYS_INLINE(db_clip)
 static inline float db_clip(float v, float c, float ic)
 {
@@ -205,13 +236,44 @@ static inline float db_clip(float v, float c, float ic)
     return c * u * (r * db_rsqrt(r));            /* x sqrt(r)        */
 }
 
+/* Diode pair: knee plus a slow rise, y = c S(g v / c) + m v / (1 + h |v|), held
+ * inside +-cap. */
+DB_ALWAYS_INLINE(db_diode)
+static inline float db_diode(float v, const DbParams *P)
+{
+    float av = (v < 0.0f) ? -v : v, y;
+    y = db_clip(P->cg * v, P->c, P->ic) + P->cm * v * db_inv(1.0f + P->ch * av);
+    if (y > P->cap) y = P->cap;
+    if (y < -P->cap) y = -P->cap;
+    return y;
+}
+
+/* Biquad, transposed direct form II. */
+DB_ALWAYS_INLINE(db_bq)
+static inline float db_bq(float x, float *z1, float *z2,
+                          float b0, float b1, float b2, float a1, float a2)
+{
+    float y = b0 * x + *z1;
+    *z1 = b1 * x - a1 * y + *z2;
+    *z2 = b2 * x - a2 * y;
+    return y;
+}
+
+DB_ALWAYS_INLINE(db_clear)
+static inline void db_clear(DbState *s)
+{
+    s->h1 = 0.0f; s->h2 = 0.0f; s->fb = 0.0f; s->lc = 0.0f;
+    s->dcx = 0.0f; s->dcy = 0.0f; s->t1 = 0.0f; s->t2 = 0.0f;
+    s->qa1 = 0.0f; s->qa2 = 0.0f; s->qb1 = 0.0f; s->qb2 = 0.0f; s->qc1 = 0.0f;
+    s->qc2 = 0.0f; s->qd1 = 0.0f; s->qd2 = 0.0f; s->qe1 = 0.0f; s->qe2 = 0.0f;
+    s->fade = 0.0f;
+}
+
 DB_ALWAYS_INLINE(db_init)
 static inline void db_init(DbState *s, const DbParams *P)
 {
     s->model = P->model;
-    s->lpH = 0.0f; s->lpA = 0.0f; s->dcx = 0.0f; s->dcy = 0.0f;
-    s->lpS = 0.0f; s->bpS = 0.0f; s->lpT = 0.0f; s->lpU = 0.0f;
-    s->fade = 0.0f;
+    db_clear(s);
     s->env = 0.0f; s->nf = 0.0001f; s->gz = 1.0f; s->hold = 0;
     s->magic = DB_MAGIC;
 }
@@ -220,91 +282,135 @@ static inline void db_init(DbState *s, const DbParams *P)
 DB_ALWAYS_INLINE(db_prepare)
 static inline void db_prepare(DbParams *P, const float *k)
 {
-    float l2, gt, trim, t = k[2];
+    float d = k[1], t = k[2], gpk, ceil, trim, fl, rd;
     int m = (int)(k[0] * 2.0f + 0.5f);
     P->model = m;
-    P->stage2 = 0;
-    P->midK = 0.0f;
-    P->wl = 1.0f; P->wh = 0.0f; P->aU = 0.1f;
-    trim = 1.0f;
+    P->pre = 1.0f; P->gA = 0.0f; P->gB = 0.0f;
+    P->a1 = 0.1f; P->a2 = 0.1f; P->aC = 1.0f; P->aU = 0.1f;
+    P->wl = 1.0f; P->wh = 0.0f; P->sk = 0.0f;
     if (m == 0) {                                /* DS-1: TD-3 = DS-1 */
-        l2 = 7.9069f;                            /* log2(2 x 120): booster 5.4 x op-amp 22 */
-        P->aH = db_pole(72.0f);
-        P->cp = 0.6f; P->cn = 0.6f;
-        P->aL = db_pole(7200.0f);
-        P->aT = db_pole(234.0f);                 /* tone pot: LP 234 Hz <-> HP 1.06 kHz */
-        P->aU = db_pole(1060.0f);
+        rd = 100000.0f * d;                      /* Dist, 100k linear */
+        P->pre = 56.0f;                          /* booster, 35 dB    */
+        P->a1 = db_pole(33.0f);                  /* booster's input high-pass */
+        P->a2 = db_pole(72.0f);                  /* 4.7k / 0.47u leg  */
+        P->gA = rd * 0.00021276596f;             /* Dist / 4.7k       */
+        fl = DB_FMAX;
+        if (rd > 1000.0f) fl = 1591549431.0f * db_inv(rd);   /* 1 / (2 pi Dist 100p) */
+        P->aF = db_pole(fl);
+        P->aC = db_pole(7234.0f);                /* 2.2k / 0.01u      */
+        P->c = 0.428f; P->cg = 0.8931f; P->cm = 0.1514f; P->ch = 0.6116f; P->cap = 1.0f;
+        P->aT = db_pole(234.0f);                 /* tone: LP 6.8k / 0.1u */
+        P->aU = db_pole(1063.0f);                /*       HP 1.06 kHz    */
         P->wl = 1.0f - t; P->wh = t;
-        trim = 2.0f;                             /* the tone stack's loss, measured in tests */
+        gpk = 56.0f * (1.0f + P->gA); ceil = 0.6f; trim = 2.0f;
     } else if (m == 1) {                         /* RAT */
-        l2 = 9.2288f;                            /* log2(2 x 300) */
-        P->aH = db_pole(70.0f);
-        P->cp = 0.55f; P->cn = 0.55f;
-        P->aT = db_pole(475.0f * db_exp2(t * 5.07f));      /* 475 Hz .. 16 kHz */
+        rd = 1010.101f * (db_exp2(6.643856f * d) - 1.0f);    /* 100k audio taper: 100k (10^(2d) - 1) / 99 */
+        P->a1 = db_pole(60.5f);                  /* 560R / 4.7u  */
+        P->a2 = db_pole(1539.0f);                /* 47R / 2.2u   */
+        P->gA = rd * 0.0017857143f;              /* Dist / 560   */
+        P->gB = rd * 0.021276596f;               /* Dist / 47    */
+        fl = 1000000.0f * db_inv(1.0f + rd * 0.023049645f);  /* LM308: 1 MHz / (1 + Dist / (47 || 560)) */
+        if (rd > 1000.0f) {
+            float fc = 1591549431.0f * db_inv(rd);           /* 100p across Dist */
+            if (fc < fl) fl = fc;
+        }
+        P->aF = db_pole(fl);
+        P->c = 0.6076f; P->cg = 0.9516f; P->cm = 0.0935f; P->ch = 0.3322f; P->cap = 1.0f;
+        {   /* Filter: 1.5k + 100k audio pot into 3.3n, Tone 100 = pot at 0 */
+            float rt = 11111.11f * (db_exp2(3.321928f * (1.0f - t)) - 1.0f);
+            P->aT = db_pole(48228770.0f * db_inv(1500.0f + rt));
+        }
+        gpk = 1.0f + P->gA + 0.5f * P->gB; ceil = 0.75f; trim = 1.0f;
     } else {                                     /* METAL */
-        l2 = 6.9069f;                            /* log2(2 x 60)  */
-        P->stage2 = 1;
-        P->aH = db_pole(100.0f);
-        P->cp = 0.5f; P->cn = 0.5f;
-        P->aL = db_pole(6000.0f);
-        P->midK = DB_MID_K;
-        P->aT = db_pole(1200.0f * db_exp2(t * 3.32f));     /* 1.2 .. 12 kHz */
+        float D = (db_exp2(4.328085f * d) - 1.0f) * 0.052396f;   /* guitarix LogPot(3, d) */
+        float G = 1.21f + 53.8f * D, gdb, g;
+        P->pre = G;
+        P->a1 = db_pole(629.2f);                 /* Dist stage treble shelf */
+        fl = DB_FMAX;
+        if (D > 0.3f) fl = 4800.0f * db_inv(D);  /* .. and its closing low-pass */
+        P->aF = db_pole(fl);
+        P->c = 0.0621f; P->cg = 100.0f; P->cm = 7.8705f; P->ch = 14.2186f; P->cap = 0.5745f;
+        gdb = 2.0f * t - 1.0f; gdb = gdb * gdb * gdb;            /* High: +-20 dB, cubic */
+        if (gdb >= 0.0f) {
+            g = db_exp2(3.321928f * gdb);                        /* 10^(gdb) */
+            P->sk = g - 1.0f; P->aT = db_pole(7200.0f);
+        } else {
+            g = db_exp2(-3.321928f * gdb);
+            P->sk = db_inv(g) - 1.0f; P->aT = db_pole(7200.0f * db_inv(g));
+        }
+        gpk = 18.0f * G; ceil = 0.5745f; trim = 0.42f;
     }
-    P->icp = db_inv(P->cp); P->icn = db_inv(P->cn);
-    P->G = 0.5f * db_exp2(k[1] * l2);            /* 0.5x .. Gmax */
-    if (m == 1) {
-        float fl = 800000.0f * db_inv(P->G);     /* LM308: bandwidth = GBW / gain */
-        if (fl > 16000.0f) fl = 16000.0f;
-        P->aL = db_pole(fl);
-        P->lowG = 1.0f;                          /* below the legs' corner the gain is 1 */
-    } else {
-        P->lowG = P->G * ((m == 0) ? 0.045f : 0.1f);   /* DS-1: booster gain only (1 / 22) */
-    }
-    gt = P->G * (P->stage2 ? 6.0f : 1.0f) * DB_REF;
-    if (gt > 0.5f * (P->cp + P->cn)) gt = 0.5f * (P->cp + P->cn);   /* expected clip peak */
-    P->wetScale = DB_REF * db_inv(gt) * (k[4] + k[4]) * trim;
+    P->ic = db_inv(P->c);
+    gpk *= DB_REF;
+    if (gpk > ceil) gpk = ceil;                  /* expected clip peak */
+    P->wetScale = DB_REF * db_inv(gpk) * (k[4] + k[4]) * trim;
     P->znr = (k[3] > 0.0f);
     P->margin = db_exp2(1.0f + 3.0f * k[3]);
     P->dryG = 2.0f - 2.0f * k[5]; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * k[5];        if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
+#define DB_FLUSH(v) if ((v) < 1e-15f && (v) > -1e-15f) (v) = 0.0f
+
 DB_ALWAYS_INLINE(db_process)
 static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
 {
-    int i, hold = s->hold;
-    float lpH = s->lpH, lpA = s->lpA, dcx = s->dcx, dcy = s->dcy;
-    float lpS = s->lpS, bpS = s->bpS, lpT = s->lpT, lpU = s->lpU, fade = s->fade;
-    float env = s->env, nf = s->nf, gz = s->gz, invThr;
+    int i, hold, m = P->model;
+    float h1, h2, fb, lc, dcx, dcy, t1, t2, fade, env, nf, gz, invThr;
 
-    if (P->model != s->model) { s->model = P->model; fade = 0.0f; }
+    if (m != s->model) { s->model = m; db_clear(s); }
+    h1 = s->h1; h2 = s->h2; fb = s->fb; lc = s->lc; dcx = s->dcx; dcy = s->dcy;
+    t1 = s->t1; t2 = s->t2; fade = s->fade;
+    env = s->env; nf = s->nf; gz = s->gz; hold = s->hold;
     invThr = db_inv(nf * P->margin);
 
     for (i = 0; i < n; i++) {
-        float x = buf[i], ax = (x < 0.0f) ? -x : x, h, v, y, d;
+        float x = buf[i], ax = (x < 0.0f) ? -x : x, v, g, y, d;
         /* ZNR detector on the clean input */
         env *= DB_ENV_REL;
         if (ax > env) env = ax;
-        /* drive: the bass under the corner gets lowG, the rest G */
-        lpH += P->aH * (x - lpH);
-        h = x - lpH;
-        v = P->lowG * lpH + P->G * h;
-        lpA += P->aL * (v - lpA);
-        if (lpA >= 0.0f) y = db_clip(lpA, P->cp, P->icp);
-        else             y = db_clip(lpA, P->cn, P->icn);
-        if (P->stage2) y = db_clip(6.0f * y, P->cp, P->icp);
+        if (m == 2) {                                    /* METAL */
+            v = db_bq(x, &s->qa1, &s->qa2, MT_A_B0, MT_A_B1, MT_A_B2, MT_A_A1, 0.0f);
+            v = db_bq(v, &s->qb1, &s->qb2, 1.0f, MT_B_B1, 0.0f, MT_B_A1, MT_B_A2);
+            v = db_bq(v, &s->qc1, &s->qc2, 1.0f, MT_C_B1, MT_C_B2, MT_C_A1, MT_C_A2);
+            v *= P->pre;                                 /* Dist stage gain */
+            h1 += P->a1 * (v - h1);
+            v += (MT_SHELF - 1.0f) * (v - h1);           /* .. its treble shelf */
+            fb += P->aF * (v - fb);                      /* .. and low-pass */
+            y = db_diode(fb, P);
+        } else {
+            if (m == 0) {                                /* DS-1 booster */
+                h1 += P->a1 * (x - h1);
+                v = db_clip(P->pre * (x - h1), 4.0f, 0.25f);
+                h2 += P->a2 * (v - h2);                  /* op-amp leg */
+                g = P->gA * (v - h2);
+            } else {                                     /* RAT: two legs */
+                v = x;
+                h1 += P->a1 * (x - h1);
+                h2 += P->a2 * (x - h2);
+                g = P->gA * (x - h1) + P->gB * (x - h2);
+            }
+            fb += P->aF * (g - fb);                      /* gain rolls off in the treble */
+            v += fb;
+            if (v > DB_RAIL) v = DB_RAIL;                /* op-amp rails */
+            if (v < -DB_RAIL) v = -DB_RAIL;
+            lc += P->aC * (v - lc);                      /* DS-1: 2.2k / 0.01u (aC = 1 on RAT) */
+            y = db_diode(lc, P);
+        }
         d = y - dcx + DB_DC_R * dcy;                     /* DC blocker */
         dcx = y; dcy = d;
-        if (P->stage2) {                                 /* METAL mid scoop */
-            float hp;
-            lpS += DB_MID_F * bpS;
-            hp = d - lpS - DB_MID_Q * bpS;
-            bpS += DB_MID_F * hp;
-            d += P->midK * bpS;
+        t1 += P->aT * (d - t1);                          /* Tone */
+        if (m == 0) {                                    /* DS-1: LP <-> HP blend */
+            t2 += P->aU * (d - t2);
+            d = P->wl * t1 + P->wh * (d - t2);
+        } else if (m == 1) {                             /* RAT: Filter low-pass */
+            d = t1;
+        } else {                                         /* METAL: post filter, High shelf */
+            d = db_bq(d, &s->qd1, &s->qd2, MT_D_B0, MT_D_B1, MT_D_B2, MT_D_A1, MT_D_A2);
+            d = db_bq(d, &s->qe1, &s->qe2, 1.0f, MT_E_B1, MT_E_B2, MT_E_A1, MT_E_A2);
+            t2 += P->aT * (d - t2);
+            d += P->sk * (d - t2);
         }
-        lpT += P->aT * (d - lpT);                        /* Tone */
-        lpU += P->aU * (d - lpU);
-        d = P->wl * lpT + P->wh * (d - lpU);
         if (P->znr) {
             float r = env * invThr, tgt;
             if (r >= 1.0f) { hold = DB_HOLD; tgt = 1.0f; }
@@ -324,17 +430,15 @@ static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
     if (nf < DB_NF_MIN) nf = DB_NF_MIN;
     if (nf > DB_NF_MAX) nf = DB_NF_MAX;
 
-    if (lpH < 1e-15f && lpH > -1e-15f) lpH = 0.0f;       /* denormals */
-    if (lpA < 1e-15f && lpA > -1e-15f) lpA = 0.0f;
-    if (dcy < 1e-15f && dcy > -1e-15f) dcy = 0.0f;
-    if (lpS < 1e-15f && lpS > -1e-15f) lpS = 0.0f;
-    if (bpS < 1e-15f && bpS > -1e-15f) bpS = 0.0f;
-    if (lpT < 1e-15f && lpT > -1e-15f) lpT = 0.0f;
-    if (lpU < 1e-15f && lpU > -1e-15f) lpU = 0.0f;
+    DB_FLUSH(h1); DB_FLUSH(h2); DB_FLUSH(fb); DB_FLUSH(lc);    /* denormals */
+    DB_FLUSH(dcy); DB_FLUSH(t1); DB_FLUSH(t2);
+    DB_FLUSH(s->qa1); DB_FLUSH(s->qa2); DB_FLUSH(s->qb1); DB_FLUSH(s->qb2);
+    DB_FLUSH(s->qc1); DB_FLUSH(s->qc2); DB_FLUSH(s->qd1); DB_FLUSH(s->qd2);
+    DB_FLUSH(s->qe1); DB_FLUSH(s->qe2);
     if (env < 1e-15f) env = 0.0f;
     if (gz < 1e-15f) gz = 0.0f;
-    s->lpH = lpH; s->lpA = lpA; s->dcx = dcx; s->dcy = dcy;
-    s->lpS = lpS; s->bpS = bpS; s->lpT = lpT; s->lpU = lpU; s->fade = fade;
+    s->h1 = h1; s->h2 = h2; s->fb = fb; s->lc = lc; s->dcx = dcx; s->dcy = dcy;
+    s->t1 = t1; s->t2 = t2; s->fade = fade;
     s->env = env; s->nf = nf; s->gz = gz; s->hold = hold;
 }
 

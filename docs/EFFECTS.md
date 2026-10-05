@@ -111,17 +111,19 @@ Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with 
 ### DirtBox: three distortions and a noise reducer (new, not in a release yet)
 One distortion with three characters on the Model knob, and an automatic noise reducer (ZNR) built in. Drive mostly adds dirt rather than volume: the output is levelled so that an input peaking around -14 dBFS comes out at about the same peak at any Drive.
 
-- **DS-1**: the distortion built into the Behringer TD-3 (the 303 clone; the original TB-303 has none). The TD-3's is a copy of the Boss DS-1: a transistor booster, an op-amp stage that boosts only above 72 Hz, hard silicon-diode clipping, and the DS-1 tone. Made for acid lines and drones from a MeeBlip triode or similar.
-- **RAT**: after the ProCo RAT. Only the sound above about 70 Hz gets the full gain, the top end softens as Drive goes up (as the RAT's op-amp does), and hard diode clipping follows. Tone is the RAT's Filter, turned round: up = brighter.
-- **METAL**: after the Boss Metal Zone. Two clipping stages for a lot of gain, the lows under 100 Hz are kept out of it so it stays tight, and the mids are scooped (-9 dB at 750 Hz).
+Each model follows a published analysis or digital recreation of the real pedal, stage by stage (filters evaluated at 44.1 kHz, diode curves fitted to the circuit's equations):
 
-These are sketches of each pedal's character, not component-level models. No oversampling, so high notes at full Drive alias a little.
+- **DS-1**: the distortion built into the Behringer TD-3 (the 303 clone; the original TB-303 has none). The TD-3's is a copy of the Boss DS-1, modelled from the [ElectroSmash DS-1 analysis](https://www.electrosmash.com/boss-ds1-analysis) and the [DS1.lv2](https://github.com/LiamLombard/DS1.lv2) circuit model: a 35 dB transistor booster, an op-amp stage boosting above 72 Hz (Dist up to 22x), 1N4148 diodes behind a 7.2 kHz low-pass, and the DS-1 tone. Made for acid lines and drones from a MeeBlip triode or similar.
+- **RAT**: the ProCo RAT, after the [Proco-Rat nodal model](https://github.com/Rudro085/Proco-Rat): two gain legs (from 60 Hz and from 1.5 kHz, up to about 67 dB), the LM308's limited bandwidth cutting the treble as the gain rises, 9 V rails, 1N914 diodes and the Filter (1.5k + 100k into 3.3 nF). Tone is the Filter, turned round: up = brighter.
+- **METAL**: the Boss MT-2 Metal Zone, from guitarix's [MetalTone](https://github.com/brummer10/MetalTone) circuit model: a fixed pre-filter that peaks +25 dB around 900 Hz, the Dist stage (1.2x to 55x, treble shelved down), the clipper's measured curve, then the fixed post filter (+5 dB at 100 Hz, +11 dB at 4.6 kHz). The other EQ knobs sit at noon; Tone is the High knob.
+
+Drive is the pedal's own Dist knob: RAT is nearly clean at 0, but DS-1 and METAL still distort at 0, as the real pedals do. More gain also means more hiss between notes; ZNR takes it down, and turning ZNR up cuts more. No oversampling, so high notes at full Drive alias a little.
 
 | Knob | Range | What it does |
 |---|---|---|
 | Model | DS-1, RAT, METAL | Which distortion. Switching fades the effect back in over a few ms so it doesn't click. |
-| Drive | 0..100 | How hard the signal hits the clipper: 0.5x at 0 up to 120x (DS-1), 300x (RAT) or 60x into a second 6x stage (METAL). |
-| Tone | 0..100 | 100 = brightest on all three. DS-1: the DS-1 tone, blending a 234 Hz low-pass (0) with a 1.06 kHz high-pass (100); the middle scoops the mids. RAT: low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. |
+| Drive | 0..100 | The pedal's Dist knob. DS-1: booster 56x then 1x..22x. RAT: 1x..2100x (audio taper), treble falling as it rises. METAL: 1.2x..55x after the +25 dB pre-filter. |
+| Tone | 0..100 | 100 = brightest on all three. DS-1: the DS-1 tone, blending a 234 Hz low-pass (0) with a 1.06 kHz high-pass (100); the middle scoops the mids. RAT: the Filter, low-pass 475 Hz..16 kHz. METAL: the High knob, -20..+20 dB above ~2 kHz, flat at 50. |
 | ZNR | 0..100 | Noise reducer on the distorted sound only (the dry sound is never touched). It measures your noise floor by itself and stays shut this far above it: +6 dB at 1, +15 dB at 50, +24 dB at 100. 0 = off. |
 | Level | 0..100 | Distorted level, 50 = about the input level, 100 = +6 dB. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. At 50 you get parallel distortion: the clean kick stays under the dirt. |

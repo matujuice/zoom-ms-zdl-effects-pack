@@ -6,8 +6,10 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up one.
     crooked and two gone (bare holes with rust round them),
   * the classic acid smiley where DubSiren has its woofer,
   * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
-  * smiley sticker (turned 10 degrees, lower right edge peeling) and title centred as one group;
-    the title one size up and dirtied; uneven grimy grain, heavier toward the edges.
+  * the title centred on the box, two sizes up with open counters so it reads, and dirtied;
+  * the smiley sticker (turned 10 degrees, lower right edge peeling) stuck on after the
+    title: its right edge laps over the D's stem, the D still reads;
+  * uneven grimy grain, heavier toward the edges.
 
 Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
 Also writes cover_preview.png next to this script (black on white).
@@ -33,14 +35,15 @@ def line(c,x0,y0,x1,y1,v=1,skip=None):
 def bez(p0,p1,p2,p3,n=40):
     return [(round((1-t)**3*p0[0]+3*(1-t)**2*t*p1[0]+3*(1-t)*t*t*p2[0]+t**3*p3[0]),
              round((1-t)**3*p0[1]+3*(1-t)**2*t*p1[1]+3*(1-t)*t*t*p2[1]+t**3*p3[1])) for t in [i/n for i in range(n+1)]]
+SCX,SCY,SR=13.5,15.5,10.0                # sticker centre and radius: its right edge just over the D
 def build():
     rnd=random.Random(5)
     c=Canvas()
-    TITLE,TX,TY="DIRTBOX",40,10        # sticker (~23) + 4 + title (75): x 13..114, centred
-    # title: the pack's chunky letters (WaveFold's scaling), one size up (9 x 16 per letter),
+    TITLE,TX,TY="DIRTBOX",23,8         # title 82 x 17, centred on the box (x 23..104)
+    # title: the pack's chunky letters (WaveFold's scaling), two sizes up (10 x 17 per letter, open counters),
     # then dirtied: rough chipped edges, a few pits in the paint, grime crept past the edges
     # and one fine scratch through it
-    COLS,ROWS,LG=(2,5,2),(4,2,4,2,4),2
+    COLS,ROWS,LG=(2,6,2),(3,4,3,4,3),2
     main=set(); x=TX
     for ch in TITLE:
         yy=TY
@@ -56,17 +59,17 @@ def build():
     N4=((1,0),(-1,0),(0,1),(0,-1))
     edge=sorted(p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in N4))
     inner=sorted(p for p in main if p not in set(edge))
-    for p in rnd.sample(edge,len(edge)//16): main.discard(p)                 # chipped edges
+    for p in rnd.sample(edge,len(edge)//24): main.discard(p)                 # chipped edges
     for p in rnd.sample(inner,len(inner)//70): main.discard(p)              # pits
     for k in range(24):                                                     # the scratch
-        main.discard((round(84+k*0.9),round(22-k*0.35)))
+        main.discard((round(TX+48+k*0.9),round(TY+14-k*0.35)))
     outside=sorted(set((x+dx,y+dy) for (x,y) in edge for dx,dy in N4) - main)
     grime=set(rnd.sample(outside,len(outside)//40))
     # the smiley is a sticker: the classic acid face (round rim, upright oval eyes, grin with
     # creases), stuck on a little crooked (turned 10 degrees), its lower right edge peeling:
     # that part is folded back over the face, showing its dithered backing.
     # Drawn as shapes in screen-true units (y x 1.4), sampled 8 x 8 per pixel.
-    scx,scy,R,TH=24.5,17.5*A,10.5,math.radians(-10)
+    scx,scy,R,TH=SCX,SCY*A,SR,math.radians(-10)
     nx,ny,cut=0.7071,0.7071,7.4                                             # fold line (local)
     ct,st=math.cos(TH),math.sin(TH)
     def local(X,Y):
@@ -91,8 +94,8 @@ def build():
             return 'paper'
         return None
     face=set(); back=set(); sticker=set()
-    for y in range(4,33):
-        for x in range(8,42):
+    for y in range(int(SCY-R/A)-2,int(SCY+R/A)+3):
+        for x in range(int(SCX-R)-2,int(SCX+R)+3):
             cnt={'ink':0,'back':0,'paper':0}
             for sy in range(8):
                 for sx in range(8):
@@ -102,12 +105,15 @@ def build():
             if tot>=20: sticker.add((x,y))
             if cnt['ink']>=26: face.add((x,y))
             elif cnt['back']>=24 and (x+y)%2==0: back.add((x,y))
-    for p in face|back: c.px(*p)
-    # gap round the title so it stays readable, then the title and its grime
+    # the title goes on the box first, with a clear gap round it so it stays readable ..
     for (x,y) in main:
         for dy in (-1,0,1):
             for dx in (-1,0,1): c.px(x+dx,y+dy,0)
     for p in main|grime: c.px(*p)
+    # .. then the sticker over it: its paper (and a 1 px gap round it) hides what is under
+    ring=set((x+dx,y+dy) for (x,y) in sticker for dx,dy in N4)-sticker
+    for p in sticker|ring: c.px(*p,0)
+    for p in face|back: c.px(*p)
     # the metal case, DubSiren's construction, knocked about: the outer wall dented in
     # along the top (a soft dip, not a gap), one corner folded in, the inner lip sprung loose
     for x in range(2,126):

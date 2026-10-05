@@ -1,6 +1,6 @@
 {
   "effect_name": "DirtBox",
-  "comment": "DirtBox - three distortion models in one effect plus an automatic noise reducer, mono. DS-1 = the built-in distortion of the Behringer TD-3 303 clone (a Boss DS-1 copy), RAT = after the ProCo RAT (gain only above ~70 Hz, treble falls as the gain rises, hard diode clip, Filter low-pass), METAL = after the Boss MT-2 Metal Zone (two clip stages, tight lows, -9 dB mid scoop at 750 Hz). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and gently expands the wet signal below it, holding 50 ms and releasing over 150 ms so kick tails fade naturally. Makeup keeps the wet near the input level whatever the Drive.",
+  "comment": "DirtBox - three distortion models in one effect plus an automatic noise reducer, mono. DS-1 = the built-in distortion of the Behringer TD-3 303 clone (a Boss DS-1 copy), RAT = the ProCo RAT, METAL = the Boss MT-2 Metal Zone; each follows a circuit analysis or model of the pedal (ElectroSmash + DS1.lv2, Rudro085 Proco-Rat, guitarix MetalTone). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and gently expands the wet signal below it, holding 50 ms and releasing over 150 ms so kick tails fade naturally. Makeup keeps the wet near the input level whatever the Drive.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
@@ -18,13 +18,13 @@
       "name": "Drive",
       "max": 100,
       "default": 50,
-      "comment": "Gain into the clipper, 0.5x at 0 up to the model's maximum at 100 (DS-1 120x, RAT 300x, METAL 60x into a fixed 6x second stage), exponential. Makeup keeps the loudness roughly steady, so Drive mostly adds dirt. Default 50."
+      "comment": "The pedal's Dist knob. DS-1: 56x booster then 1..22x; RAT: 1..2100x audio taper; METAL: 1.2..55x after a +25 dB mid pre-filter. DS-1 and METAL still distort at 0, like the pedals. Makeup keeps the loudness roughly steady, so Drive mostly adds dirt. Default 50."
     },
     {
       "name": "Tone",
       "max": 100,
       "default": 50,
-      "comment": "100 = brightest on every model. DS-1: the DS-1 tone pot, blending a 234 Hz low-pass with a 1.06 kHz high-pass (mids scooped in the middle). RAT: the RAT Filter, one-pole low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. Default 50."
+      "comment": "100 = brightest on every model. DS-1: the DS-1 tone pot, blending a 234 Hz low-pass with a 1.06 kHz high-pass (mids scooped in the middle). RAT: the RAT Filter, 475 Hz..16 kHz low-pass. METAL: the MT-2 High knob, -20..+20 dB shelf, flat at 50. Default 50."
     },
     {
       "name": "ZNR",
