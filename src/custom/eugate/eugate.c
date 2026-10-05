@@ -101,7 +101,7 @@ typedef struct {
     float swing;           /* 0..0.5                                          */
     float gap, c;          /* gap before a touching note, in steps; slew coefficient */
     float dryG, wetG;
-    unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (already < steps) */
+    unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (steps - Shift, already < steps) */
     unsigned int lo, hi;           /* the pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
 } ChParams;
 
@@ -174,6 +174,8 @@ static inline void ch_prepare(ChParams *P, const float *u)
     unsigned int j, m = 0u, lo = 0u, hi = 0u;
     if (hits > steps) hits = steps;                      /* more notes than steps = every step */
     while (shift >= steps) shift -= steps;               /* rotation wraps inside the pattern */
+    if (shift > 0u) shift = steps - shift;               /* played step = time step - Shift, so the
+                                                          * pattern starts LATER by Shift steps */
     /* Euclid without a division: step j is a note when (j * hits) mod steps < hits; m runs
      * through (j * hits) mod steps by adding hits and taking steps away when it overflows. */
     for (j = 0u; j < steps; j++) {
