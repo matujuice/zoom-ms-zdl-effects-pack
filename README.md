@@ -13,10 +13,11 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
+| **Pump** (new, not in a release yet) | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat. Get the script on [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (or [tools/mozaic/](tools/mozaic/)); setup and the best knob settings for it (for example EuGate Reset SYNC, DubSiren Trig SHold or SPuls) are in [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
+**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren, Scrub and Pump on every downbeat. Get the script on [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (or [tools/mozaic/](tools/mozaic/)); setup and the best knob settings for it (for example EuGate Reset SYNC, DubSiren Trig SHold or SPuls) are in [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -27,19 +28,19 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 493 Pump). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 
 You need Python 3 and the TI C6000 compiler (`ti-cgt-c6000_8.5.0.LTS`, free from Texas Instruments). The build scripts look in the usual install places (`C:\ti`, your Downloads folder, `/Applications/ti`); otherwise set `TI_CGT_ROOT` to the folder that contains `bin` and `include`.
 
 ```
-py build_all.py            # build all seven into dist/
+py build_all.py            # build them all into dist/
 py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `pump`.
 
 ## Repository layout
 

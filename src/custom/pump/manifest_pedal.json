@@ -1,0 +1,69 @@
+{
+  "effect_name": "Pump",
+  "comment": "Pump - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (opens on the beat, then cuts) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 493,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox (in development), 493 Pump (this pack). 492 was used by the dropped Metro branch. Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Targt",
+      "max": 3,
+      "default": 0,
+      "comment": "What moves on the beat. DRY = your sound (the reverb, if Verb is up, stays steady). VERB = only the reverb; your sound passes untouched. BOTH = your sound and the reverb together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely (SEND + GATE = a dub throw, only the hits feed the reverb). Default DRY."
+    },
+    {
+      "name": "Shape",
+      "max": 2,
+      "default": 0,
+      "comment": "How it moves, once per Div, starting on the downbeat. DUCK = drops on the beat and comes back over Curve (classic sidechain pump). GATE = opens on the beat, stays open for Curve, then drops (a chop; VERB + GATE = gated reverb). RISE = quiet after the beat, grows over Curve into the next beat and drops on it. Default DUCK."
+    },
+    {
+      "name": "Depth",
+      "max": 100,
+      "default": 70,
+      "comment": "How far the level moves. 0 = nothing, 100 = all the way to silence. Default 70."
+    },
+    {
+      "name": "Div",
+      "max": 4,
+      "default": 2,
+      "comment": "How often the pump fires: 1/16, 1/8, 1/4, 1/2 or BAR. Default 1/4 (every beat)."
+    },
+    {
+      "name": "Shift",
+      "max": 100,
+      "default": 0,
+      "comment": "Moves the whole pump later by up to one beat, in steps of 1 % of a beat (about 3.75 ms at 160 BPM). 0 = on the beat; small values nudge it onto the body of the kick; 25 = +1/16, 50 = +1/8 (the offbeat: loudest on the kick, dipping in between), 75 = +3/16, 100 = +1/4 (with Div 1/4 the same as 0; with 1/2 or BAR one beat later). Shown as +1/16, +1/8, +3/16, +1/4 at those points. Default 0."
+    },
+    {
+      "name": "Curve",
+      "max": 100,
+      "default": 50,
+      "comment": "How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays open, how long RISE grows. 0 = snappy, 100 = over the whole Div. Default 50."
+    },
+    {
+      "name": "Verb",
+      "max": 100,
+      "default": 30,
+      "comment": "Reverb level. 0 = no reverb (a pure pump). Default 30."
+    },
+    {
+      "name": "Tempo",
+      "max": 441,
+      "default": 160,
+      "comment": "Speed in BPM (40 to 240), shown on screen. Flipping to the twin copy of the same BPM (160 <-> 361) restarts the pump on beat 1 without changing the tempo: the iPhone bar-sync script sends that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 160."
+    },
+    {
+      "name": "Size",
+      "max": 100,
+      "default": 50,
+      "comment": "Reverb length, from a short room to a long wash; bigger is also darker. Default 50."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_Pump",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

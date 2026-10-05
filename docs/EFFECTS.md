@@ -1,4 +1,4 @@
-# The seven effects
+# The effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -107,3 +107,22 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Tempo | 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+### Pump: tempo-synced pump with a reverb (new, not in a release yet)
+On every beat (or every Div) something moves: your sound, the built-in reverb, both, or what goes into the reverb. Targt picks what, Shape picks how. Made for pads, basses, percussion and drum machines around 160 BPM.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Targt | DRY, VERB, BOTH, SEND | What moves. DRY = your sound (the reverb stays steady). VERB = only the reverb; your sound passes untouched. BOTH = both together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely. |
+| Shape | DUCK, GATE, RISE | How it moves, starting on the downbeat. DUCK drops on the beat and comes back (classic sidechain pump). GATE opens on the beat, stays open, then cuts. RISE is quiet after the beat, grows into the next one and drops on it. |
+| Depth | 0..100 | How far the level moves. 100 = all the way to silence. |
+| Div | 1/16, 1/8, 1/4, 1/2, BAR | How often it fires. |
+| Shift | 0..100 % of a beat | Moves the whole pump later: +1/16 at 25, +1/8 (the offbeat) at 50, +3/16 at 75, +1/4 at 100. Small values nudge it onto the body of the kick. At 50 the sound is loudest on the kick and dips in between. |
+| Curve | 0..100 | How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays open, how long RISE grows. |
+| Verb | 0..100 | Reverb level. 0 = no reverb, a pure pump. |
+| Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. |
+| Size | 0..100 | Reverb length, from a short room to a long wash. Bigger is also darker. |
+
+No Mix knob: Depth and Verb already set how much you hear. Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
+
+Try: DRY + DUCK on a pad (the classic pump); VERB + GATE on a snare or conga (gated reverb); VERB + RISE (the reverb swells into every kick); SEND + GATE (a dub throw: only the hits feed the reverb); DRY + GATE with Shift 50 (offbeat chops).
