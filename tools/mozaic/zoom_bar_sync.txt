@@ -10,7 +10,7 @@
 // changes it sends the new BPM to those knobs and to the patch tempo.
 // Only the first 3 effects of a patch accept edits.
 //
-// Knobs: 0 Early (0..254 ms; the value found with zoom_tempo_test)
+// Knobs: 0 Early (0..127 ms; 15 measured on the MS-60B + iPhone, 2026-10-05)
 //        1 Every (1, 2, 4 or 8 bars)
 //        2 Tempo (100..227 BPM, used when Follow host is off)
 //        3 Follow host (left half off, right half on)
@@ -21,7 +21,7 @@
 
 @OnLoad
   zid = 0x58
-  early = 20
+  early = 15
   every = 1
   manual = 160
   tempo = 160
@@ -49,7 +49,7 @@
   i = 0
   pad = 0
   f = 0
-  SetKnobValue 0, early / 2
+  SetKnobValue 0, early
   SetKnobValue 1, 0
   SetKnobValue 2, manual - 100
   SetKnobValue 3, 127
@@ -152,7 +152,7 @@
   k = LastKnob
   v = GetKnobValue k
   if k = 0
-    early = 2 * Round v
+    early = Round v
     LabelKnob 0, {Early }, early, {ms}
   elseif k = 1
     e = RoundDown (v / 32)
