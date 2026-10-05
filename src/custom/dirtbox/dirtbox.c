@@ -3,7 +3,7 @@
  * ZNR-style noise reducer that leaves kick tails alone. Mono.
  *
  * MODELS (one Model knob)
- *   ACID  the built-in distortion of the Behringer TD-3 (the TB-303 clone; the
+ *   DS-1  the built-in distortion of the Behringer TD-3 (the TB-303 clone; the
  *         original 303 has none), which is a copy of the Boss DS-1: a transistor
  *         booster (all frequencies, up to 5.4x here), an op-amp stage whose gain
  *         only applies above 72 Hz (4.7k / 0.47u leg, up to 22x), a 7.2 kHz
@@ -60,8 +60,8 @@
  * no float or integer division, no libm, no double, every helper forced inline.
  *
  * KNOBS (screen values)
- *   0 Model 0..2    ACID / RAT / METAL
- *   1 Drive 0..100  gain 0.5 x (2 Gmax)^(n/100): 0.5x .. Gmax (ACID 120, RAT 300,
+ *   0 Model 0..2    DS-1 / RAT / METAL
+ *   1 Drive 0..100  gain 0.5 x (2 Gmax)^(n/100): 0.5x .. Gmax (DS-1 120, RAT 300,
  *                   METAL 60 into the 6x second stage)
  *   2 Tone  0..100  per model, see MODELS; 100 = brightest on all three
  *   3 ZNR   0..100  noise reducer margin above the measured noise floor, 0 = off
@@ -227,7 +227,7 @@ static inline void db_prepare(DbParams *P, const float *k)
     P->midK = 0.0f;
     P->wl = 1.0f; P->wh = 0.0f; P->aU = 0.1f;
     trim = 1.0f;
-    if (m == 0) {                                /* ACID: TD-3 = DS-1 */
+    if (m == 0) {                                /* DS-1: TD-3 = DS-1 */
         l2 = 7.9069f;                            /* log2(2 x 120): booster 5.4 x op-amp 22 */
         P->aH = db_pole(72.0f);
         P->cp = 0.6f; P->cn = 0.6f;
@@ -258,7 +258,7 @@ static inline void db_prepare(DbParams *P, const float *k)
         P->aL = db_pole(fl);
         P->lowG = 1.0f;                          /* below the legs' corner the gain is 1 */
     } else {
-        P->lowG = P->G * ((m == 0) ? 0.045f : 0.1f);   /* ACID: booster gain only (1 / 22) */
+        P->lowG = P->G * ((m == 0) ? 0.045f : 0.1f);   /* DS-1: booster gain only (1 / 22) */
     }
     gt = P->G * (P->stage2 ? 6.0f : 1.0f) * DB_REF;
     if (gt > 0.5f * (P->cp + P->cn)) gt = 0.5f * (P->cp + P->cn);   /* expected clip peak */
@@ -339,12 +339,12 @@ static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
-/* knob index 0 = Model: 0 ACID, 1 RAT, 2 METAL */
+/* knob index 0 = Model: 0 DS-1, 1 RAT, 2 METAL */
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     if (value >= 2u) { out[0] = 'M'; out[1] = 'E'; out[2] = 'T'; out[3] = 'A'; out[4] = 'L'; out[5] = 0; return 5; }
     if (value == 1u) { out[0] = 'R'; out[1] = 'A'; out[2] = 'T'; out[3] = 0; return 3; }
-    out[0] = 'A'; out[1] = 'C'; out[2] = 'I'; out[3] = 'D'; out[4] = 0;
+    out[0] = 'D'; out[1] = 'S'; out[2] = '-'; out[3] = '1'; out[4] = 0;
     return 4;
 }
 

@@ -5,7 +5,7 @@
 #include "../src/custom/dirtbox/dirtbox.c"
 #define N 88200
 int main(void){
-  const char *nm[3]={"ACID","RAT","METAL"};
+  const char *nm[3]={"DS-1","RAT","METAL"};
   float ds[]={0.0f,0.5f,1.0f}, amps[]={0.05f,0.2f,0.6f}, ts[]={0.0f,0.5f,1.0f};
   static float x[N]; int m,d,a,t,i,bad=0;
   for(m=0;m<3;m++)for(t=0;t<3;t++)for(d=0;d<3;d++)for(a=0;a<3;a++){

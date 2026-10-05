@@ -21,7 +21,7 @@ static void run(float *x, int m, float znr){
 }
 static double rms(float *x,int a,int b){ double e=0; int i; for(i=a;i<b;i++)e+=x[i]*x[i]; return sqrt(e/(b-a)+1e-30); }
 int main(void){
-  static float off[N], on[N]; const char *nm[3]={"ACID","RAT","METAL"}; int m, bad=0;
+  static float off[N], on[N]; const char *nm[3]={"DS-1","RAT","METAL"}; int m, bad=0;
   for(m=0;m<3;m++){
     double tail_off=0,tail_on=0,body_off=0,body_on=0; int j;
     run(off,m,0.0f); run(on,m,0.5f);
