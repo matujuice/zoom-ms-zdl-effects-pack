@@ -22,15 +22,15 @@
     },
     {
       "name": "Dly1",
-      "max": 100,
+      "max": 112,
       "default": 70,
-      "comment": "Voice 1 echo time, free (not tempo synced). ms = 12 + 0.0988*screen^2: screen 0 = 12ms, 50 = 259ms, 70 = 496ms, 100 = 1.00s. The screen shows the exact time. Default 70 = 496ms."
+      "comment": "Voice 1 echo time. 0..100 free: ms = 12 + 0.0988*screen^2: screen 0 = 12ms, 50 = 259ms, 70 = 496ms, 100 = 1.00s; the screen shows the exact time. 101..112 = synced to the Tempo knob as a note value: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar (a synced time longer than the 3.9 s buffer is halved until it fits: 1bar below about 62 BPM). Default 70 = 496ms."
     },
     {
       "name": "Dly2",
-      "max": 100,
+      "max": 112,
       "default": 50,
-      "comment": "Voice 2 echo time, same law as Dly1. Default 50 = 259ms."
+      "comment": "Voice 2 echo time, same ranges as Dly1 (free ms, then synced note values). Default 50 = 259ms."
     },
     {
       "name": "Tempo",

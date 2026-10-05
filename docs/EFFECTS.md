@@ -21,7 +21,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Knob | Range | What it does |
 |---|---|---|
 | Ptch1 / Ptch2 | -24..+24 semitones | Pitch of each voice, with tenths of a semitone around 0. |
-| Dly1 / Dly2 | 12 ms..1 s | Echo time of each voice (free, not synced). |
+| Dly1 / Dly2 | 12 ms..1 s, note values | Echo time of each voice. The top of the knob syncs to Tempo as note values (1/32 .. 1 bar). A synced time too long for the 3.9 s buffer is halved (1 bar below about 62 BPM). |
 | Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |

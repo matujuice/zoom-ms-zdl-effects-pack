@@ -10,7 +10,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 
 | Effect | Set | Avoid |
 |---|---|---|
-| DualShft | Any Div. | Turning Tempo by hand: it restarts the LFO. |
+| DualShft | Any Div. Dly1 / Dly2 on note values (the top of the knob) to put the echoes on the grid. | Turning Tempo by hand: it restarts the LFO. |
 | Choral | Any Div. | Turning Tempo by hand: it restarts the LFO. |
 | EuGate | Reset SYNC (works like OFF). | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
 | DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |

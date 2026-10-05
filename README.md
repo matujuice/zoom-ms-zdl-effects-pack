@@ -7,7 +7,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | Effect | What it is |
 |---|---|
 | **WaveFold** | Buchla-style wavefolder with automatic level matching. |
-| **DualShft** | Two tempo-synced pitch shifters, each with its own echo time, and an LFO that bends them in opposite directions. |
+| **DualShft** | Two tempo-synced pitch shifters, each with its own echo time (free or synced), and an LFO that bends them in opposite directions. |
 | **Choral** | Turns the input into a vowel choir: five voices, 35 chords, 11 ways for the vowels to move. |
 | **EuGate** | Euclidean rhythm gate. Steps and Notes up to 64 each, so polymeters are possible. Swing, Gap and Soft too. |
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
