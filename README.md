@@ -16,43 +16,40 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk. Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other MS pedals are untested, so reports are welcome.
+**Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
-## Demo
-Each effect on an MS-60B, played with a Meeblip Triode and a Digitakt, then a short jam. Sound on.
+Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
-https://github.com/user-attachments/assets/e6a70eba-e9a3-40d4-ad5b-9a042b79e75a
+## Install
 
-## Use the effects
+1. Download the latest pack from the [Releases](../../releases) page and unzip it.
+2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-Download the `.ZDL` files from the [Releases](../../releases) page, then follow [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md) (Zoom Effect Manager, "Read Effects from folder").
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
-## Build them yourself
+## Build from source
 
-You need Python 3 and the TI C6000 compiler (`ti-cgt-c6000_8.5.0.LTS`, free from Texas Instruments). The build scripts look for it in the usual places, or you can point `TI_CGT_ROOT` at the folder that contains `bin` and `include`.
-
-On Windows, double-click one of:
-
-- `build_wavefold.bat`
-- `build_dualshft.bat`
-- `build_formant.bat` (Choral; the folder and source keep the working name `formant`)
-- `build_eugate.bat`
-- `build_dubsiren.bat`
-
-S.GN_L builds with `py build_all.py sgnl` (output `dist/SGNL.ZDL`), Scrub with `py build_all.py scrub` (output `dist/Scrub.ZDL`). Or run `py build_all.py` for all of them. The results are in `dist/`. `py make_release.py` then packs them with the readme and licence into `release/Matujuice_ZoomMS_pack.zip`.
-
-## Layout
+You need Python 3 and the TI C6000 compiler (`ti-cgt-c6000_8.5.0.LTS`, free from Texas Instruments). The build scripts look in the usual install places (`C:\ti`, your Downloads folder, `/Applications/ti`); otherwise set `TI_CGT_ROOT` to the folder that contains `bin` and `include`.
 
 ```
-src/custom/<effect>/   the DSP (.c), manifest_pedal.json (knobs, defaults, ids), make_cover.py, build.py
+py build_all.py            # build all seven into dist/
+py build_all.py eugate     # build one
+py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
+```
+
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`.
+
+## Repository layout
+
+```
+src/custom/<effect>/   DSP source (.c), manifest_pedal.json (knobs, defaults, ID), make_cover.py, build.py
 src/airwindows/common/ shared cover and parameter helpers; covers/*.json are the generated covers
-build/                 the ZDL linker and tools (from ZoomMultistompZDL, see below)
-docs/                  how to install, plus the DSP rules these effects follow
+build/                 the ZDL linker and tools (from ZoomMultistompZDL, see Credits)
+docs/                  knob reference, install guide, DSP rules
+tests/                 host tests: python3 tests/run.py
 ```
 
-To change a cover, edit that effect's `make_cover.py` and run it. It rewrites the cover JSON and a preview image. The pedal's pixels are 1.4 times taller than wide, so round shapes are drawn squashed.
-
-Effect IDs used here: 480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub. They are unique inside this repo. If another effect on your pedal uses one of the same numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+To change a cover, edit that effect's `make_cover.py` and run it; it rewrites the cover JSON and a preview image. The pedal's pixels are 1.4 times taller than wide, so round shapes are drawn squashed.
 
 ## Credits
 
