@@ -36,7 +36,7 @@ def line(c,x0,y0,x1,y1,v=1,skip=None):
 def bez(p0,p1,p2,p3,n=40):
     return [(round((1-t)**3*p0[0]+3*(1-t)**2*t*p1[0]+3*(1-t)*t*t*p2[0]+t**3*p3[0]),
              round((1-t)**3*p0[1]+3*(1-t)**2*t*p1[1]+3*(1-t)*t*t*p2[1]+t**3*p3[1])) for t in [i/n for i in range(n+1)]]
-SCX,SCY,SR=13.5,26.5,14.0             # sticker centre and radius (screen units)
+SCX,SCY,SR=13.5,24.5,14.0             # sticker centre and radius (screen units)
 def build():
     c=Canvas()
     rnd=random.Random(7)
@@ -142,7 +142,6 @@ def build():
     crack([(58,0),(56,7)])                                               # top wall
     crack([(127,23),(103,33)])                                           # right wall, under the title
     crack([(127,42),(116,52)])                                           # right wall, by Tone
-    crack([(0,30),(9,35)])                                               # left wall
     crack([(84,63),(81,52)])                                             # bottom wall, between dials
     # the sticker was stuck on later, over the title, wrapped round the case edge: its paper (and a 1 px gap round it)
     # hides what is under; where it peels, the title shows again
