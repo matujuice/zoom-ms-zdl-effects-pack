@@ -1,0 +1,251 @@
+// Zoom MS bar sync v1, for Mozaic (AUM). Keeps our effects on the bar.
+// Needs the twin-Tempo builds (DualShft, Choral, EuGate, DubSiren, Scrub with
+// Tempo 0..441): screen T = BPM T, screen T + 201 = the same BPM again, and
+// flipping between the two restarts the LFO / pattern / grain.
+// AUM routing: Mozaic MIDI out -> Zoom, Zoom MIDI out -> Mozaic in. AUM is the
+// master clock; start AUM's transport.
+//
+// Every N bars, Early ms before the downbeat, the script flips the Tempo knob of
+// each effect you set on pads 0..2 to its other copy. When the host tempo
+// changes it sends the new BPM to those knobs and to the patch tempo.
+// Only the first 3 effects of a patch accept edits.
+//
+// Knobs: 0 Early (0..254 ms; the value found with zoom_tempo_test)
+//        1 Every (1, 2, 4 or 8 bars)
+//        2 Tempo (100..227 BPM, used when Follow host is off)
+// Pads:  0..2 what is in slot 1..3 (tap to cycle: -, DualShft, Choral, EuGate, DubSiren, Scrub)
+//        3 Follow host on/off   4 Sync now   5 Sync on/off
+//        6 Swap ID 58/5F   7 Edit enable
+// Log shows what was sent.
+
+@OnLoad
+  zid = 0x58
+  early = 20
+  every = 1
+  manual = 160
+  tempo = 160
+  lastsent = 0
+  follow = 1
+  syncon = 1
+  twin = 0
+  armed = 0
+  fireat = 0
+  kind[0] = 0
+  kind[1] = 0
+  kind[2] = 0
+  SetKnobValue 0, early / 2
+  SetKnobValue 1, 0
+  SetKnobValue 2, manual - 100
+  LabelKnobs {Zoom bar sync}
+  LabelKnob 0, {Early }, early, {ms}
+  LabelKnob 1, {Every }, every, { bar}
+  LabelKnob 2, {BPM }, manual
+  for i = 0 to 2
+    pad = i
+    Call @LabelSlot
+  endfor
+  LabelPad 3, {Follow host ON}
+  LabelPad 4, {Sync now}
+  LabelPad 5, {Sync ON}
+  LabelPad 6, {ID 58}
+  LabelPad 7, {Edit enable}
+  SetTimerInterval 5
+  StartTimer
+  Call @SendEnable
+  Log {Loaded. Set slots on pads 0..2, then start AUM.}
+@End
+
+@LabelSlot
+  k = kind[pad]
+  if k = 0
+    LabelPad pad, {Slot }, pad + 1, {: -}
+  elseif k = 1
+    LabelPad pad, {Slot }, pad + 1, {: DualShft}
+  elseif k = 2
+    LabelPad pad, {Slot }, pad + 1, {: Choral}
+  elseif k = 3
+    LabelPad pad, {Slot }, pad + 1, {: EuGate}
+  elseif k = 4
+    LabelPad pad, {Slot }, pad + 1, {: DubSiren}
+  else
+    LabelPad pad, {Slot }, pad + 1, {: Scrub}
+  endif
+@End
+
+@SendEnable
+  syx[0] = 0x52
+  syx[1] = 0x00
+  syx[2] = zid
+  syx[3] = 0x50
+  SendSysex syx, 4
+@End
+
+// Sends ps / pp / pv as a parameter edit
+@SendParam
+  syx[0] = 0x52
+  syx[1] = 0x00
+  syx[2] = zid
+  syx[3] = 0x31
+  syx[4] = ps
+  syx[5] = pp
+  syx[6] = pv % 128
+  syx[7] = Div pv, 128
+  SendSysex syx, 8
+@End
+
+// Sends the Tempo knob of every set slot, on the current copy (twin)
+@SendKnobs
+  for ps = 0 to 2
+    k = kind[ps]
+    if k > 0
+      // Tempo knob number: DualShft, Choral 5th; EuGate, Scrub 8th; DubSiren 9th
+      if k <= 2
+        pp = 6
+      elseif k = 4
+        pp = 10
+      else
+        pp = 9
+      endif
+      pv = tempo + 201 * twin
+      Call @SendParam
+    endif
+  endfor
+@End
+
+@SendTempo
+  if tempo < 40
+    tempo = 40
+  elseif tempo > 240
+    tempo = 240
+  endif
+  ps = 3
+  pp = 8
+  pv = tempo
+  Call @SendParam
+  Call @SendKnobs
+  lastsent = tempo
+  Log {Tempo }, tempo
+@End
+
+@Flip
+  twin = 1 - twin
+  Call @SendKnobs
+@End
+
+@OnKnobChange
+  k = LastKnob
+  v = GetKnobValue k
+  if k = 0
+    early = 2 * Round v
+    LabelKnob 0, {Early }, early, {ms}
+  elseif k = 1
+    e = RoundDown (v / 32)
+    if e = 0
+      every = 1
+    elseif e = 1
+      every = 2
+    elseif e = 2
+      every = 4
+    else
+      every = 8
+    endif
+    LabelKnob 1, {Every }, every, { bar}
+  elseif k = 2
+    manual = 100 + Round v
+    LabelKnob 2, {BPM }, manual
+    if follow = 0
+      tempo = manual
+      Call @SendTempo
+    endif
+  endif
+@End
+
+@OnPadDown
+  p = LastPad
+  if p <= 2
+    kind[p] = kind[p] + 1
+    if kind[p] > 5
+      kind[p] = 0
+    endif
+    pad = p
+    Call @LabelSlot
+    Call @SendEnable
+    Call @SendKnobs
+  elseif p = 3
+    follow = 1 - follow
+    if follow = 1
+      LabelPad 3, {Follow host ON}
+    else
+      LabelPad 3, {Follow host OFF}
+      tempo = manual
+      Call @SendTempo
+    endif
+  elseif p = 4
+    Call @Flip
+    Log {Sync now}
+  elseif p = 5
+    syncon = 1 - syncon
+    armed = 0
+    if syncon = 1
+      LabelPad 5, {Sync ON}
+    else
+      LabelPad 5, {Sync OFF}
+    endif
+  elseif p = 6
+    if zid = 0x58
+      zid = 0x5F
+      LabelPad 6, {ID 5F}
+    else
+      zid = 0x58
+      LabelPad 6, {ID 58}
+    endif
+    Call @SendEnable
+  elseif p = 7
+    Call @SendEnable
+    Log {Edit enable sent}
+  endif
+@End
+
+// Stops Mozaic passing other MIDI straight through
+@OnMidiInput
+@End
+
+@OnHostStart
+  Call @SendEnable
+  armed = 0
+  if follow = 1
+    tempo = Round HostTempo
+  endif
+  Call @SendTempo
+  // The first downbeat can't be sent early: restart now
+  if syncon = 1
+    Call @Flip
+  endif
+  Log {Start}
+@End
+
+@OnNewBar
+  barlen = 240000 / HostTempo
+  nextbar = SystemTime + barlen
+  bar = RoundDown HostBar
+  if follow = 1
+    t = Round HostTempo
+    if t <> lastsent
+      tempo = t
+      Call @SendTempo
+    endif
+  endif
+  // Arm the flip for the next downbeat if that bar starts a group of Every bars
+  // (host bars 0, Every, 2 x Every ...)
+  if syncon = 1 and (bar + 1) % every = 0
+    fireat = nextbar - early
+    armed = 1
+  endif
+@End
+
+@OnTimer
+  if armed = 1 and SystemTime >= fireat
+    armed = 0
+    Call @Flip
+  endif
+@End
