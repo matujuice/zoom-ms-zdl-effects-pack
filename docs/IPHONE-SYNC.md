@@ -4,9 +4,19 @@ The pedal ignores MIDI clock, so an LFO, pattern or grain slowly drifts away fro
 
 **How it works.** Every Tempo knob holds each BPM twice (40..240, then 40..240 again). Jumping from a BPM to its twin copy restarts the effect without changing the tempo. On each downbeat the script flips the Tempo knob of the effects in slots 1 to 3 to its other copy, over USB SysEx. It sends the edit a little early (Early, default 17 ms) so it lands on the beat. When the host tempo changes, it sends the new BPM to the same knobs.
 
-**Switching effects on and off:** DualShft, Choral and EuGate (Reset OFF or NOTE) keep their clock running while switched off, so they come back on the bar. EuGate's Reset PEDAL still starts the pattern when you press.
+## Setting the effects for bar sync
 
-**DubSiren:** set Trig to SHold or SPuls. Then a press of the footswitch waits for the next beat, and the siren's tones stay in step with the bar. With Hold or Pulse the siren starts the moment you press, and the press restarts its LFO.
+Some settings restart an effect on their own (a press, a note), which pulls it off the bar until the next flip. Use these:
+
+| Effect | Set | Avoid |
+|---|---|---|
+| DualShft | Any Div. | Turning Tempo by hand: it restarts the LFO. |
+| Choral | Any Div. | Turning Tempo by hand: it restarts the LFO. |
+| EuGate | Reset OFF. | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
+| DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |
+| Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
+
+WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate and DubSiren keep their clock running while switched off, so they come back on the bar when you switch them on.
 
 **Tested** on an MS-60B running MS-50G firmware, iPhone with AUM and Mozaic, Digitakt mk1 following AUM over USB (2026-10-05). Measured edit latency about 12 ms.
 

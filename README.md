@@ -16,7 +16,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat: [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
+**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren and Scrub on every downbeat: [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md), which also lists the best knob settings for it (for example EuGate Reset OFF, DubSiren Trig SHold or SPuls).
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 

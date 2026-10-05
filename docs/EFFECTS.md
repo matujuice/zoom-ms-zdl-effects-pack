@@ -52,7 +52,7 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 | Steps | 1..64 | Pattern length. Anything other than 16, 32 or 64 runs against the bar: polymeters. |
 | Shift | 0..63 | Starts the pattern later by this many steps. |
 | Swing | 0..100 | Delays only the weak 16ths. |
-| Reset | OFF, NOTE, PEDAL | What restarts the pattern: nothing, every new note after silence, or turning the effect on. |
+| Reset | OFF, NOTE, PEDAL | What restarts the pattern: nothing, every new note after silence, or turning the effect on. Use OFF with bar sync from a host. |
 | Gap | 0..50 % of a step | Small silence at the end of a note that is followed by another note. |
 | Soft | 0..100 | Softness of the note edges. 0 = hard chop. |
 | Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pattern at step 1 (see above). |
