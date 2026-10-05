@@ -4,8 +4,7 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, but a beaten-up, circuit-bent
   * the case: DubSiren's outer wall, inner lip and slotted screws, knocked about: the top
     wall dented in, one corner folded, the lip sprung loose at one spot, one screw turned
     crooked and two gone (bare holes with rust round them),
-  * an acid smiley where DubSiren has its woofer, with a chip out of the rim and a drip
-    running from the chin,
+  * the classic acid smiley where DubSiren has its woofer,
   * DIRTBOX in the pack's chunky title letters (2 px stems, like WaveFold),
   * circuit bending on the right: a drilled hole with two jumper wires to croc clips,
   * a couple of long scratches, DubSiren's brushed-metal grain worn away in one patch.
@@ -56,20 +55,26 @@ def build():
         x+=sum(COLS)+LG
     edge=[p for p in main if any((p[0]+dx,p[1]+dy) not in main for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)))]
     for p in rnd.sample(sorted(edge),3): main.discard(p)
-    # acid smiley where DubSiren has its woofer: a filled face, eyes and grin knocked out,
-    # one chip out of the rim and a drip running down from the chin
-    fx,fy,R=19,18,10.5
-    face=set()
-    for y in range(0,40):
-        for x in range(0,40):
-            if (x-fx)**2+((y-fy)*A)**2<=R*R: face.add((x,y))
-    for (x,y) in list(face):
-        if ((x-fx+3.5)**2+((y-fy+3)*A)**2<=3.2) or ((x-fx-3.5)**2+((y-fy+3)*A)**2<=3.2): face.discard((x,y))   # eyes
-        d=math.hypot(x-fx,(y-fy+1)*A)
-        if 5.0<=d<=6.4 and (y-fy+1)*A>2.0: face.discard((x,y))                                       # grin
-    for p in ((27,11),(28,11),(28,12),(27,12),(29,12)): face.discard(p)                              # chipped rim
-    for y in range(fy+7,fy+12): face.add((fx+3,y))                                                    # drip
-    face.add((fx+2,fy+11)); face.add((fx+4,fy+11)); face.add((fx+3,fy+12))
+    # the classic acid smiley where DubSiren has its woofer, drawn by hand (rows are 1.4x
+    # taller than columns on the screen, so 21 x 16 pixels reads as round): a 2 px rim,
+    # upright oval eyes, a wide grin with the little creases at its ends
+    SMILEY = (".......#######.......",
+              "....####.....####....",
+              "...##...........##...",
+              "..##..##.....##..##..",
+              ".##...##.....##...##.",
+              ".##...##.....##...##.",
+              "##....##.....##....##",
+              "##.................##",
+              "##.#.............#.##",
+              "##..##.........##..##",
+              ".##...##.....##...##.",
+              ".##.....#####.....##.",
+              "..##.............##..",
+              "...##...........##...",
+              "....####.....####....",
+              ".......#######.......")
+    face = set((9 + x, 9 + y) for y, row in enumerate(SMILEY) for x, ch in enumerate(row) if ch == "#")
     for p in face: c.px(*p)
     # gap round the title so it stays readable, then the title
     for (x,y) in main:
