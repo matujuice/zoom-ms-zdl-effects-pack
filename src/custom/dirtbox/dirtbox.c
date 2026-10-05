@@ -3,10 +3,15 @@
  * ZNR-style noise reducer that leaves kick tails alone. Mono.
  *
  * MODELS (one Model knob)
- *   ACID  the gritty distortion of 303 boxes: a DS-1 type asymmetric clip (one
- *         side clips earlier, so even harmonics and a raspy edge), most of the
- *         bass kept under the gain, Tone = low-pass / high-pass crossfade (flat at
- *         50, darker below, thinner above, like the DS-1 tone blend).
+ *   ACID  the built-in distortion of the Behringer TD-3 (the TB-303 clone; the
+ *         original 303 has none), which is a copy of the Boss DS-1: a transistor
+ *         booster (all frequencies, up to 5.4x here), an op-amp stage whose gain
+ *         only applies above 72 Hz (4.7k / 0.47u leg, up to 22x), a 7.2 kHz
+ *         low-pass (2.2k / 0.01u) into two silicon diodes to ground (hard,
+ *         symmetric), then the DS-1 tone: a pot blending a 234 Hz low-pass
+ *         (6.8k / 0.1u) with a 1.06 kHz high-pass, so the middle of the knob
+ *         scoops the mids. Values from the DS-1 circuit as widely documented
+ *         (not measured on a TD-3).
  *   RAT   after the ProCo RAT: the op-amp gain only boosts above about 70 Hz (the
  *         560R/4.7u and 1k/2.2u legs), the LM308 loses treble as the gain goes up
  *         (bandwidth about 800 kHz / gain), hard symmetric diode clip, then the
@@ -26,7 +31,7 @@
  *   v   -> one-pole low-pass (fl)       (RAT: fl follows the gain)
  *   y   = clip(v)   METAL: y = clip(6 y) again
  *         clip(v) = c * S(v / c), S(u) = u / (1 + u^4)^(1/4): a diode-like knee,
- *         ceiling cp above zero and cn below (different on ACID)
+ *         ceiling cp above zero and cn below
  *   y   -> DC blocker -> mid peak/scoop (METAL) -> Tone
  *   wet = y * makeup * Level * ZNR gain     out = DJ crossfade of in and wet
  *   Makeup = REF / min(G * REF, ceiling): with an input peaking at REF (0.2, about
@@ -77,7 +82,7 @@
 #define DB_CODE_SECTION(fn)
 #endif
 
-#define DB_MAGIC        0x44423031u          /* "DB01" */
+#define DB_MAGIC        0x44423032u          /* "DB02" */
 #define DB_W            0.00014247585f       /* 2 pi / 44100: Hz -> radians per sample */
 #define DB_DC_R         0.9993f              /* DC blocker pole                  */
 #define DB_REF          0.2f                 /* makeup reference input peak      */
@@ -101,7 +106,7 @@ typedef struct {
     float lpH, lpA;        /* drive split, pre-clip low-pass          */
     float dcx, dcy;        /* DC blocker                              */
     float lpS, bpS;        /* mid filter                              */
-    float lpT;             /* tone                                    */
+    float lpT, lpU;        /* tone: low-pass and the high-pass's pole */
     float fade;            /* wet fade-in after a Model change        */
     float env, nf, gz;     /* ZNR: input envelope, noise floor, gain  */
     int hold;              /* ZNR hold counter, samples               */
@@ -112,7 +117,7 @@ typedef struct {
     float aH, lowG, G, aL;     /* drive split and pre-clip low-pass      */
     float cp, icp, cn, icn;    /* clip ceilings and their inverses       */
     float midK;                /* mid peak (0 = flat)                    */
-    float aT, wl, wh;          /* tone                                   */
+    float aT, aU, wl, wh;      /* tone: wl x LP(aT) + wh x HP(aU)        */
     float wetScale;            /* makeup x Level                         */
     float margin;              /* ZNR threshold / noise floor            */
     float dryG, wetG;
@@ -205,7 +210,7 @@ static inline void db_init(DbState *s, const DbParams *P)
 {
     s->model = P->model;
     s->lpH = 0.0f; s->lpA = 0.0f; s->dcx = 0.0f; s->dcy = 0.0f;
-    s->lpS = 0.0f; s->bpS = 0.0f; s->lpT = 0.0f;
+    s->lpS = 0.0f; s->bpS = 0.0f; s->lpT = 0.0f; s->lpU = 0.0f;
     s->fade = 0.0f;
     s->env = 0.0f; s->nf = 0.0001f; s->gz = 1.0f; s->hold = 0;
     s->magic = DB_MAGIC;
@@ -215,20 +220,22 @@ static inline void db_init(DbState *s, const DbParams *P)
 DB_ALWAYS_INLINE(db_prepare)
 static inline void db_prepare(DbParams *P, const float *k)
 {
-    float l2, gt, t = k[2];
+    float l2, gt, trim, t = k[2];
     int m = (int)(k[0] * 2.0f + 0.5f);
     P->model = m;
     P->stage2 = 0;
     P->midK = 0.0f;
-    P->wl = 1.0f; P->wh = 0.0f;
-    if (m == 0) {                                /* ACID */
-        l2 = 7.9069f;                            /* log2(2 x 120) */
-        P->aH = db_pole(150.0f);
-        P->cp = 0.4f; P->cn = 0.7f;
-        P->aL = db_pole(7000.0f);
-        P->aT = db_pole(600.0f);                 /* LP / HP crossfade at 600 Hz */
-        P->wl = 2.0f - t - t; if (P->wl > 1.0f) P->wl = 1.0f;
-        P->wh = t + t;        if (P->wh > 1.0f) P->wh = 1.0f;
+    P->wl = 1.0f; P->wh = 0.0f; P->aU = 0.1f;
+    trim = 1.0f;
+    if (m == 0) {                                /* ACID: TD-3 = DS-1 */
+        l2 = 7.9069f;                            /* log2(2 x 120): booster 5.4 x op-amp 22 */
+        P->aH = db_pole(72.0f);
+        P->cp = 0.6f; P->cn = 0.6f;
+        P->aL = db_pole(7200.0f);
+        P->aT = db_pole(234.0f);                 /* tone pot: LP 234 Hz <-> HP 1.06 kHz */
+        P->aU = db_pole(1060.0f);
+        P->wl = 1.0f - t; P->wh = t;
+        trim = 2.0f;                             /* the tone stack's loss, measured in tests */
     } else if (m == 1) {                         /* RAT */
         l2 = 9.2288f;                            /* log2(2 x 300) */
         P->aH = db_pole(70.0f);
@@ -251,11 +258,11 @@ static inline void db_prepare(DbParams *P, const float *k)
         P->aL = db_pole(fl);
         P->lowG = 1.0f;                          /* below the legs' corner the gain is 1 */
     } else {
-        P->lowG = P->G * ((m == 0) ? 0.5f : 0.1f);
+        P->lowG = P->G * ((m == 0) ? 0.045f : 0.1f);   /* ACID: booster gain only (1 / 22) */
     }
     gt = P->G * (P->stage2 ? 6.0f : 1.0f) * DB_REF;
     if (gt > 0.5f * (P->cp + P->cn)) gt = 0.5f * (P->cp + P->cn);   /* expected clip peak */
-    P->wetScale = DB_REF * db_inv(gt) * (k[4] + k[4]);
+    P->wetScale = DB_REF * db_inv(gt) * (k[4] + k[4]) * trim;
     P->znr = (k[3] > 0.0f);
     P->margin = db_exp2(1.0f + 3.0f * k[3]);
     P->dryG = 2.0f - 2.0f * k[5]; if (P->dryG > 1.0f) P->dryG = 1.0f;
@@ -267,7 +274,7 @@ static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
 {
     int i, hold = s->hold;
     float lpH = s->lpH, lpA = s->lpA, dcx = s->dcx, dcy = s->dcy;
-    float lpS = s->lpS, bpS = s->bpS, lpT = s->lpT, fade = s->fade;
+    float lpS = s->lpS, bpS = s->bpS, lpT = s->lpT, lpU = s->lpU, fade = s->fade;
     float env = s->env, nf = s->nf, gz = s->gz, invThr;
 
     if (P->model != s->model) { s->model = P->model; fade = 0.0f; }
@@ -296,7 +303,8 @@ static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
             d += P->midK * bpS;
         }
         lpT += P->aT * (d - lpT);                        /* Tone */
-        d = P->wl * lpT + P->wh * (d - lpT);
+        lpU += P->aU * (d - lpU);
+        d = P->wl * lpT + P->wh * (d - lpU);
         if (P->znr) {
             float r = env * invThr, tgt;
             if (r >= 1.0f) { hold = DB_HOLD; tgt = 1.0f; }
@@ -322,10 +330,11 @@ static inline void db_process(DbState *s, const DbParams *P, float *buf, int n)
     if (lpS < 1e-15f && lpS > -1e-15f) lpS = 0.0f;
     if (bpS < 1e-15f && bpS > -1e-15f) bpS = 0.0f;
     if (lpT < 1e-15f && lpT > -1e-15f) lpT = 0.0f;
+    if (lpU < 1e-15f && lpU > -1e-15f) lpU = 0.0f;
     if (env < 1e-15f) env = 0.0f;
     if (gz < 1e-15f) gz = 0.0f;
     s->lpH = lpH; s->lpA = lpA; s->dcx = dcx; s->dcy = dcy;
-    s->lpS = lpS; s->bpS = bpS; s->lpT = lpT; s->fade = fade;
+    s->lpS = lpS; s->bpS = bpS; s->lpT = lpT; s->lpU = lpU; s->fade = fade;
     s->env = env; s->nf = nf; s->gz = gz; s->hold = hold;
 }
 

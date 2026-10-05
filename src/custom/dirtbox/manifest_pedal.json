@@ -1,6 +1,6 @@
 {
   "effect_name": "DirtBox",
-  "comment": "DirtBox - three distortion models in one effect plus an automatic noise reducer, mono. ACID = the gritty asymmetric distortion of 303 boxes (DS-1 type), RAT = after the ProCo RAT (gain only above ~70 Hz, treble falls as the gain rises, hard diode clip, Filter low-pass), METAL = after the Boss MT-2 Metal Zone (two clip stages, tight lows, -9 dB mid scoop at 750 Hz). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and gently expands the wet signal below it, holding 50 ms and releasing over 150 ms so kick tails fade naturally. Makeup keeps the wet near the input level whatever the Drive.",
+  "comment": "DirtBox - three distortion models in one effect plus an automatic noise reducer, mono. ACID = the built-in distortion of the Behringer TD-3 303 clone (a Boss DS-1 copy), RAT = after the ProCo RAT (gain only above ~70 Hz, treble falls as the gain rises, hard diode clip, Filter low-pass), METAL = after the Boss MT-2 Metal Zone (two clip stages, tight lows, -9 dB mid scoop at 750 Hz). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and gently expands the wet signal below it, holding 50 ms and releasing over 150 ms so kick tails fade naturally. Makeup keeps the wet near the input level whatever the Drive.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
@@ -12,7 +12,7 @@
       "name": "Model",
       "max": 2,
       "default": 0,
-      "comment": "Distortion model: 0 ACID (303-box asymmetric grit, DS-1 type), 1 RAT (ProCo RAT), 2 METAL (Boss MT-2 Metal Zone). Changing it fades the wet back in over ~6 ms. Default ACID."
+      "comment": "Distortion model: 0 ACID (the TD-3's built-in distortion, a Boss DS-1 copy), 1 RAT (ProCo RAT), 2 METAL (Boss MT-2 Metal Zone). Changing it fades the wet back in over ~6 ms. Default ACID."
     },
     {
       "name": "Drive",
@@ -24,7 +24,7 @@
       "name": "Tone",
       "max": 100,
       "default": 50,
-      "comment": "100 = brightest on every model. ACID: low-pass/high-pass crossfade at 600 Hz, flat at 50. RAT: the RAT Filter, one-pole low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. Default 50."
+      "comment": "100 = brightest on every model. ACID: the DS-1 tone pot, blending a 234 Hz low-pass with a 1.06 kHz high-pass (mids scooped in the middle). RAT: the RAT Filter, one-pole low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. Default 50."
     },
     {
       "name": "ZNR",

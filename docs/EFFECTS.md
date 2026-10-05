@@ -111,7 +111,7 @@ Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with 
 ### DirtBox: three distortions and a noise reducer (new, not in a release yet)
 One distortion with three characters on the Model knob, and an automatic noise reducer (ZNR) built in. Drive mostly adds dirt rather than volume: the output is levelled so that an input peaking around -14 dBFS comes out at about the same peak at any Drive.
 
-- **ACID**: the gritty distortion of 303 boxes, a DS-1 type clip that is harder on one side (raspy, with even harmonics). Most of the bass stays under the gain, so basslines keep their weight.
+- **ACID**: the distortion built into the Behringer TD-3 (the 303 clone; the original TB-303 has none). The TD-3's is a copy of the Boss DS-1: a transistor booster, an op-amp stage that boosts only above 72 Hz, hard silicon-diode clipping, and the DS-1 tone. Made for acid lines and drones from a MeeBlip triode or similar.
 - **RAT**: after the ProCo RAT. Only the sound above about 70 Hz gets the full gain, the top end softens as Drive goes up (as the RAT's op-amp does), and hard diode clipping follows. Tone is the RAT's Filter, turned round: up = brighter.
 - **METAL**: after the Boss Metal Zone. Two clipping stages for a lot of gain, the lows under 100 Hz are kept out of it so it stays tight, and the mids are scooped (-9 dB at 750 Hz).
 
@@ -121,7 +121,7 @@ These are sketches of each pedal's character, not component-level models. No ove
 |---|---|---|
 | Model | ACID, RAT, METAL | Which distortion. Switching fades the effect back in over a few ms so it doesn't click. |
 | Drive | 0..100 | How hard the signal hits the clipper: 0.5x at 0 up to 120x (ACID), 300x (RAT) or 60x into a second 6x stage (METAL). |
-| Tone | 0..100 | 100 = brightest on all three. ACID: crossfades a low-pass and a high-pass at 600 Hz, flat at 50. RAT: low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. |
+| Tone | 0..100 | 100 = brightest on all three. ACID: the DS-1 tone, blending a 234 Hz low-pass (0) with a 1.06 kHz high-pass (100); the middle scoops the mids. RAT: low-pass 475 Hz..16 kHz. METAL: low-pass 1.2..12 kHz. |
 | ZNR | 0..100 | Noise reducer on the distorted sound only (the dry sound is never touched). It measures your noise floor by itself and stays shut this far above it: +6 dB at 1, +15 dB at 50, +24 dB at 100. 0 = off. |
 | Level | 0..100 | Distorted level, 50 = about the input level, 100 = +6 dB. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. At 50 you get parallel distortion: the clean kick stays under the dirt. |

@@ -13,7 +13,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
-| **DirtBox** (new, not in a release yet) | One distortion, three models (ACID 303-box grit, RAT, METAL), with an automatic noise reducer that keeps kick tails. |
+| **DirtBox** (new, not in a release yet) | One distortion, three models (ACID = the TD-3's built-in distortion, RAT, METAL), with an automatic noise reducer that keeps kick tails. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
