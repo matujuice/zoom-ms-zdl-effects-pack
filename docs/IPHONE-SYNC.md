@@ -18,7 +18,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 
 WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate and DubSiren keep their clock running while switched off, so they come back on the bar when you switch them on.
 
-**Tested** (script v1) on an MS-60B running MS-50G firmware, iPhone with AUM and Mozaic, Digitakt mk1 following AUM over USB (2026-10-05). Measured edit latency about 12 ms. Script v2 (slot on/off pads, Tempo always the 8th knob) needs the effects with Tempo on the 8th knob (after release v1.3); it has not been run on the pedal yet.
+**Tested** (script v1) on an MS-60B running MS-50G firmware, iPhone with AUM and Mozaic, Digitakt mk1 following AUM over USB (2026-10-05). Measured edit latency about 12 ms. Script v2 (slot on/off pads, Tempo always the 8th knob) needs the effects with Tempo on the 8th knob (release v1.4 and later); it works on the pedal too (Luca, 2026-10-05).
 
 ## Setup
 
