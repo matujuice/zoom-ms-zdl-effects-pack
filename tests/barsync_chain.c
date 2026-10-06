@@ -101,12 +101,13 @@ int main(void)
     block(&A, &B, 1);
     CHECK(phase(&B) > pb, "slot 5 on its own BPM restarted on an upstream bar");
 
-    /* 5. slot 1 removed: its last tag stays in the buffer but stops counting -> stale after 1 s */
+    /* 5. slot 1 removed: its last tag stays in the buffer but stops counting -> stale after 1 s,
+     * FOLLOW keeps the last BPM (150) */
     tempo(&B, 0);
     for (i = 0; i < 6000; i++) block(&A, &B, 0);
     p0 = phase(&B); block(&A, &B, 0);
-    printf("sender gone: slot 5 FOLLOW per block %.6g (120 = %.6g), ok %u\n", phase(&B) - p0, inc120, B.st->sync.rx.ok);
-    CHECK(!B.st->sync.rx.ok && fabsf((phase(&B) - p0) - inc120) < 1e-6f, "stale tag still followed");
+    printf("sender gone: slot 5 FOLLOW per block %.6g (150 = %.6g), ok %u\n", phase(&B) - p0, inc150, B.st->sync.rx.ok);
+    CHECK(!B.st->sync.rx.ok && fabsf((phase(&B) - p0) - inc150) < 2e-6f, "sender gone: FOLLOW did not keep the last BPM (150)");
 
     /* 6. slot 5 a LIVE sender itself (Mozaic flips it too, slightly later): upstream bars ignored */
     tempo(&B, 150);
