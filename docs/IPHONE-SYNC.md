@@ -28,7 +28,7 @@ WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script 
 4. Open the file in Files and share it to Mozaic. Add Mozaic to an AUM channel and pick the bar sync preset in its Presets tab. It is ready to run: no code to paste.
    No .mozaic? Open [zoom_bar_sync.txt](../tools/mozaic/zoom_bar_sync.txt), copy all of it, paste it into Mozaic's code view and tap Upload.
 5. In AUM's MIDI routing: Mozaic out to the Zoom.
-6. The first three pads switch sync on or off for slots 1 to 3 (all ON at load). Tempo is the 8th knob on all five synced effects, so the script doesn't need to know which one is where. Turn a slot OFF if it holds any other effect, or the script will move that effect's 8th knob. Only the first three effects of a patch accept edits from outside.
+6. The first three pads switch sync on or off for slots 1 to 3 (all ON at load). Tempo is the 8th knob on all five synced effects, so the script doesn't need to know which one is where. Turn a slot OFF if it holds any other effect, or the script will move that effect's 8th knob. Only the first three effects of a patch accept edits from outside. Tested on the MS-60B (2026-10-06): knob edits to slots 4, 5 and 6 do nothing, slot 1 moves. A way to pass the bar on to later slots is being probed with `src/probes/dryprb/` (not built yet).
 7. Press play in AUM.
 
 ## Controls

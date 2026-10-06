@@ -4,6 +4,7 @@
     py build_all.py              # all of them
     py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl, scrub)
     py build_all.py tempoprb     # a hardware probe (src/probes/); only built when named
+    py build_all.py dryprb       # likewise
 
 Needs the TI C6000 compiler (see README). formant is Choral, sgnl is S.GN_L (SGNL.ZDL).
 """
@@ -13,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl", "scrub"]
-PROBES = ["tempoprb"]
+PROBES = ["tempoprb", "dryprb"]
 
 want = sys.argv[1:] or EFFECTS
 bad = [n for n in want if n not in EFFECTS + PROBES]
