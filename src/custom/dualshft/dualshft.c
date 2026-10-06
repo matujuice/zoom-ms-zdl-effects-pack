@@ -147,7 +147,7 @@
 #define TEMPO_MAX_F      441.0f
 #define TEMPO_TWIN       201                 /* twin copy = BPM + 201          */
 
-#define DS_MAGIC         0x44533037u         /* "DS07": arena holds valid state */
+#define DS_MAGIC         0x44533038u         /* "DS08": arena holds valid state */
 
 #define SHAPE_TRI        0
 #define SHAPE_SQUARE     1

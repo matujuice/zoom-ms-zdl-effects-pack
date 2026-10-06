@@ -15,7 +15,7 @@ int main(void)
 {
     float r[8];
     DtTag t;
-    DtSend a, b;
+    DtSync a, b;
     long i, bad = 0;
     int j, wrote;
     float peak = 0.0f;
@@ -58,7 +58,7 @@ int main(void)
 
     /* sender: nothing before a flip, counter +1 per flip, age counts blocks, quiet 60 s after */
     memset(r, 0, sizeof r);
-    dt_send_init(&a);
+    dt_sync_init(&a);
     wrote = dt_send(&a, r, 0, 1920u, 100u);
     CHECK(!wrote && !dt_read(r, &t), "sender wrote a tag before any flip (Mozaic not flipping it)");
     dt_send(&a, r, 1, 1920u, 100u); dt_read(r, &t);
@@ -74,7 +74,7 @@ int main(void)
     CHECK(t.count == 2u && t.live, "second flip");
 
     /* two LIVE senders in one block: the upstream tag stays */
-    dt_send_init(&b);
+    dt_sync_init(&b);
     memset(r, 0, sizeof r);
     dt_send(&a, r, 0, 1920u, 100u);                      /* slot 1, LIVE */
     wrote = dt_send(&b, r, 1, 2000u, 200u);              /* slot 2, also LIVE */
@@ -88,6 +88,24 @@ int main(void)
     /* its own tag left over from the last block is replaced */
     wrote = dt_send(&b, r, 0, 2000u, 200u);
     CHECK(wrote, "sender did not refresh its own tag");
+
+    /* pad turned off: after two flips 1000 blocks apart it stops sending ~2.5 gaps after the last */
+    dt_sync_init(&a);
+    memset(r, 0, sizeof r);
+    dt_send(&a, r, 1, 1920u, 100u);
+    for (i = 0; i < 999; i++) dt_send(&a, r, 0, 1920u, 100u);
+    dt_send(&a, r, 1, 1920u, 100u);
+    for (i = 0; i < 2400; i++) wrote = dt_send(&a, r, 0, 1920u, 100u);
+    CHECK(wrote, "stopped sending within 2.4 gaps of the last flip");
+    for (i = 0; i < 200; i++) wrote = dt_send(&a, r, 0, 1920u, 100u);
+    CHECK(!wrote, "still sending 2.6 gaps after the last flip (pad off)");
+
+    /* a frozen LIVE tag from another sender (it stopped) is taken over within a few blocks */
+    dt_sync_init(&b);
+    dt_send(&b, r, 1, 2000u, 200u);                      /* r still holds a's last tag, LIVE */
+    for (i = 0; i < 20; i++) wrote = dt_send(&b, r, 0, 2000u, 200u);
+    dt_read(r, &t);
+    CHECK(wrote && t.id == 200u, "frozen tag of a stopped sender not taken over");
 
     /* ids: 12 bits, never 0, different for arenas 64 KB apart */
     CHECK(dt_id(0) != 0u && dt_id(0x10000u) != dt_id(0x20000u) && dt_id(0x80123450u) <= 0xFFFu, "ids");

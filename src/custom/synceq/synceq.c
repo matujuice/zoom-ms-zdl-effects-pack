@@ -59,7 +59,7 @@
 #define SQ_CODE_SECTION(fn)
 #endif
 
-#define SQ_MAGIC        0x53455131u          /* "SEQ1": change whenever SqState changes */
+#define SQ_MAGIC        0x53455132u          /* "SEQ2": change whenever SqState changes */
 #define SQ_BPM_MIN      40.0f
 #define SQ_BPM_MAX      240.0f
 #define SQ_TEMPO_MAX    441.0f
@@ -84,7 +84,7 @@ typedef struct {
     SqBq hp, ls, pk, hs, lp;
     float drive, makeup, level;
     int   twin;                              /* Tempo on its twin copy; -1 = not read yet */
-    DtSend tag;
+    DtSync tag;                              /* bar tag sender (drytag.h)               */
 } SqState;
 
 /* ---- helpers ----------------------------------------------------------------- */
@@ -273,7 +273,7 @@ static inline void sq_init(SqState *s)
     sq_clear(&s->hp); sq_clear(&s->ls); sq_clear(&s->pk); sq_clear(&s->hs); sq_clear(&s->lp);
     s->drive = 1.0f; s->makeup = 1.0f; s->level = 1.0f;
     s->twin = -1;
-    dt_send_init(&s->tag);
+    dt_sync_init(&s->tag);
     s->magic = SQ_MAGIC;
 }
 

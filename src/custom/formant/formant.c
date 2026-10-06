@@ -146,7 +146,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define FM_MAGIC        0x464D3232u          /* "FM22"                        */
+#define FM_MAGIC        0x464D3233u          /* "FM23"                        */
 #define FM_W0_PER_HZ    1.4247585e-4f        /* 2*pi / 44100                  */
 #define FM_BPM_BLOCK    3.0234e-6f           /* 8 / (60 * 44100): LFO phase per block per (BPM*mult) */
 #define FM_VSLEW        0.22f                /* vowel smoothing per block     */

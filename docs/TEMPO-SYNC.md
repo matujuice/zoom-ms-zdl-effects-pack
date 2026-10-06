@@ -470,7 +470,14 @@ tag. A held tag instead of a one-block pulse means no missed pulse, no loudness 
 it still works if the pedal does not refresh the Dry buffer between blocks.
 
 **Rules:** SyncEQ and the tempo effects send only while Mozaic flips their Tempo (LIVE; Luca
-2026-10-06). A sender keeps a LIVE upstream tag from another sender (same Mozaic, same bar). Effects that are not sending never write `ctx[4]`, so
+2026-10-06): a flip within 2.5 times the gap between their last two flips (60 s after a first
+flip), so a pad turned off stops its slot sending after about 2 bars. With several LIVE senders
+the one with the lowest id sends and the others stay quiet, whatever their slot order (they are
+flipped on the same bar); a tag that stops moving (sender stopped or removed) is taken over
+within 8 blocks. First pedal test (2026-10-06): with pads on in more than one slot a FOLLW
+EuGate in slot 4 ran free; the host simulation (`tests/barsync_handover.c`) showed the cause:
+a pad turned off kept its slot claiming the tag for 60 s while the next sender waited behind it,
+and with a buffer swapped every block two senders could each own one copy. Effects that are not sending never write `ctx[4]`, so
 the tag passes through them; checked for every effect of the pack, DirtBox and Breather.
 Every tempo effect (DualShft, Choral, EuGate, DubSiren, Scrub, Breather) sends while Mozaic
 flips it, through one call, `dt_tempo()`. Only with Tempo on FOLLOW (screen 0..39, shown

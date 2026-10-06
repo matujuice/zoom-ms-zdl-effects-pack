@@ -129,7 +129,7 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435235u        /* "SCR5": change whenever ScState changes */
+#define SC_MAGIC      0x53435236u        /* "SCR6": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
 #define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */

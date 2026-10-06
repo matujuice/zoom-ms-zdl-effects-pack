@@ -86,7 +86,7 @@
 #define CH_CODE_SECTION(fn)
 #endif
 
-#define CH_MAGIC        0x43483035u          /* "CH05" */
+#define CH_MAGIC        0x43483036u          /* "CH06" */
 #define CH_BPM_MIN      40.0f
 #define CH_BPM_MAX      240.0f
 #define CH_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */

@@ -21,9 +21,12 @@
  * checksum match. Audio, silence or noise can't pass that.
  *
  * Who writes: SyncEQ and the tempo effects send only while LIVE (Mozaic is flipping their
- * Tempo; Luca, 2026-10-06). A sender writes its tag unless a LIVE tag from another sender is
- * already there, in which case that one stays (same Mozaic, same bar). An effect that is not sending never touches the
- * Dry buffer, so the tag passes through it unchanged.
+ * Tempo; Luca, 2026-10-06): a flip within 2.5 times the gap between their last two flips, so
+ * a pad turned off stops sending after about 2 bars (60 s after a first flip, until there is
+ * a gap). A sender writes its tag unless a LIVE tag from another sender is already there and
+ * still moving, in which case that one stays (same Mozaic, same bar); a frozen one (sender
+ * stopped or removed) is taken over. An effect that is not sending never touches the Dry
+ * buffer, so the tag passes through it unchanged.
  *
  * Receiving (dt_tempo, used by every tempo effect): the effect hands over its Tempo screen
  * number and gets back the one its existing code should use. Only with the knob on FOLLOW
@@ -60,7 +63,8 @@
 #define DT_SCALE        5.9604645e-8f        /* 2^-24 */
 #define DT_UNSCALE      16777216.0f          /* 2^24  */
 #define DT_AGE_MAX      0xFFFFFFu
-#define DT_LIVE_BLOCKS  330750u              /* 60 s of 8-sample blocks: 8 bars down to 32 BPM */
+#define DT_LIVE_BLOCKS  330750u              /* 60 s: LIVE after the first flip, until a second one */
+#define DT_DEFER_QUIET  8u                   /* another sender's tag counts only while its age moves */
 #define DT_STALE_BLOCKS 5513u                /* 1 s: a tag that stops counting is gone          */
 #define DT_FOLLOW_MAX   39.0f                /* Tempo screen 0..39 = FOLLOW                     */
 
@@ -74,11 +78,12 @@ typedef struct {
     unsigned int count;    /* bar counter                            */
     unsigned int age;      /* blocks since the last flip (or since loading) */
     unsigned int flipped;  /* 1 once a twin flip has been seen        */
+    unsigned int gap;      /* blocks between the last two flips (0 = one flip so far) */
 } DtSend;
 
 /* Receiver state */
 typedef struct {
-    unsigned int id, count, age;   /* last tag seen (id 0 = none yet) */
+    unsigned int id, count, age;   /* last tag seen (id 0 = none yet), its highest age */
     unsigned int quiet;            /* blocks its age has not moved    */
     unsigned int ok;               /* a fresh tag from another sender */
     unsigned int bpm16;            /* its BPM x 16; kept when the tag goes away */
@@ -105,7 +110,28 @@ static inline unsigned int dt_id(uintptr_t state_addr)
 DT_ALWAYS_INLINE(dt_send_init)
 static inline void dt_send_init(DtSend *t)
 {
-    t->count = 0u; t->age = 0u; t->flipped = 0u;
+    t->count = 0u; t->age = 0u; t->flipped = 0u; t->gap = 0u;
+}
+
+/* LIVE = Mozaic is flipping this knob: a flip within 2.5 times the gap between the last two
+ * (so a pad turned off stops the sending after about 2 bars, and another sender takes over),
+ * or within 60 s of the first flip. Luca, 2026-10-06: a pad turned off kept its slot sending
+ * as if live for 60 s, and the next sender waited behind it. */
+DT_ALWAYS_INLINE(dt_live)
+static inline int dt_live(const DtSend *t)
+{
+    unsigned int lim = t->gap ? t->gap + t->gap + (t->gap >> 1) + 64u : DT_LIVE_BLOCKS;
+    return (t->flipped && t->age < lim) ? 1 : 0;
+}
+
+/* Once per block: count a flip (bar counter +1, remember the gap) or age by one block. */
+DT_ALWAYS_INLINE(dt_flip)
+static inline void dt_flip(DtSend *t, int flip)
+{
+    if (flip) {
+        t->gap = t->flipped ? t->age + 1u : 0u;
+        t->count = (t->count + 1u) & 0xFFFu; t->age = 0u; t->flipped = 1u;
+    } else if (t->age < DT_AGE_MAX) t->age++;
 }
 
 /* One value of the tag: n (0..4095) times 2^-24. */
@@ -156,35 +182,27 @@ static inline void dt_write(float *r, unsigned int id, unsigned int count,
     for (j = 0; j < 8; j++) r[j] = dt_put(n[j]);
 }
 
-/* Sender, once per block (SyncEQ; the tempo effects do the same inside dt_tempo).
- * r = Dry right (ctx[4] + 8), flip = this block's Tempo twin flip, bpm16 = BPM x 16,
- * id = dt_id(state). Sends only while LIVE (Mozaic flips its Tempo) and no LIVE tag from
- * another sender is there. Returns 1 when it wrote its own tag, 0 when it wrote nothing. */
-DT_ALWAYS_INLINE(dt_send)
-static inline int dt_send(DtSend *t, float *r, int flip, unsigned int bpm16, unsigned int id)
-{
-    DtTag up;
-    if (flip) { t->count = (t->count + 1u) & 0xFFFu; t->age = 0u; t->flipped = 1u; }
-    else if (t->age < DT_AGE_MAX) t->age++;
-    if (!t->flipped || t->age >= DT_LIVE_BLOCKS) return 0;
-    if (dt_read(r, &up) && up.id != id && up.live) return 0;
-    dt_write(r, id, t->count, bpm16, t->age, 1u);
-    return 1;
-}
-
 /* Receiver, once per block, given this block's read of Dry right (valid = dt_read's result).
  * Returns 1 on a new bar. */
 DT_ALWAYS_INLINE(dt_recv)
 static inline int dt_recv(DtRecv *v, int valid, const DtTag *t, unsigned int id)
 {
-    int bar;
+    int bar, moving;
     if (!valid || t->id == id) { v->ok = 0u; return 0; }
-    if (t->id == v->id && t->age == v->age) { if (v->quiet < DT_STALE_BLOCKS) v->quiet++; }
-    else v->quiet = 0u;
+    /* moving = a new sender, a new bar, or an age past the highest seen since (a tag that
+     * stops, even one that alternates between two old copies, is not moving) */
+    if (t->id == v->id && t->count == v->count && t->age <= v->age) {
+        if (v->quiet < DT_STALE_BLOCKS) v->quiet++;
+        moving = 0;
+    } else {
+        v->quiet = 0u;
+        moving = 1;
+    }
     v->ok = (v->quiet < DT_STALE_BLOCKS) ? 1u : 0u;
     /* a new bar: the counter moved, or a sender has just gone LIVE with its first flip */
     bar = (v->ok && ((t->id == v->id && t->count != v->count) || (t->id != v->id && t->live && t->age == 0u))) ? 1 : 0;
-    v->id = t->id; v->count = t->count; v->age = t->age; v->bpm16 = t->bpm16;
+    if (moving) v->age = t->age;                             /* highest age seen of this bar */
+    v->id = t->id; v->count = t->count; v->bpm16 = t->bpm16;
     return bar;
 }
 
@@ -197,6 +215,36 @@ static inline void dt_sync_init(DtSync *y)
     y->own_twin = -1; y->vtwin = 0u;
 }
 
+/* Sender side for SyncEQ and dt_tempo, once per block after dt_recv on the same read.
+ * Writes while LIVE, unless a LIVE tag from a sender with a lower id is there and still
+ * moving. The lower id wins whatever the slot order, so with two senders every slot agrees
+ * on one, however the pedal keeps the buffer between blocks (both are flipped on the same
+ * bar by the same Mozaic). A tag that froze belongs to a sender that stopped or was removed
+ * and is taken over. */
+DT_ALWAYS_INLINE(dt_tx)
+static inline int dt_tx(DtSync *y, float *r, int valid, const DtTag *up, unsigned int bpm16,
+                        unsigned int id)
+{
+    if (!r || !dt_live(&y->tx)) return 0;
+    if (valid && up->id < id && up->live && y->rx.quiet < DT_DEFER_QUIET) return 0;
+    dt_write(r, id, y->tx.count, bpm16, y->tx.age, 1u);
+    return 1;
+}
+
+/* Sender only (SyncEQ), once per block. r = Dry right (ctx[4] + 8) or 0, flip = this
+ * block's Tempo twin flip, bpm16 = BPM x 16, id = dt_id(state). Sends only while LIVE
+ * (Mozaic flips its Tempo). Returns 1 when it wrote its own tag, 0 when it wrote nothing. */
+DT_ALWAYS_INLINE(dt_send)
+static inline int dt_send(DtSync *y, float *r, int flip, unsigned int bpm16, unsigned int id)
+{
+    DtTag up;
+    int valid = 0;
+    if (r) valid = dt_read(r, &up);
+    dt_recv(&y->rx, valid, &up, id);                         /* only to see whether up is moving */
+    dt_flip(&y->tx, flip);
+    return dt_tx(y, r, valid, &up, bpm16, id);
+}
+
 /* For a tempo effect, once per block and before anything reads Tempo (also while switched
  * off). ui = the Tempo knob's screen number 0..441, r = Dry right (ctx[4] + 8) or 0, id =
  * dt_id(state). Receives, sends while LIVE, and returns the screen number the effect's own
@@ -205,7 +253,6 @@ static inline void dt_sync_init(DtSync *y)
 DT_ALWAYS_INLINE(dt_tempo)
 static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
 {
-    DtSend *tx = &y->tx;
     DtTag up;
     int tw = (ui > 240.0f) ? 1 : 0;
     int flip = (y->own_twin >= 0 && tw != y->own_twin);
@@ -219,11 +266,9 @@ static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
     else bpm = (ui > 240.0f) ? ui - 201.0f : ui;
     if (bpm < 40.0f) bpm = 40.0f;
     if (bpm > 240.0f) bpm = 240.0f;
-    /* send while LIVE (Mozaic flips this knob), unless a LIVE tag from another slot is there */
-    if (flip) { tx->count = (tx->count + 1u) & 0xFFFu; tx->age = 0u; tx->flipped = 1u; }
-    else if (tx->age < DT_AGE_MAX) tx->age++;
-    if (r && tx->flipped && tx->age < DT_LIVE_BLOCKS && !(valid && up.id != id && up.live))
-        dt_write(r, id, tx->count, (unsigned int)(int)(bpm * 16.0f), tx->age, 1u);
+    /* send while LIVE (Mozaic flips this knob), unless a moving LIVE tag from another slot is there */
+    dt_flip(&y->tx, flip);
+    dt_tx(y, r, valid, &up, (unsigned int)(int)(bpm * 16.0f), id);
     if (flip || (bar && follow)) y->vtwin ^= 1u;           /* bars count only on FOLLOW */
     return y->vtwin ? bpm + 201.0f : bpm;
 }

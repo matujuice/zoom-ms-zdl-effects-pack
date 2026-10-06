@@ -125,7 +125,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523039u         /* "SR09"                        */
+#define SR_MAGIC         0x53523130u         /* "SR10"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
