@@ -32,7 +32,7 @@ The TI C6000 compiler is only on the owner's Windows PC; the cloud can't build `
 
 ## Conventions
 - Mix = DJ crossfade (dry min(1,2-2m), wet min(1,2m)); DubSiren has Vol, no Mix.
-- Tempo is knob 8 on every synced effect, runs 0..441 with twin BPM copies (see docs/TEMPO-SYNC.md); read raw x100.
+- Tempo is knob 8 on every synced effect, runs 0..441 with twin BPM copies, 0..39 = FOLLOW (see docs/TEMPO-SYNC.md); read raw x100, then pass it through `dt_tempo()` (bar tag).
 - Covers: see docs/COVERS.md. Owner decisions: see docs/DECISIONS.md (don't undo).
 - Change a knob or behaviour: update header comment, manifest, docs/EFFECTS.md, README, docs/IPHONE-SYNC.md table in step.
 

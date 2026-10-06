@@ -15,7 +15,9 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 | EuGate | Reset SYNC (works like OFF). | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
 | DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |
 | Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
-| SyncEQ | Put it in slots 1 to 3 with that slot's pad ON. It passes the bar on to later slots (in development; the effects there can't read it yet). | |
+| SyncEQ | Put it in slots 1 to 3 with that slot's pad ON. It passes the bar on to later slots, also while switched off. In development, not tested on the pedal. | |
+
+**Slots 4 to 6 (in development, not tested on the pedal yet).** A tempo effect that the script flips in slots 1 to 3 (or SyncEQ) passes each bar on to the effects after it, so they restart on the bar too. Set their Tempo to FOLLW (all the way down) to also take the BPM. Leave the pads of slots 1 to 3 ON only for slots that hold a tempo effect or SyncEQ.
 
 WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate and DubSiren keep their clock running while switched off, so they come back on the bar when you switch them on.
 

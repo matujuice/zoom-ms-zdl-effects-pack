@@ -495,7 +495,7 @@ void SYNCEQ_AUDIO_FUNC(unsigned int *ctx)
     flip = sq_twin_flip(s, tempo);
     if (dryBuf)
         dt_send(&s->tag, dryBuf + 8, flip,
-                (unsigned int)(int)(sq_tempo_bpm(tempo) * 16.0f), dt_id(stateBase));
+                (unsigned int)(int)(sq_tempo_bpm(tempo) * 16.0f), dt_id(stateBase), 1);
 
     if (params[0] < 0.5f) return;                /* switched off: input untouched */
 

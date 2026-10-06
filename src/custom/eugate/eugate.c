@@ -61,12 +61,20 @@
  *   5 Gap   0..50   small silence at the end of a note that is followed by another note,
  *                   in percent of a step (0 = touching notes join, as before)
  *   6 Soft  0..100  how soft the edges of each note are
- *   7 Tempo 0..441  BPM, 40..240 (below 40 reads as 40); 241..441 = the same BPMs again
+ *   7 Tempo 0..441  BPM, 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 = the same BPMs again
  *                   (twin copy for the sync reset, see RESET), shown as the BPM
  *   8 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. In any slot it reads a tag
+ *   from earlier slots, and each new bar there restarts it as a twin flip of its own knob
+ *   would (ignored while it is getting flips itself). Tempo 0..39 = FOLLOW (shown FOLLW):
+ *   the BPM comes from the tag too, 120 when there is none.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define CH_DO_PRAGMA(x) _Pragma(#x)
@@ -78,7 +86,7 @@
 #define CH_CODE_SECTION(fn)
 #endif
 
-#define CH_MAGIC        0x43483034u          /* "CH04" */
+#define CH_MAGIC        0x43483035u          /* "CH05" */
 #define CH_BPM_MIN      40.0f
 #define CH_BPM_MAX      240.0f
 #define CH_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
@@ -96,6 +104,7 @@ typedef struct {
     unsigned int quiet;    /* consecutive quiet samples              */
     unsigned int was_off;  /* set while the footswitch is off (for Reset = PEDAL) */
     int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h) */
 } ChState;
 
 typedef struct {
@@ -162,6 +171,7 @@ CH_ALWAYS_INLINE(ch_init)
 static inline void ch_init(ChState *s)
 {
     s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->twin = -1;
+    dt_sync_init(&s->sync);
     s->magic = CH_MAGIC;
 }
 
@@ -301,6 +311,7 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
+    if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
     n = (int)ch_tempo_bpm((float)(int)value);
     while (n >= 100) { n -= 100; h++; }
@@ -327,6 +338,7 @@ CH_CODE_SECTION(EUGATE_AUDIO_FUNC)
 void EUGATE_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -366,8 +378,10 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[7] = ch_tempo_ui(params[EUGATE_TEMPO_SLOT], (float)EUGATE_TEMPO_UI_DEFAULT);
     u[8] = ch_ui(params[EUGATE_MIX_SLOT],   (float)EUGATE_MIX_UI_DEFAULT,   100.0f);
 
-    ch_prepare(&P, u);
     if (s->magic != CH_MAGIC) ch_init(s);
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
+    ch_prepare(&P, u);
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
         if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* still follows the bar */

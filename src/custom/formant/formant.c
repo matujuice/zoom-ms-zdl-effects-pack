@@ -113,9 +113,17 @@
  * delay that swings +-17 cents at 5.2 Hz and wanders at random (a live vibrato), breathes
  * a little in loudness with it, has narrower vowel peaks (1/Q x 0.62) and the same breath
  * as the side voices. All of it is always on, in Chord OFF too.
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. In any slot it reads a tag
+ *   from earlier slots, and each new bar there restarts it as a twin flip of its own knob
+ *   would (ignored while it is getting flips itself). Tempo 0..39 = FOLLOW (shown FOLLW):
+ *   the BPM comes from the tag too, 120 when there is none.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -131,7 +139,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define FM_MAGIC        0x464D3231u          /* "FM21"                        */
+#define FM_MAGIC        0x464D3232u          /* "FM22"                        */
 #define FM_W0_PER_HZ    1.4247585e-4f        /* 2*pi / 44100                  */
 #define FM_BPM_BLOCK    3.0234e-6f           /* 8 / (60 * 44100): LFO phase per block per (BPM*mult) */
 #define FM_VSLEW        0.22f                /* vowel smoothing per block     */
@@ -174,6 +182,7 @@ typedef struct {
     float ein, eout, comp; /* loudness meters (input / output) and the auto-level gain */
     float lfo_ph;          /* LFO phase, 0..1                                 */
     float last_tempo;      /* Tempo screen number at the last LFO restart     */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
     unsigned int rng;      /* random vowel generator (LCG)                    */
     float rcur[5], rnext[5], rph[5], rmul[5]; /* per voice: vowel now / next; Rand: own cycle phase and speed */
     float pprev[5];        /* per voice: last cycle phase (cycle-event detector) */
@@ -379,6 +388,7 @@ static inline void fm_init(FmState *s)
     for (i = 0; i < FM_RING; i++) s->ring[i] = 0.0f;
     SR_NOUNROLL
     for (i = 0; i < 35; i++) { s->z1[i] = 0.0f; s->z2[i] = 0.0f; }
+    dt_sync_init(&s->sync);
     s->magic = FM_MAGIC;
 }
 
@@ -1016,6 +1026,7 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
+    if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
     n = fm_tempo_bpm((int)value);
     while (n >= 100) { n -= 100; h++; }
@@ -1091,6 +1102,7 @@ SR_CODE_SECTION(FORMANT_AUDIO_FUNC)
 void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -1121,7 +1133,6 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     s = (FmState *)stateBase;
 
     k[0] = sr_knob(params[FORMANT_VOWEL_SLOT], (float)FORMANT_VOWEL_UI_DEFAULT, 0.025f);
-    k[1] = fm_tempo_ui(params[FORMANT_TEMPO_SLOT], (float)FORMANT_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
     k[2] = sr_knob(params[FORMANT_DIV_SLOT],   (float)FORMANT_DIV_UI_DEFAULT,   0.0625f);
     k[3] = sr_knob(params[FORMANT_DEPTH_SLOT], (float)FORMANT_DEPTH_UI_DEFAULT, 0.01f);
     k[4] = sr_knob(params[FORMANT_RESO_SLOT],  (float)FORMANT_RESO_UI_DEFAULT,  0.01f);
@@ -1131,6 +1142,10 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     k[8] = sr_knob(params[FORMANT_SHAPE_SLOT],  (float)FORMANT_SHAPE_UI_DEFAULT,  0.1f);
 
     if (s->magic != FM_MAGIC) fm_init(s);
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    k[1] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0,
+                    fm_tempo_ui(params[FORMANT_TEMPO_SLOT], (float)FORMANT_TEMPO_UI_DEFAULT),
+                    dt_id(stateBase)) * 0.0022675737f;   /* 1/441 */
     fm_prepare(s, &P, k);                        /* restarts the LFO on a Tempo flip */
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched, */
         s->lfo_ph += P.lfo_inc;                  /* but the LFO keeps time with the bar   */

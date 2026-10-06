@@ -101,9 +101,17 @@
  * Safe-DSP rules of this repo are kept: no static/const tables in the audio
  * path, no float divide, no integer / or %, no libm, no switch, no memset,
  * everything always-inline. NOT TESTED ON HARDWARE YET.
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. In any slot it reads a tag
+ *   from earlier slots, and each new bar there restarts it as a twin flip of its own knob
+ *   would (ignored while it is getting flips itself). Tempo 0..39 = FOLLOW (shown FOLLW):
+ *   the BPM comes from the tag too, 120 when there is none.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -117,7 +125,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523038u         /* "SR08"                        */
+#define SR_MAGIC         0x53523039u         /* "SR09"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
@@ -157,6 +165,7 @@ typedef struct {
     int   armed;           /* SPuls: pressed, waiting for the next beat       */
     int   latch;           /* SHold: footswitch state taken at the last beat  */
     float beat_ph;         /* beat clock, 0..1 per beat; 0 at each twin flip  */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
     float ring[RING_SIZE]; /* siren-only echo line                            */
 } SirenState;
 
@@ -293,6 +302,7 @@ static inline void sr_init(SirenState *s)
     s->dly = -1.0f; s->hpl = 0.0f; s->lp1 = 0.0f; s->lp2 = 0.0f;
     s->twin = -1;
     s->armed = 0; s->latch = 0; s->beat_ph = 0.0f;
+    dt_sync_init(&s->sync);
     s->magic = SR_MAGIC;
 }
 
@@ -598,6 +608,7 @@ int ZDL_GetLabel_8(unsigned int value, char *out)
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
+    if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
     n = sr_tempo_bpm((int)value);
     while (n >= 100) { n -= 100; h++; }
@@ -624,6 +635,7 @@ SR_CODE_SECTION(DUBSIREN_AUDIO_FUNC)
 void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -663,9 +675,11 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     k[5] = sr_knob(params[DUBSIREN_VOL_SLOT],    (float)DUBSIREN_VOL_UI_DEFAULT,    0.01f);
     k[6] = sr_knob(params[DUBSIREN_TIME_SLOT],   (float)DUBSIREN_TIME_UI_DEFAULT,   0.01f);
     k[7] = sr_knob(params[DUBSIREN_FDBK_SLOT],   (float)DUBSIREN_FDBK_UI_DEFAULT,   0.008f);
-    k[8] = sr_tempo_ui(params[DUBSIREN_TEMPO_SLOT], (float)DUBSIREN_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
-
     if (s->magic != SR_MAGIC) sr_init(s);        /* prev_* must be valid       */
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    k[8] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0,
+                    sr_tempo_ui(params[DUBSIREN_TEMPO_SLOT], (float)DUBSIREN_TEMPO_UI_DEFAULT),
+                    dt_id(stateBase)) * 0.0022675737f;   /* 1/441 */
     sr_prepare(s, &P, k, foot);
     sr_process(s, &P, fxBuf, 8);
 

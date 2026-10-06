@@ -54,7 +54,7 @@
       "name": "Tempo",
       "max": 441,
       "default": 120,
-      "comment": "Speed in BPM (40 to 240; below 40 reads as 40), shown on screen. Only used when Grain is set to a note value (the top of its range, 101..112). The pedal gives custom effects no clock, so dial in the song's tempo. Flipping to the twin copy of the same BPM (120 <-> 321) starts a new grain at once without changing the tempo: a host can send that on each downbeat to keep a synced freeze on the bar. A plain tempo change does not. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."
+      "comment": "Speed in BPM (40 to 240), shown on screen. Only used when Grain is set to a note value (the top of its range, 101..112). The pedal gives custom effects no clock, so dial in the song's tempo. Flipping to the twin copy of the same BPM (120 <-> 321) starts a new grain at once without changing the tempo: a host can send that on each downbeat to keep a synced freeze on the bar. A plain tempo change does not. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120. FOLLW (0..39, the bottom of the knob): the BPM comes from the bar sync sent by an effect in an earlier slot (120 without one). On any setting, bars sent from an earlier slot restart it like a flip of its own Tempo."
     }
   ],
   "audio_func_name": "Fx_DLY_Scrub",

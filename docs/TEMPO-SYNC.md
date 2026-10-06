@@ -472,10 +472,14 @@ it still works if the pedal does not refresh the Dry buffer between blocks.
 **Rules:** a sender keeps a valid upstream tag from another sender (same Mozaic, same bar)
 unless that one is not LIVE and it is. Effects that are not sending never write `ctx[4]`, so
 the tag passes through them; checked for every effect of the pack, DirtBox and Breather.
-Receivers (not written yet) restart on a new counter value as on a twin flip, and take the BPM
-from the tag only with Tempo on FOLLOW (screen 0..39).
+Every tempo effect (DualShft, Choral, EuGate, DubSiren, Scrub, Breather) sends while Mozaic
+flips it and receives everywhere, through one call, `dt_tempo()`: a new bar toggles the Tempo
+screen number it hands to the effect's existing code to the other twin copy, so each effect
+restarts exactly as on a Mozaic flip. FOLLOW (screen 0..39, shown FOLLW) also takes the BPM
+from the tag. A LIVE sender ignores upstream bars; a tag whose age stops moving for 1 s is
+stale. Host test of two slots: `tests/barsync_chain.c`.
 
-**Status:** SyncEQ (fxid 494) sends it; host tests in `tests/synceq_tag.c` and
-`tests/synceq_eq.c`. Not built, nothing heard on the pedal; whether every bit survives stock
+**Status:** SyncEQ (fxid 494) and the tempo effects send it, the tempo effects receive it;
+host tests in `tests/synceq_tag.c`, `tests/synceq_eq.c` and `tests/barsync_chain.c`. Not built, nothing heard on the pedal; whether every bit survives stock
 effects is the first pedal test. Design notes: `/mnt/project-files/ideas/slots-4-6-tempo-sync.md`
 (project files).

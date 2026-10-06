@@ -1,6 +1,7 @@
 /* Tempo-knob sync reset, shared by the <effect>_tempo.c tests. Runs the real pedal entry
  * (ctx, params, arena as in dubsiren_entry.c) and checks:
- *   - the Tempo label shows the BPM on both copies (0..39 -> 40, 241 -> 40, 441 -> 240)
+ *   - the Tempo label shows the BPM on both copies (241 -> 40, 441 -> 240), FOLLW on 0..39
+ *   - FOLLOW (0..39) with no bar tag upstream runs at 120 BPM
  *   - the twin copy runs at the same speed as its BPM (also read from raw 4.41)
  *   - flipping a BPM to its twin (1.20 -> 3.21) restarts the phase, and only once
  *   - a plain tempo change restarts it only where PLAIN_RESETS is 1 (DualShft, Choral)
@@ -65,7 +66,7 @@ int main(void)
 {
     char b[8];
     unsigned v[8] = {0, 39, 40, 120, 240, 241, 321, 441};
-    const char *want[8] = {"40", "40", "40", "120", "240", "40", "120", "240"};
+    const char *want[8] = {"FOLLW", "FOLLW", "40", "120", "240", "40", "120", "240"};
     float d120, d321, d441, d240, before, after, p1, p2;
     int i;
 
@@ -79,6 +80,12 @@ int main(void)
     setup();
     params[TEMPO_SLOT] = 1.20f; run(20000);                 /* past any clearing */
     d120 = step();
+    params[TEMPO_SLOT] = 0.0f; run(50);
+    {
+        float df = step();
+        printf("FOLLOW, no tag: phase per block %.6g (120: %.6g)\n", df, d120);
+        CHECK(fabsf(df - d120) < 1e-6f, "FOLLOW without a tag does not run at 120 BPM");
+    }
     params[TEMPO_SLOT] = 2.40f; run(50); d240 = step();
     params[TEMPO_SLOT] = 4.41f; run(50); d441 = step();
     params[TEMPO_SLOT] = 1.20f; run(20000);
