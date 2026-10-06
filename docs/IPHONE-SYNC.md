@@ -17,7 +17,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 | Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
 | SyncEQ | Put it in slots 1 to 3 with that slot's pad ON. It passes the bar on to later slots, also while switched off. In development, not tested on the pedal. | |
 
-**Slots 4 to 6 (in development, not tested on the pedal yet).** A tempo effect that the script flips in slots 1 to 3 (or SyncEQ) passes each bar on to the effects after it. Effects with Tempo all the way down on FOLLW follow it, bars and BPM; on a BPM they run on their own. Leave a slot's pad ON only for the tempo effect or SyncEQ that sends; an effect in slots 1 to 3 on FOLLW needs its pad OFF, or the script sets its Tempo to a BPM.
+**Slots 4 to 6 (in development, not tested on the pedal yet).** A tempo effect that the script flips in slots 1 to 3 (or SyncEQ) passes each bar on to the effects after it. Effects with Tempo all the way down on FOLLW follow it, bars and BPM; on a BPM they run on their own. Turn ON one pad only, for the one tempo effect or SyncEQ that sends, and put every other synced effect on FOLLW (two pads on still work, one of them sends, but there is no reason for it); an effect in slots 1 to 3 on FOLLW needs its pad OFF, or the script sets its Tempo to a BPM.
 
 WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script (Follow host on), and use Every 1 so a missed restart is fixed within a bar. DualShft, Choral, EuGate and DubSiren keep their clock running while switched off, so they come back on the bar when you switch them on.
 
