@@ -1,4 +1,4 @@
-# The seven effects
+# The effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
@@ -107,3 +107,20 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Tempo | 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+### SyncEQ: EQ that passes the bar sync on
+In development: source and host tests only, not built or heard yet.
+
+The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with its pad on in Mozaic, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it, even in slots 4 to 6, can stay on the bar (they will learn to read it in a later update). Any tempo effect of the pack in slots 1 to 3 will send the same mark, so SyncEQ is only needed when none sits there. Switched off, the sound passes untouched and the bar still goes through, so it also works as a silent clock. The sound side is a clean EQ: with every knob at its default nothing changes.
+
+| Knob | Range | What it does |
+|---|---|---|
+| LoCut | OFF, 20..500 Hz | High-pass filter, 12 dB per octave. |
+| Low | -12..+12 dB | Bass shelf at 100 Hz. |
+| Mid | -12..+12 dB | Bell at MidF. |
+| MidF | 200..5.0k Hz | Frequency of the Mid bell. |
+| High | -12..+12 dB | Treble shelf at 8 kHz. |
+| HiCut | 1.0k..20k Hz, OFF | Low-pass filter, 12 dB per octave. |
+| Drive | 0..100 | Soft saturation after the EQ. 0 = clean; the output is turned down as Drive goes up. |
+| Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
+| Level | -12..+12 dB | Output level. |

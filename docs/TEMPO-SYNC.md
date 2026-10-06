@@ -451,3 +451,31 @@ above are partially applied (state[24]/state[30] rows added in
 STATE-ABI-PROGRESS, `reserved_a` and `0x28` flag annotated in
 build/ABI.md). Further edits to EDIT-HANDLER-ABI for the `B4` selector
 remain deferred until we hardware-confirm the TAPEECH3 reading.
+
+## 10. Bar tag: carrying bar sync to slots 4-6 (2026-10-06)
+
+Mozaic's bar sync flips the Tempo knob over USB SysEx, and the MS-60B accepts outside knob
+edits only on slots 1-3 (tested 2026-10-06 with `tools/zoom_sysex.py`). The DryPrb probe (PR
+#24, fxid 498) then showed on the MS-60B that a value written into the Dry buffer right half
+(`ctx[4] + 8`) in slot 1 is still there in slots 2, 3 and 5, also with a stock filter in
+between, and that nothing of it reaches the output. Idea from ELynx's Div0, which uses the
+same buffer (so not for the MS-70CDR, where Div0/RTFM need it).
+
+**The tag** (`src/custom/common/drytag.h`): the sender writes 8 values into Dry right on every
+block, each a whole number 0..4095 times 2^-24 (at most -72 dBFS): signature 0xA5C, sender id
+(12 bits of its arena address), bar counter (+1 per twin flip), BPM x 16, blocks since the last
+flip (two 12-bit halves), format 0x10 + LIVE bit (a flip in the last 60 s), checksum. A reader
+accepts it only when every value is exact and the checksum matches, so audio never reads as a
+tag. A held tag instead of a one-block pulse means no missed pulse, no loudness threshold, and
+it still works if the pedal does not refresh the Dry buffer between blocks.
+
+**Rules:** a sender keeps a valid upstream tag from another sender (same Mozaic, same bar)
+unless that one is not LIVE and it is. Effects that are not sending never write `ctx[4]`, so
+the tag passes through them; checked for every effect of the pack, DirtBox and Breather.
+Receivers (not written yet) restart on a new counter value as on a twin flip, and take the BPM
+from the tag only with Tempo on FOLLOW (screen 0..39).
+
+**Status:** SyncEQ (fxid 494) sends it; host tests in `tests/synceq_tag.c` and
+`tests/synceq_eq.c`. Not built, nothing heard on the pedal; whether every bit survives stock
+effects is the first pedal test. Design notes: `/mnt/project-files/ideas/slots-4-6-tempo-sync.md`
+(project files).
