@@ -35,7 +35,7 @@ int main(void)
     dt_write(r, 77u, 12u, 1920u, 345u, 1u);
     r[3] *= 1.0001f;                    CHECK(!dt_read(r, &t), "scaled value still valid");
     dt_write(r, 77u, 12u, 1920u, 345u, 1u);
-    r[2] += 5.9604645e-8f;              CHECK(!dt_read(r, &t), "changed counter still valid (checksum)");
+    r[2] = dt_put(13u);                 CHECK(!dt_read(r, &t), "changed counter still valid (checksum)");
     dt_write(r, 77u, 12u, 1920u, 345u, 1u);
     for (j = 0; j < 8; j++) r[j] *= 0.5f; CHECK(!dt_read(r, &t), "halved tag still valid");
 
@@ -48,9 +48,9 @@ int main(void)
         for (j = 0; j < 8; j++) r[j] = g * rnd();
         if (dt_read(r, &t)) bad++;
     }
-    for (i = 0; i < 2000000; i++) {                   /* whole numbers x 2^-24, random */
-        for (j = 0; j < 8; j++) { rng = rng * 1664525u + 1013904223u; r[j] = (float)(int)(rng >> 20) * DT_SCALE; }
-        r[0] = (float)(int)DT_SIG * DT_SCALE; r[6] = (float)(int)DT_VERSION * DT_SCALE;
+    for (i = 0; i < 2000000; i++) {                   /* valid-looking values, random */
+        for (j = 0; j < 8; j++) { rng = rng * 1664525u + 1013904223u; r[j] = dt_put(rng >> 20); }
+        r[0] = dt_put(DT_SIG); r[6] = dt_put(DT_VERSION);
         if (dt_read(r, &t)) bad++;
     }
     printf("false tags in 4M random blocks: %ld\n", bad);

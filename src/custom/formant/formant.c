@@ -120,6 +120,13 @@
  *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
  *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
  *   the tag and runs on its own. In slots 1-3, FOLLOW needs that slot's Mozaic pad OFF.
+ *
+ * SIZE: Choral is the largest effect of the pack (about 31 KB) and a ZDL much over that
+ * freezes the pedal at boot. Every helper is inlined, so each call is a full copy: code
+ * that runs on several paths goes through one shared copy (one loop over the reciprocals,
+ * one triangle/sine for SINE, STEP and SPOT, one pair of ring taps for every voice) and the
+ * screen names are packed words decoded by one loop (fm_word_text). Output is bit-identical
+ * to the version before this slimming (host A/B, 2026-10-06).
  */
 
 #include <stdint.h>
@@ -290,16 +297,18 @@ static inline float tri_bi(float ph)
     return (q < 0.5f) ? (4.0f * q - 1.0f) : (3.0f - 4.0f * q);
 }
 
-/* sin(2*pi*ph) via a triangle and an odd polynomial, error < 1e-4 */
+/* sin(2*pi*ph) from the triangle t = tri_bi(ph) by an odd polynomial, error < 1e-4 */
+SR_ALWAYS_INLINE(sine_tri)
+static inline float sine_tri(float t)
+{
+    float t2 = t * t;
+    return t * (1.5706268f + t2 * (-0.6432292f + t2 * 0.0727102f));
+}
+
 SR_ALWAYS_INLINE(sine_of)
 static inline float sine_of(float ph)
 {
-    float q = ph + 0.25f;
-    float t, t2;
-    if (q >= 1.0f) q -= 1.0f;
-    t  = (q < 0.5f) ? (4.0f * q - 1.0f) : (3.0f - 4.0f * q);
-    t2 = t * t;
-    return t * (1.5706268f + t2 * (-0.6432292f + t2 * 0.0727102f));
+    return sine_tri(tri_bi(ph));
 }
 
 /* ---- vowel table: formant n (0..2) of vowel v (0..4), in Hz ------------- */
@@ -419,19 +428,6 @@ static inline float subdiv_mult(int idx)
     if (idx == 14) return 8.0f;
     if (idx == 15) return 12.0f;
     return 16.0f;
-}
-
-/* 1/x for x in 0.15..0.7 (Newton, no divide) */
-SR_ALWAYS_INLINE(recip_g)
-static inline float recip_g(float g)
-{
-    float y = 2.5f;
-    y = y * (2.0f - g * y);
-    y = y * (2.0f - g * y);
-    y = y * (2.0f - g * y);
-    y = y * (2.0f - g * y);
-    y = y * (2.0f - g * y);
-    return y;
 }
 
 /* 1/x for x in 0.15..0.85 (Newton from 1.5, no divide) */
@@ -589,16 +585,19 @@ static inline void fm_prepare(FmState *s, FmParams *P, const float *k)
        : (P->shape == 2) ? 0.35f : (P->shape == 3 || P->shape == 6) ? 0.50f
        : (P->shape == 4) ? 0.40f : (P->shape == 5) ? 0.45f : 0.30f;
     P->hold    = 1.0f - gl;
-    P->invg    = recip_g(gl);
     P->nsolo   = 1 + (int)(k[7] * 3.99f);
     P->prob    = 0.1f + 0.8f * k[7];
     P->wstep   = 0.2f + 1.8f * k[7];
     P->ripl    = 0.02f + 0.28f * k[7];
     P->swr     = 0.2f + 0.6f * k[7];
-    P->swri    = recip_w(P->swr);
-    P->swfi    = recip_w(1.0f - P->swr);
     P->spw     = 0.2f + 0.5f * k[7];
-    P->spinv   = recip_w(P->spw);
+    {   /* four reciprocals through one copy of recip_w (size: see SIZE in the header) */
+        float rw[4];
+        rw[0] = P->swr; rw[1] = 1.0f - P->swr; rw[2] = P->spw; rw[3] = gl;
+        SR_NOUNROLL
+        for (m = 0; m < 4; m++) rw[m] = recip_w(rw[m]);
+        P->swri = rw[0]; P->swfi = rw[1]; P->spinv = rw[2]; P->invg = rw[3];
+    }
     P->invq    = 0.5f - 0.47f * k[4];                 /* Q 2 .. 33                    */
     P->dryG = 2.0f - 2.0f * (k[5]);            /* Mix: dry full up to 50, then fades out */
     if (P->dryG > 1.0f) P->dryG = 1.0f;
@@ -658,7 +657,7 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
     FmBq c[5][4];
     float g[5][4];
     float sincv[5];
-    float v = 0.0f, t, f, ph, tr, slew, fsc, vc, dr, gph;
+    float v = 0.0f, t, f, ph, tr, slew, fsc, vc, dr, gph, sv;
     int   i, j, m, iv, e;
     float trv[2];
     float dmain = FM_MAIN_DLY, dstep = 0.0f, amain = 1.0f;
@@ -689,7 +688,8 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
         s->vph[m] += (m == 0) ? 8.889e-4f : (m == 1) ? 1.0159e-3f : (m == 2) ? 9.433e-4f : (m == 3) ? 1.0885e-3f : 9.796e-4f;
         if (s->vph[m] >= 1.0f) s->vph[m] -= 1.0f;
         s->drift[m] = s->drift[m] * 0.999f + (rnd01(s) - 0.5f) * 0.01f;
-        vc  = P->vibamt * (14.0f * sine_of(s->vph[m]) + 60.0f * s->drift[m]);
+        sv  = sine_of(s->vph[m]);
+        vc  = P->vibamt * (14.0f * sv + 60.0f * s->drift[m]);
         fsc = P->sscale[m] * (1.0f + 0.0002888f * vc);
         sincv[m] = P->sinc[m] - vc * 5.776e-4f * FM_SHINV;
         if (m == 2) {
@@ -697,7 +697,7 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
              * swings +-13 samples at 5.2 Hz (a +-17 cent vibrato) and wanders a little at
              * random, so its pitch is never exactly the source's pitch. It also breathes a
              * little in loudness, in step with the vibrato, as a real voice does. */
-            dmain = FM_MAIN_DLY + FM_MAIN_VIB * sine_of(s->vph[2]) + FM_MAIN_JIT * s->drift[2];
+            dmain = FM_MAIN_DLY + FM_MAIN_VIB * sv + FM_MAIN_JIT * s->drift[2];   /* sv = sine_of(vph[2]) */
             dstep = (dmain - s->dmain) * 0.125f;
             amain = 1.0f + 0.07f * sine_of(s->vph[2] + 0.2f);
         }
@@ -795,19 +795,24 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
              *  1 STEP  hold a whole vowel, glide to the next: A E I O U O I E A ...
              *  9 SWELL slow rise, quick fall, eased: a crescendo (Param = how long the rise)
              * 10 SPOT  a spotlight: a bump of vowel travels through the voices */
-            float cc = P->vowel, dd = P->depth, q;
+            float cc = P->vowel, dd = P->depth, q = 0.0f, sarg = ph, sn, tb;
+            if (P->shape != 0 && P->shape != 1 && P->shape != 9) {   /* SPOT: its phase */
+                q = ph - 0.2f * (float)m;
+                if (q < 0.0f) q += 1.0f;
+                sarg = q * P->spinv + 0.25f;
+            }
+            tb = tri_bi(sarg);                            /* one copy serves SINE, STEP and SPOT */
+            sn = sine_tri(tb);
             if (P->shape == 0) {
-                v = cc + dd * sine_of(ph);
+                v = cc + dd * sn;
             } else if (P->shape == 1) {
-                v = cc + dd * tri_bi(ph);
+                v = cc + dd * tb;                         /* sarg = ph here */
             } else if (P->shape == 9) {
                 q = (ph < P->swr) ? ph * P->swri : (1.0f - ph) * P->swfi;
                 q = q * q * (3.0f - 2.0f * q);
                 v = cc + dd * (2.0f * q - 1.0f);
             } else {
-                q = ph - 0.2f * (float)m;
-                if (q < 0.0f) q += 1.0f;
-                q = (q < P->spw) ? 0.5f - 0.5f * sine_of(q * P->spinv + 0.25f) : 0.0f;
+                q = (q < P->spw) ? 0.5f - 0.5f * sn : 0.0f;
                 v = (cc + dd > 4.0f) ? cc - dd * q : cc + dd * q;
             }
             if (v < 0.0f) v = 0.0f;
@@ -878,22 +883,27 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
             float *z1 = &s->z1[m * 7], *z2 = &s->z2[m * 7];
             if (m != 2 && (!P->side_on || P->vg[m] <= 0.0f)) continue;
             xin = x0;
-            if (m == 2) {                                     /* vibrato tap (see above) */
-                s->dmain += dstep;
-                xin = ring_tap(s->ring, s->wr, s->dmain);
-            } else if (P->shift_on) {                      /* detuned voice: two crossfaded taps */
-                float p = s->sph[m] + sincv[m], wa, xa, xb, pb, dly;
-                if (p >= 1.0f) p -= 1.0f;
-                if (p < 0.0f) p += 1.0f;
-                s->sph[m] = p;
-                pb = p + 0.5f;
-                if (pb >= 1.0f) pb -= 1.0f;
-                wa = sine_of(p * 0.5f);
-                wa = wa * wa;                                 /* sin^2(pi p); tap b gets 1 - wa */
-                dly = (m == 0) ? 410.0f : (m == 1) ? 230.0f : (m == 3) ? 330.0f : 570.0f;   /* each singer a few ms apart */
-                xa = ring_tap(s->ring, s->wr, p * FM_SHW + 2.0f + dly);
-                xb = ring_tap(s->ring, s->wr, pb * FM_SHW + 2.0f + dly);
-                xin = wa * xa + (1.0f - wa) * xb;
+            if (m == 2 || P->shift_on) {
+                /* two crossfaded taps; the main voice's vibrato tap (see above) is tap a alone,
+                 * weight 1, so one pair of ring_tap copies serves every voice (size) */
+                float wa = 1.0f, da, db;
+                if (m == 2) {
+                    s->dmain += dstep;
+                    da = s->dmain; db = da;
+                } else {                                      /* detuned voice */
+                    float p = s->sph[m] + sincv[m], pb, dly;
+                    if (p >= 1.0f) p -= 1.0f;
+                    if (p < 0.0f) p += 1.0f;
+                    s->sph[m] = p;
+                    pb = p + 0.5f;
+                    if (pb >= 1.0f) pb -= 1.0f;
+                    wa = sine_of(p * 0.5f);
+                    wa = wa * wa;                             /* sin^2(pi p); tap b gets 1 - wa */
+                    dly = (m == 0) ? 410.0f : (m == 1) ? 230.0f : (m == 3) ? 330.0f : 570.0f;   /* each singer a few ms apart */
+                    da = p * FM_SHW + 2.0f + dly;
+                    db = pb * FM_SHW + 2.0f + dly;
+                }
+                xin = wa * ring_tap(s->ring, s->wr, da) + (1.0f - wa) * ring_tap(s->ring, s->wr, db);
             }
             s->nz[m] = s->nz[m] * 1664525u + 1013904223u;       /* breath: noise that follows the input level */
             xin += FM_BREATH * s->env * ((float)(s->nz[m] >> 8) * 1.1920929e-7f - 1.0f);
@@ -940,6 +950,23 @@ static inline void fm_process(FmState *s, const FmParams *P, float *buf, int n)
 }
 
 /* ---- on-screen text (knob index = ZDL_GetLabel_<index>) ------------------ */
+/* Screen names packed 6 bits per letter, first letter in the low bits, 0 = end:
+ * 1..26 = a..z, 27..62 = '#'..'F' (digits, '#', '.', '/'), 63 = the caller's capital.
+ * One small loop instead of a store per letter (see SIZE in the header). */
+SR_ALWAYS_INLINE(fm_word_text)
+static inline int fm_word_text(unsigned int w, char cap, char *out)
+{
+    int len, v;
+    SR_NOUNROLL
+    for (len = 0; w != 0u; len++) {
+        v = (int)(w & 63u);
+        out[len] = (v == 63) ? cap : (char)((v > 26) ? v + 8 : v + 96);
+        w >>= 6;
+    }
+    out[len] = 0;
+    return len;
+}
+
 /* 0 Vowel: five letters that blend from one vowel into the next:
  * AAAAA, AAAAE, AAAEE, AAEEE, AEEEE, EEEEE ... (one letter per 2 tenths) */
 int ZDL_GetLabel_0(unsigned int value, char *out)
@@ -967,58 +994,57 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
  * The main voice is the root. */
 int ZDL_GetLabel_2(unsigned int value, char *out)
 {
-    int n = (int)value, len = 0, t = 0;
+    int n = (int)value, a = 0, t = 0;
     if (n > 83) n = 83;
     if (n == 0) { out[0]='O'; out[1]='F'; out[2]='F'; out[3] = 0; return 3; }
-    if (n <= 42) {                                    /* close detune in semitones: 0.01 .. 1.00 */
-        if (n > 20) n = (n <= 30) ? 20 + 2 * (n - 20) : 40 + 5 * (n - 30);
-        if (n == 100) { out[0]='1'; out[1]='.'; out[2]='0'; out[3]='0'; out[4] = 0; return 4; }
-        while (n >= 10) { n -= 10; t++; }
-        out[0]='0'; out[1]='.'; out[2]=(char)('0' + t); out[3]=(char)('0' + n); out[4] = 0;
-        return 4;
-    }
-    if (n <= 48) {                                    /* wider dissonance: 2.00 .. 7.00 semitones */
-        out[0] = (char)('0' + (n - 41)); out[1]='.'; out[2]='0'; out[3]='0'; out[4] = 0;
+    if (n <= 48) {                    /* semitones a.tn: close detune 0.01 .. 1.00, then 2.00 .. 7.00 */
+        if (n > 42) { a = n - 41; n = 0; }
+        else {
+            n = dn_h(n);
+            if (n == 100) { a = 1; n = 0; }
+            while (n >= 10) { n -= 10; t++; }
+        }
+        out[0] = (char)('0' + a); out[1] = '.'; out[2] = (char)('0' + t); out[3] = (char)('0' + n); out[4] = 0;
         return 4;
     }
     n -= 48;                                          /* chord 1..35 */
-    if (n == 1) { out[0]='m'; out[1]='i'; out[2]='n'; out[3]='o'; out[4]='r'; len = 5; }
-    else if (n == 2) { out[0]='M'; out[1]='a'; out[2]='j'; out[3]='o'; out[4]='r'; len = 5; }
-    else if (n == 3) { out[0]='s'; out[1]='u'; out[2]='s'; out[3]='2'; len = 4; }
-    else if (n == 4) { out[0]='s'; out[1]='u'; out[2]='s'; out[3]='4'; len = 4; }
-    else if (n == 5) { out[0]='m'; out[1]='7'; len = 2; }
-    else if (n == 6) { out[0]='M'; out[1]='7'; len = 2; }
-    else if (n == 7) { out[0]='m'; out[1]='M'; out[2]='a'; out[3]='j'; out[4]='7'; len = 5; }
-    else if (n == 8) { out[0]='M'; out[1]='a'; out[2]='j'; out[3]='7'; len = 4; }
-    else if (n == 9) { out[0]='7'; out[1]='s'; out[2]='u'; out[3]='s'; out[4]='4'; len = 5; }
-    else if (n == 10) { out[0]='d'; out[1]='i'; out[2]='m'; out[3]='7'; len = 4; }
-    else if (n == 11) { out[0]='m'; out[1]='a'; out[2]='d'; out[3]='d'; out[4]='9'; len = 5; }
-    else if (n == 12) { out[0]='M'; out[1]='a'; out[2]='d'; out[3]='d'; out[4]='9'; len = 5; }
-    else if (n == 13) { out[0]='m'; out[1]='6'; len = 2; }
-    else if (n == 14) { out[0]='M'; out[1]='6'; len = 2; }
-    else if (n == 15) { out[0]='m'; out[1]='b'; out[2]='5'; len = 3; }
-    else if (n == 16) { out[0]='M'; out[1]='b'; out[2]='5'; len = 3; }
-    else if (n == 17) { out[0]='m'; out[1]='7'; out[2]='b'; out[3]='5'; len = 4; }
-    else if (n == 18) { out[0]='M'; out[1]='7'; out[2]='b'; out[3]='5'; len = 4; }
-    else if (n == 19) { out[0]='M'; out[1]='#'; out[2]='5'; len = 3; }
-    else if (n == 20) { out[0]='m'; out[1]='7'; out[2]='#'; out[3]='5'; len = 4; }
-    else if (n == 21) { out[0]='M'; out[1]='7'; out[2]='#'; out[3]='5'; len = 4; }
-    else if (n == 22) { out[0]='m'; out[1]='b'; out[2]='6'; len = 3; }
-    else if (n == 23) { out[0]='m'; out[1]='9'; out[2]='n'; out[3]='o'; out[4]='5'; len = 5; }
-    else if (n == 24) { out[0]='M'; out[1]='9'; out[2]='n'; out[3]='o'; out[4]='5'; len = 5; }
-    else if (n == 25) { out[0]='M'; out[1]='9'; out[2]='b'; out[3]='5'; len = 4; }
-    else if (n == 26) { out[0]='M'; out[1]='j'; out[2]='7'; out[3]='b'; out[4]='5'; len = 5; }
-    else if (n == 27) { out[0]='M'; out[1]='7'; out[2]='b'; out[3]='9'; len = 4; }
-    else if (n == 28) { out[0]='s'; out[1]='4'; out[2]='#'; out[3]='5'; len = 4; }
-    else if (n == 29) { out[0]='s'; out[1]='4'; out[2]='a'; out[3]='#'; out[4]='5'; len = 5; }
-    else if (n == 30) { out[0]='M'; out[1]='a'; out[2]='d'; out[3]='b'; out[4]='5'; len = 5; }
-    else if (n == 31) { out[0]='M'; out[1]='6'; out[2]='a'; out[3]='4'; len = 4; }
-    else if (n == 32) { out[0]='M'; out[1]='j'; out[2]='7'; out[3]='/'; out[4]='6'; len = 5; }
-    else if (n == 33) { out[0]='M'; out[1]='j'; out[2]='9'; len = 3; }
-    else if (n == 34) { out[0]='4'; out[1]='t'; out[2]='h'; out[3]='s'; len = 4; }
-    else { out[0]='5'; out[1]='t'; out[2]='h'; out[3]='s'; len = 4; }
-    out[len] = 0;
-    return len;
+    return fm_word_text(
+          (n == 1) ? 0x123CE24Du  /* minor */
+        : (n == 2) ? 0x123CA07Fu  /* Major */
+        : (n == 3) ? 0x00A93553u  /* sus2 */
+        : (n == 4) ? 0x00B13553u  /* sus4 */
+        : (n == 5) ? 0x00000BCDu  /* m7 */
+        : (n == 6) ? 0x00000BFFu  /* M7 */
+        : (n == 7) ? 0x2F281FCDu  /* mMaj7 */
+        : (n == 8) ? 0x00BCA07Fu  /* Maj7 */
+        : (n == 9) ? 0x2C4D54EFu  /* 7sus4 */
+        : (n == 10) ? 0x00BCD244u  /* dim7 */
+        : (n == 11) ? 0x3110404Du  /* madd9 */
+        : (n == 12) ? 0x3110407Fu  /* Madd9 */
+        : (n == 13) ? 0x00000B8Du  /* m6 */
+        : (n == 14) ? 0x00000BBFu  /* M6 */
+        : (n == 15) ? 0x0002D08Du  /* mb5 */
+        : (n == 16) ? 0x0002D0BFu  /* Mb5 */
+        : (n == 17) ? 0x00B42BCDu  /* m7b5 */
+        : (n == 18) ? 0x00B42BFFu  /* M7b5 */
+        : (n == 19) ? 0x0002D6FFu  /* M#5 */
+        : (n == 20) ? 0x00B5BBCDu  /* m7#5 */
+        : (n == 21) ? 0x00B5BBFFu  /* M7#5 */
+        : (n == 22) ? 0x0002E08Du  /* mb6 */
+        : (n == 23) ? 0x2D3CEC4Du  /* m9no5 */
+        : (n == 24) ? 0x2D3CEC7Fu  /* M9no5 */
+        : (n == 25) ? 0x00B42C7Fu  /* M9b5 */
+        : (n == 26) ? 0x2D0AF2BFu  /* Mj7b5 */
+        : (n == 27) ? 0x00C42BFFu  /* M7b9 */
+        : (n == 28) ? 0x00B5BB13u  /* s4#5 */
+        : (n == 29) ? 0x2D6C1B13u  /* s4a#5 */
+        : (n == 30) ? 0x2D08407Fu  /* Madb5 */
+        : (n == 31) ? 0x00B01BBFu  /* M6a4 */
+        : (n == 32) ? 0x2E9EF2BFu  /* Mj7/6 */
+        : (n == 33) ? 0x000312BFu  /* Mj9 */
+        : (n == 34) ? 0x004C852Cu  /* 4ths */
+        : 0x004C852Du  /* 5ths */
+        , 'M', out);
 }
 
 /* 4 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
@@ -1043,47 +1069,47 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
  * 2bar = 32, 1.5b = 24 = 3/4 of 2 bars, 1/2. = 12 = 3/4 of a bar ...) */
 int ZDL_GetLabel_4(unsigned int value, char *out)
 {
-    int n = (int)value, len = 0;
+    int n = (int)value;
     if (n > 16) n = 16;
-    if (n == 0) { out[0]='4'; out[1]='b'; out[2]='a'; out[3]='r'; len = 4; }
-    else if (n == 1) { out[0]='3'; out[1]='b'; out[2]='a'; out[3]='r'; len = 4; }
-    else if (n == 2) { out[0]='2'; out[1]='b'; out[2]='a'; out[3]='r'; len = 4; }
-    else if (n == 3) { out[0]='1'; out[1]='.'; out[2]='5'; out[3]='b'; len = 4; }
-    else if (n == 4) { out[0]='1'; out[1]='b'; out[2]='a'; out[3]='r'; len = 4; }
-    else if (n == 5) { out[0]='1'; out[1]='/'; out[2]='2'; out[3]='.'; len = 4; }
-    else if (n == 6) { out[0]='1'; out[1]='/'; out[2]='2'; len = 3; }
-    else if (n == 7) { out[0]='1'; out[1]='/'; out[2]='4'; out[3]='.'; len = 4; }
-    else if (n == 8) { out[0]='1'; out[1]='/'; out[2]='4'; len = 3; }
-    else if (n == 9) { out[0]='1'; out[1]='/'; out[2]='8'; out[3]='.'; len = 4; }
-    else if (n == 10) { out[0]='1'; out[1]='/'; out[2]='8'; len = 3; }
-    else if (n == 11) { out[0]='1'; out[1]='/'; out[2]='8'; out[3]='T'; len = 4; }
-    else if (n == 12) { out[0]='1'; out[1]='/'; out[2]='1'; out[3]='6'; len = 4; }
-    else if (n == 13) { out[0]='1'; out[1]='/'; out[2]='1'; out[3]='6'; out[4]='T'; len = 5; }
-    else if (n == 14) { out[0]='1'; out[1]='/'; out[2]='3'; out[3]='2'; len = 4; }
-    else if (n == 15) { out[0]='1'; out[1]='/'; out[2]='3'; out[3]='2'; out[4]='T'; len = 5; }
-    else { out[0]='1'; out[1]='/'; out[2]='6'; out[3]='4'; len = 4; }
-    out[len] = 0;
-    return len;
+    return fm_word_text(
+          (n == 0) ? 0x004810ACu  /* 4bar */
+        : (n == 1) ? 0x004810ABu  /* 3bar */
+        : (n == 2) ? 0x004810AAu  /* 2bar */
+        : (n == 3) ? 0x000AD9A9u  /* 1.5b */
+        : (n == 4) ? 0x004810A9u  /* 1bar */
+        : (n == 5) ? 0x009AA9E9u  /* 1/2. */
+        : (n == 6) ? 0x0002A9E9u  /* 1/2 */
+        : (n == 7) ? 0x009AC9E9u  /* 1/4. */
+        : (n == 8) ? 0x0002C9E9u  /* 1/4 */
+        : (n == 9) ? 0x009B09E9u  /* 1/8. */
+        : (n == 10) ? 0x000309E9u  /* 1/8 */
+        : (n == 11) ? 0x00FF09E9u  /* 1/8T */
+        : (n == 12) ? 0x00BA99E9u  /* 1/16 */
+        : (n == 13) ? 0x3FBA99E9u  /* 1/16T */
+        : (n == 14) ? 0x00AAB9E9u  /* 1/32 */
+        : (n == 15) ? 0x3FAAB9E9u  /* 1/32T */
+        : 0x00B2E9E9u  /* 1/64 */
+        , 'T', out);
 }
 
 /* 6 Shape: Sine Step Rand Solo Some Canon Ripl Fan Walk Swell Spot */
 int ZDL_GetLabel_5(unsigned int value, char *out)
 {
-    int n = (int)value, len = 0;
+    int n = (int)value;
     if (n > 10) n = 10;
-    if (n == 0) { out[0]='S'; out[1]='i'; out[2]='n'; out[3]='e'; len = 4; }
-    else if (n == 1) { out[0]='S'; out[1]='t'; out[2]='e'; out[3]='p'; len = 4; }
-    else if (n == 2) { out[0]='R'; out[1]='a'; out[2]='n'; out[3]='d'; len = 4; }
-    else if (n == 3) { out[0]='S'; out[1]='o'; out[2]='l'; out[3]='o'; len = 4; }
-    else if (n == 4) { out[0]='S'; out[1]='o'; out[2]='m'; out[3]='e'; len = 4; }
-    else if (n == 5) { out[0]='C'; out[1]='a'; out[2]='n'; out[3]='o'; out[4]='n'; len = 5; }
-    else if (n == 6) { out[0]='R'; out[1]='i'; out[2]='p'; out[3]='l'; len = 4; }
-    else if (n == 7) { out[0]='F'; out[1]='a'; out[2]='n'; len = 3; }
-    else if (n == 8) { out[0]='W'; out[1]='a'; out[2]='l'; out[3]='k'; len = 4; }
-    else if (n == 9) { out[0]='S'; out[1]='w'; out[2]='e'; out[3]='l'; out[4]='l'; len = 5; }
-    else { out[0]='S'; out[1]='p'; out[2]='o'; out[3]='t'; len = 4; }
-    out[len] = 0;
-    return len;
+    return fm_word_text(
+          (n == 0) ? 0x0014E27Fu  /* Sine */
+        : (n == 1) ? 0x0040553Fu  /* Step */
+        : (n == 2) ? 0x0010E07Fu  /* Rand */
+        : (n == 3) ? 0x003CC3FFu  /* Solo */
+        : (n == 4) ? 0x0014D3FFu  /* Some */
+        : (n == 5) ? 0x0E3CE07Fu  /* Canon */
+        : (n == 6) ? 0x0031027Fu  /* Ripl */
+        : (n == 7) ? 0x0000E07Fu  /* Fan */
+        : (n == 8) ? 0x002CC07Fu  /* Walk */
+        : (n == 9) ? 0x0C3055FFu  /* Swell */
+        : 0x0050F43Fu  /* Spot */
+        , (n == 2 || n == 6) ? 'R' : (n == 5) ? 'C' : (n == 7) ? 'F' : (n == 8) ? 'W' : 'S', out);
 }
 
 

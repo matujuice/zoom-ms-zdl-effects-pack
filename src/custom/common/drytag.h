@@ -48,8 +48,10 @@
 #define DT_DO_PRAGMA(x) _Pragma(#x)
 #define DT_EXPAND_PRAGMA(x) DT_DO_PRAGMA(x)
 #define DT_ALWAYS_INLINE(fn) DT_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
+#define DT_NOUNROLL _Pragma("UNROLL(1)")
 #else
 #define DT_ALWAYS_INLINE(fn)
+#define DT_NOUNROLL
 #endif
 
 #define DT_SIG          0xA5Cu
@@ -107,35 +109,36 @@ static inline void dt_send_init(DtSend *t)
     t->count = 0u; t->age = 0u; t->flipped = 0u;
 }
 
-/* One value of the tag: n in 0..4095 -> -1 when it is not an exact whole number there. */
-DT_ALWAYS_INLINE(dt_get)
-static inline int dt_get(float x)
+/* One value of the tag: n (0..4095) times 2^-24. */
+DT_ALWAYS_INLINE(dt_put)
+static inline float dt_put(unsigned int n)
 {
-    float v = x * DT_UNSCALE;
-    int n;
-    if (!(v >= 0.0f && v <= 4095.0f)) return -1;       /* also rejects NaN */
-    n = (int)v;
-    if ((float)n != v) return -1;
-    return n;
+    return (float)(int)(n & 0xFFFu) * DT_SCALE;
 }
 
 /* Read the tag in r[0..7] (Dry right). Returns 1 and fills *t when valid. */
 DT_ALWAYS_INLINE(dt_read)
 static inline int dt_read(const float *r, DtTag *t)
 {
-    int n0 = dt_get(r[0]), n1 = dt_get(r[1]), n2 = dt_get(r[2]), n3 = dt_get(r[3]);
-    int n4 = dt_get(r[4]), n5 = dt_get(r[5]), n6 = dt_get(r[6]), n7 = dt_get(r[7]);
-    unsigned int sum;
-    if ((n0 | n1 | n2 | n3 | n4 | n5 | n6 | n7) < 0) return 0;
-    if ((unsigned int)n0 != DT_SIG) return 0;
-    if (((unsigned int)n6 & ~DT_LIVE) != DT_VERSION) return 0;
-    sum = (unsigned int)(n0 + n1 + n2 + n3 + n4 + n5 + n6);
-    if (((sum ^ DT_XOR) & 0xFFFu) != (unsigned int)n7) return 0;
-    t->id = (unsigned int)n1;
-    t->count = (unsigned int)n2;
-    t->bpm16 = (unsigned int)n3;
-    t->age = (unsigned int)n4 | ((unsigned int)n5 << 12);
-    t->live = (unsigned int)n6 & DT_LIVE;
+    unsigned int n[8], sum = 0u;
+    float v;
+    int j, k;
+    DT_NOUNROLL
+    for (j = 0; j < 8; j++) {
+        v = r[j] * DT_UNSCALE;
+        if (!(v >= 0.0f && v <= 4095.0f)) return 0;        /* also rejects NaN */
+        k = (int)v;
+        if ((float)k != v) return 0;                       /* not an exact whole number */
+        n[j] = (unsigned int)k;
+        if (j < 7) sum += n[j];
+    }
+    if (n[0] != DT_SIG || (n[6] & ~DT_LIVE) != DT_VERSION) return 0;
+    if (((sum ^ DT_XOR) & 0xFFFu) != n[7]) return 0;
+    t->id = n[1];
+    t->count = n[2];
+    t->bpm16 = n[3];
+    t->age = n[4] | (n[5] << 12);
+    t->live = n[6] & DT_LIVE;
     return 1;
 }
 
@@ -143,18 +146,15 @@ DT_ALWAYS_INLINE(dt_write)
 static inline void dt_write(float *r, unsigned int id, unsigned int count,
                             unsigned int bpm16, unsigned int age, unsigned int live)
 {
-    unsigned int n1 = id & 0xFFFu, n2 = count & 0xFFFu, n3 = bpm16 & 0xFFFu;
-    unsigned int n4 = age & 0xFFFu, n5 = (age >> 12) & 0xFFFu;
-    unsigned int n6 = DT_VERSION | (live ? DT_LIVE : 0u);
-    unsigned int n7 = ((DT_SIG + n1 + n2 + n3 + n4 + n5 + n6) ^ DT_XOR) & 0xFFFu;
-    r[0] = (float)(int)DT_SIG * DT_SCALE;
-    r[1] = (float)(int)n1 * DT_SCALE;
-    r[2] = (float)(int)n2 * DT_SCALE;
-    r[3] = (float)(int)n3 * DT_SCALE;
-    r[4] = (float)(int)n4 * DT_SCALE;
-    r[5] = (float)(int)n5 * DT_SCALE;
-    r[6] = (float)(int)n6 * DT_SCALE;
-    r[7] = (float)(int)n7 * DT_SCALE;
+    unsigned int n[8], sum = 0u;
+    int j;
+    n[0] = DT_SIG; n[1] = id & 0xFFFu; n[2] = count & 0xFFFu; n[3] = bpm16 & 0xFFFu;
+    n[4] = age & 0xFFFu; n[5] = (age >> 12) & 0xFFFu; n[6] = DT_VERSION | (live ? DT_LIVE : 0u);
+    DT_NOUNROLL
+    for (j = 0; j < 7; j++) sum += n[j];
+    n[7] = (sum ^ DT_XOR) & 0xFFFu;
+    DT_NOUNROLL
+    for (j = 0; j < 8; j++) r[j] = dt_put(n[j]);
 }
 
 /* Sender, once per block. r = Dry right (ctx[4] + 8), flip = this block's Tempo twin flip,
@@ -175,19 +175,19 @@ static inline int dt_send(DtSend *t, float *r, int flip, unsigned int bpm16, uns
     return 1;
 }
 
-/* Receiver, once per block, before the effect's own send. Returns 1 on a new bar. */
+/* Receiver, once per block, given this block's read of Dry right (valid = dt_read's result).
+ * Returns 1 on a new bar. */
 DT_ALWAYS_INLINE(dt_recv)
-static inline int dt_recv(DtRecv *v, const float *r, unsigned int id)
+static inline int dt_recv(DtRecv *v, int valid, const DtTag *t, unsigned int id)
 {
-    DtTag t;
     int bar;
-    if (!dt_read(r, &t) || t.id == id) { v->ok = 0u; return 0; }
-    if (t.id == v->id && t.age == v->age) { if (v->quiet < DT_STALE_BLOCKS) v->quiet++; }
+    if (!valid || t->id == id) { v->ok = 0u; return 0; }
+    if (t->id == v->id && t->age == v->age) { if (v->quiet < DT_STALE_BLOCKS) v->quiet++; }
     else v->quiet = 0u;
     v->ok = (v->quiet < DT_STALE_BLOCKS) ? 1u : 0u;
     /* a new bar: the counter moved, or a sender has just gone LIVE with its first flip */
-    bar = (v->ok && ((t.id == v->id && t.count != v->count) || (t.id != v->id && t.live && t.age == 0u))) ? 1 : 0;
-    v->id = t.id; v->count = t.count; v->age = t.age; v->bpm16 = t.bpm16;
+    bar = (v->ok && ((t->id == v->id && t->count != v->count) || (t->id != v->id && t->live && t->age == 0u))) ? 1 : 0;
+    v->id = t->id; v->count = t->count; v->age = t->age; v->bpm16 = t->bpm16;
     return bar;
 }
 
@@ -208,20 +208,25 @@ static inline void dt_sync_init(DtSync *y)
 DT_ALWAYS_INLINE(dt_tempo)
 static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
 {
+    DtSend *tx = &y->tx;
+    DtTag up;
     int tw = (ui > 240.0f) ? 1 : 0;
     int flip = (y->own_twin >= 0 && tw != y->own_twin);
-    int bar = 0, follow = (ui <= DT_FOLLOW_MAX) ? 1 : 0;
+    int follow = (ui <= DT_FOLLOW_MAX) ? 1 : 0;
+    int valid = 0, bar;
     float bpm;
     y->own_twin = tw;
-    if (r) bar = dt_recv(&y->rx, r, id);
-    if (follow) {                                            /* FOLLOW */
-        bpm = (float)(int)((y->rx.bpm16 + 8u) >> 4);         /* last BPM heard, 120 before any */
-    } else {
-        bpm = (ui > 240.0f) ? ui - 201.0f : ui;
-    }
+    if (r) valid = dt_read(r, &up);                         /* one read serves both sides */
+    bar = dt_recv(&y->rx, valid, &up, id);
+    if (follow) bpm = (float)(int)((y->rx.bpm16 + 8u) >> 4); /* last BPM heard, 120 before any */
+    else bpm = (ui > 240.0f) ? ui - 201.0f : ui;
     if (bpm < 40.0f) bpm = 40.0f;
     if (bpm > 240.0f) bpm = 240.0f;
-    if (r) dt_send(&y->tx, r, flip, (unsigned int)(int)(bpm * 16.0f), id, 0);
+    /* send while LIVE (Mozaic flips this knob), unless a LIVE tag from another slot is there */
+    if (flip) { tx->count = (tx->count + 1u) & 0xFFFu; tx->age = 0u; tx->flipped = 1u; }
+    else if (tx->age < DT_AGE_MAX) tx->age++;
+    if (r && tx->flipped && tx->age < DT_LIVE_BLOCKS && !(valid && up.id != id && up.live))
+        dt_write(r, id, tx->count, (unsigned int)(int)(bpm * 16.0f), tx->age, 1u);
     if (flip || (bar && follow)) y->vtwin ^= 1u;           /* bars count only on FOLLOW */
     return y->vtwin ? bpm + 201.0f : bpm;
 }
