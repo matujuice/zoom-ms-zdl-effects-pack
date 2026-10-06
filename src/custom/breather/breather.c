@@ -66,13 +66,21 @@
  *                   +1/4 at 100, the number elsewhere
  *   5 Curve 0..100  length of the move, 5 %..100 % of the Div
  *   6 Verb  0..100  reverb level
- *   7 Tempo 0..441  BPM 40..240 (below 40 reads as 40); 241..441 = the twin copy
+ *   7 Tempo 0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 = the twin copy
  *   8 Size  0..100  reverb length, short room to long wash (bigger = darker)
  *
  * TESTED: host tests only (tests/breather_*.c). Not heard on the pedal, CPU never measured.
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. In any slot it reads a tag
+ *   from earlier slots, and each new bar there restarts it as a twin flip of its own knob
+ *   would (ignored while it is getting flips itself). Tempo 0..39 = FOLLOW (shown FOLLW):
+ *   the BPM comes from the tag too, 120 when there is none.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define PU_DO_PRAGMA(x) _Pragma(#x)
@@ -84,7 +92,7 @@
 #define PU_CODE_SECTION(fn)
 #endif
 
-#define PU_MAGIC        0x50553031u          /* "PU01" */
+#define PU_MAGIC        0x50553032u          /* "PU02" */
 #define PU_BPM_MIN      40.0f
 #define PU_BPM_MAX      240.0f
 #define PU_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
@@ -125,6 +133,7 @@ typedef struct {
     unsigned int since_flip; /* blocks since the last twin flip (saturates)  */
     unsigned int was_off;  /* set while the footswitch is off                */
     int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h)     */
     float rev[PU_REV_LEN]; /* reverb delay lines                             */
 } PuState;
 
@@ -215,6 +224,7 @@ static inline void pu_init(PuState *s)
     s->clear_pos = 0;
     s->since_flip = PU_HOST_BLOCKS;          /* no host seen yet */
     s->was_off = 0u; s->twin = -1;
+    dt_sync_init(&s->sync);
     s->magic = PU_MAGIC;
 }
 
@@ -385,6 +395,7 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
+    if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
     n = (int)pu_tempo_bpm((float)(int)value);
     while (n >= 100) { n -= 100; h++; }
@@ -411,6 +422,7 @@ PU_CODE_SECTION(BREATHER_AUDIO_FUNC)
 void BREATHER_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -450,8 +462,10 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     u[7] = pu_tempo_ui(params[BREATHER_TEMPO_SLOT], (float)BREATHER_TEMPO_UI_DEFAULT);
     u[8] = pu_ui(params[BREATHER_SIZE_SLOT],  (float)BREATHER_SIZE_UI_DEFAULT,  100.0f);
 
-    pu_prepare(&P, u);
     if (s->magic != PU_MAGIC) pu_init(s);
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
+    pu_prepare(&P, u);
     flip = pu_twin_flip(s, u[7]);
     if (flip) { s->bp = 0.0f; s->since_flip = 0u; }  /* sync reset: beat 1 now */
     else if (s->since_flip < PU_HOST_BLOCKS) s->since_flip++;

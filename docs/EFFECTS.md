@@ -120,7 +120,7 @@ On every beat (or every Div) something moves: your sound, the built-in reverb, b
 | Shift | 0..100 % of a beat | Moves the whole pump later: +1/16 at 25, +1/8 (the offbeat) at 50, +3/16 at 75, +1/4 at 100. Small values nudge it onto the body of the kick. At 50 the sound is loudest on the kick and dips in between. |
 | Curve | 0..100 | How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays cut, how long RISE grows. |
 | Verb | 0..100 | Reverb level. 0 = no reverb, a pure pump. |
-| Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. FOLLW (the bottom of the knob) takes the BPM from the bar sync sent by an effect in an earlier slot (120 without one). On any setting, bars sent from an earlier slot restart it on beat 1. |
 | Size | 0..100 | Reverb length, from a short room to a long wash. Bigger is also darker. |
 
 No Mix knob: Depth and Verb already set how much you hear. Out of the box it is a sidechain pump on your sound and the reverb together (BOTH + DUCK, Depth 80, 1/4, Verb 35). Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
