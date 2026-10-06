@@ -67,11 +67,11 @@ int main(void)
     reset(); knobs(0, 0, 70, 2, 0, 50, 0, 50); g = gain(4);
     CHECK(fabsf(lo(g, 2.0f, 2.1f) - 0.3f) < 0.06f, "DUCK depth 70 bottom %.3f, want 0.3", lo(g, 2.0f, 2.1f));
 
-    /* GATE: open just after the beat, closed after Curve */
+    /* GATE: cut just after the beat, open after Curve */
     reset(); knobs(0, 1, 100, 2, 0, 30, 0, 50); g = gain(4);
     printf("GATE: +0.05 %.3f  +0.25 %.3f  +0.5 %.3f  +0.95 %.3f\n", at(g, 1.05f), at(g, 1.25f), at(g, 1.5f), at(g, 1.95f));
-    CHECK(at(g, 1.05f) > 0.99f && at(g, 1.25f) > 0.99f, "GATE not open after the beat");
-    CHECK(at(g, 1.5f) < 0.01f && at(g, 1.95f) < 0.01f, "GATE not closed after Curve");
+    CHECK(at(g, 1.05f) < 0.01f && at(g, 1.25f) < 0.01f, "GATE not cut after the beat");
+    CHECK(at(g, 1.5f) > 0.99f && at(g, 1.95f) > 0.99f, "GATE not open after Curve");
 
     /* RISE: quiet after the beat, loud just before the next */
     reset(); knobs(0, 2, 100, 2, 0, 50, 0, 50); g = gain(4);

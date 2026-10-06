@@ -10,11 +10,11 @@
  *     VERB  only the reverb output; your sound passes untouched
  *     BOTH  your sound and the reverb output together
  *     SEND  what goes into the reverb; your sound is untouched and the tail rings freely
- *           (SEND + GATE = a dub throw: only the hits feed the reverb)
+ *           (SEND + GATE = the hits stay dry, only the gaps feed the reverb)
  *
  *   Shape (how it moves, once per Div, starting on the downbeat)
  *     DUCK  drops on the beat by Depth, recovers over Curve (classic sidechain pump)
- *     GATE  opens on the beat, stays open for Curve, then drops by Depth (a chop)
+ *     GATE  cuts by Depth on the beat, stays cut for Curve, then opens (a hard duck)
  *     RISE  quiet after the beat, grows over Curve into the next beat, drops on it
  *
  * Depth is how far the level moves (0 = nothing, 100 = to silence). Curve is the length
@@ -265,11 +265,11 @@ static inline void pu_prepare(PuParams *P, const float *u)
 PU_ALWAYS_INLINE(pu_env)
 static inline float pu_env(const PuParams *P, float p)
 {
-    float eD = 1.0f, eG = P->flo, eR = P->flo, t;
+    float eD = 1.0f, eG = 1.0f, eR = P->flo, t;
     if (p < P->L) {
         t = 1.0f - p * P->invL;                      /* 1 at the beat .. 0 at the end of Curve */
         eD = 1.0f - P->depth * t * t;
-        eG = 1.0f;
+        eG = P->flo;
     }
     t = p - (1.0f - P->L);
     if (t > 0.0f) {

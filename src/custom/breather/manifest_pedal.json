@@ -1,6 +1,6 @@
 {
   "effect_name": "Breather",
-  "comment": "Breather - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (opens on the beat, then cuts) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
+  "comment": "Breather - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (cut on the beat, then opens) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 493,
@@ -12,13 +12,13 @@
       "name": "Targt",
       "max": 3,
       "default": 2,
-      "comment": "What moves on the beat. DRY = your sound (the reverb, if Verb is up, stays steady). VERB = only the reverb; your sound passes untouched. BOTH = your sound and the reverb together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely (SEND + GATE = a dub throw, only the hits feed the reverb). Default BOTH."
+      "comment": "What moves on the beat. DRY = your sound (the reverb, if Verb is up, stays steady). VERB = only the reverb; your sound passes untouched. BOTH = your sound and the reverb together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely (SEND + GATE = the hits stay dry and only the gaps feed the reverb). Default BOTH."
     },
     {
       "name": "Shape",
       "max": 2,
       "default": 0,
-      "comment": "How it moves, once per Div, starting on the downbeat. DUCK = drops on the beat and comes back over Curve (classic sidechain pump). GATE = opens on the beat, stays open for Curve, then drops (a chop; VERB + GATE = gated reverb). RISE = quiet after the beat, grows over Curve into the next beat and drops on it. Default DUCK."
+      "comment": "How it moves, once per Div, starting on the downbeat. DUCK = drops on the beat and comes back over Curve (classic sidechain pump). GATE = cuts on the beat, stays cut for Curve, then opens (a hard duck; with Shift 50 it opens on the beat and cuts on the offbeat, a chop). RISE = quiet after the beat, grows over Curve into the next beat and drops on it. Default DUCK."
     },
     {
       "name": "Depth",
@@ -42,7 +42,7 @@
       "name": "Curve",
       "max": 100,
       "default": 50,
-      "comment": "How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays open, how long RISE grows. 0 = snappy, 100 = over the whole Div. Default 50."
+      "comment": "How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays cut, how long RISE grows. 0 = snappy, 100 = over the whole Div. Default 50."
     },
     {
       "name": "Verb",
