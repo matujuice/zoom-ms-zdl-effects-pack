@@ -75,6 +75,16 @@
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no switch,
  * no float or integer division, no libm, no double, every helper forced inline.
  *
+ * SIZE. The first build of the seven models came to 36 KB and the pedal hung on
+ * the boot screen; it booted again as soon as the file was removed (Luca,
+ * 2026-10-06). Choral, 30.9 KB, is the largest file that boots. So the code is
+ * written to stay small as well as fast: the pedal's seven models share one copy
+ * of every expensive helper rather than inlining their own. The corner
+ * frequencies are kept in Hz through ab_prepare and converted by one group of
+ * ab_pole calls at the end; the two 2^x each model needs are computed once
+ * before the model branches; the three EQ bands run through one loop; and the
+ * nine knobs are read in one loop over consecutive slots. See docs/SAFE-DSP-RULES.md.
+ *
  * KNOBS (screen values)
  *   0 Model 0..6    TS9 / DIST+ / DS-1 / RAT2 / MUFF / SFUZZ / MT-2, default RAT2
  *   1 Drive 0..100  the pedal's own gain pot (Drive, Distortion, Dist, Sustain,
@@ -95,9 +105,11 @@
 #define AB_EXPAND_PRAGMA(x) AB_DO_PRAGMA(x)
 #define AB_ALWAYS_INLINE(fn) AB_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define AB_CODE_SECTION(fn) AB_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define AB_NO_UNROLL AB_DO_PRAGMA(UNROLL(1))
 #else
 #define AB_ALWAYS_INLINE(fn)
 #define AB_CODE_SECTION(fn)
+#define AB_NO_UNROLL
 #endif
 
 #define AB_MAGIC        0x41423031u          /* "AB01" */
@@ -197,7 +209,7 @@ typedef struct {
     float u0, u1, u2, u3, u4;  /* Muff: Sustain stage biquad                    */
     float v0, v1, v2, v3, v4;  /* Muff: tone stack biquad                       */
     float aT, aU, wl, wh, sk;  /* tone                                          */
-    float l0, l1, l2, l3, l4, m0, m1, m2, m3, m4, n0, n1, n2, n3, n4;  /* EQ    */
+    float eq[15];              /* EQ biquads: low, mid, high; b0 b1 b2 a1 a2 each */
     float wetScale;            /* makeup x Level                                */
     float margin;              /* ZNR threshold / noise floor                   */
     float dryG, wetG;
@@ -211,7 +223,8 @@ static inline float ab_clamp01(float x)
     return x;
 }
 
-/* 1 / sqrt(x) for x > 0, no libm, no divide: exponent trick + three Newton steps. */
+/* 1 / sqrt(x) for x > 0, no libm, no divide: exponent trick + three Newton steps
+ * (filter coefficients need them: a shelf's DC gain hangs on tiny differences). */
 AB_ALWAYS_INLINE(ab_rsqrt)
 static inline float ab_rsqrt(float x)
 {
@@ -226,36 +239,52 @@ static inline float ab_rsqrt(float x)
     return y;
 }
 
-/* 1 / x for x > 0, as rsqrt squared (no divide). */
+/* The same with two steps (error < 5e-6), for the clipper curves in the sample
+ * loop: shorter code, and the shape error is far below hearing. */
+AB_ALWAYS_INLINE(ab_rsqrt2)
+static inline float ab_rsqrt2(float x)
+{
+    union { float f; unsigned int u; } c;
+    float y, h = 0.5f * x;
+    c.f = x;
+    c.u = 0x5f3759dfu - (c.u >> 1);
+    y = c.f;
+    y = y * (1.5f - h * y * y);
+    y = y * (1.5f - h * y * y);
+    return y;
+}
+
+/* 1 / x for x > 0, no divide: exponent trick + three Newton steps (rel. error
+ * < 2e-7). Shorter than squaring an rsqrt, and this file is called 15 times. */
 AB_ALWAYS_INLINE(ab_inv)
 static inline float ab_inv(float x)
 {
-    float r = ab_rsqrt(x);
-    return r * r;
+    union { float f; unsigned int u; } c;
+    float y;
+    c.f = x;
+    c.u = 0x7ef311c3u - c.u;
+    y = c.f;
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    y = y * (2.0f - x * y);
+    return y;
 }
 
-/* 2^x for x in 0..10: whole octaves by doubling, the fraction by a Taylor series
- * of e^(f ln2) (error < 2e-4). */
+/* 2^x for x in 0..10: whole octaves straight into the exponent field, the
+ * fraction by a Taylor series of e^(f ln2) (error < 2e-4). */
 AB_ALWAYS_INLINE(ab_exp2)
 static inline float ab_exp2(float x)
 {
+    union { float f; unsigned int u; } c;
     int n;
-    float f, e, r;
+    float f, e;
     if (!(x > 0.0f)) x = 0.0f;
     if (x > 10.0f) x = 10.0f;
     n = (int)x;
     f = x - (float)n;
     e = f * 0.69314718f;
-    r = 1.0f + e * (1.0f + e * (0.5f + e * (0.16666667f + e * (0.041666668f + e * 0.008333334f))));
-    for (; n > 0; n--) r += r;
-    return r;
-}
-
-/* Audio-taper pot, 0..1 -> 0..1: (10^(2 d) - 1) / 99 */
-AB_ALWAYS_INLINE(ab_audio)
-static inline float ab_audio(float d)
-{
-    return (ab_exp2(6.643856f * d) - 1.0f) * 0.01010101f;
+    c.u = ((unsigned int)(n + 127)) << 23;       /* 2^n, exponent field */
+    return c.f * (1.0f + e * (1.0f + e * (0.5f + e * (0.16666667f + e * (0.041666668f + e * 0.008333334f)))));
 }
 
 /* One-pole coefficient 1 - e^(-2 pi fc / fs), fc up to 16 kHz (clamped): e^(-w/8)
@@ -289,8 +318,8 @@ AB_ALWAYS_INLINE(ab_clip)
 static inline float ab_clip(float v, float c, float ic)
 {
     float u = v * ic, u2 = u * u, r;
-    r = ab_rsqrt(1.0f + u2 * u2);                /* (1 + u^4)^(-1/2) */
-    return c * u * (r * ab_rsqrt(r));            /* x sqrt(r)        */
+    r = ab_rsqrt2(1.0f + u2 * u2);               /* (1 + u^4)^(-1/2) */
+    return c * u * (r * ab_rsqrt2(r));           /* x sqrt(r)        */
 }
 
 /* Clipper curve: y = c S(g v / c) + m v / (1 + h |v|), held inside +-cap. */
@@ -298,7 +327,8 @@ AB_ALWAYS_INLINE(ab_diode)
 static inline float ab_diode(float v, const AbParams *P)
 {
     float av = (v < 0.0f) ? -v : v, y;
-    y = ab_clip(P->cg * v, P->c, P->ic) + P->cm * v * ab_inv(1.0f + P->ch * av);
+    float r = ab_rsqrt2(1.0f + P->ch * av);
+    y = ab_clip(P->cg * v, P->c, P->ic) + P->cm * v * (r * r);
     if (y > P->cap) y = P->cap;
     if (y < -P->cap) y = -P->cap;
     return y;
@@ -327,8 +357,8 @@ static inline float ab_bq(float x, float *z1, float *z2,
 AB_ALWAYS_INLINE(ab_eqA)
 static inline float ab_eqA(float db)
 {
-    if (db >= 0.0f) return ab_exp2(db * 0.08304820f);
-    return ab_inv(ab_exp2(-db * 0.08304820f));
+    float A = ab_exp2(((db < 0.0f) ? -db : db) * 0.08304820f);
+    return (db < 0.0f) ? ab_inv(A) : A;
 }
 
 /* RBJ shelf (slope 1): hi = 0 low shelf, 1 high shelf; writes b0 b1 b2 a1 a2 / a0 */
@@ -370,53 +400,66 @@ static inline void ab_init(AbState *s, const AbParams *P)
 AB_ALWAYS_INLINE(ab_prepare)
 static inline void ab_prepare(AbParams *P, const float *k)
 {
-    float d = k[1], t = k[2], gpk, ceil, trim, fl, rd;
+    float d = k[1], t = k[2], gpk, ceil, trim, fl, rd, ea = 0.0f, eb = 0.0f, e1, e2, au, gdb;
+    int b;
     int m = (int)(k[0] * 6.0f + 0.5f);
     P->model = m;
+    /* a1 a2 aF aC aT aU hold corner frequencies (Hz) until the end, where one
+     * ab_pole each turns them into coefficients (one copy of the code, not one
+     * per model: the pedal file must stay small). aC 0 = no RC (coefficient 1). */
     P->pre = 1.0f; P->gA = 0.0f; P->gB = 0.0f; P->rail = 4.5f;
-    P->a1 = 0.1f; P->a2 = 0.1f; P->aF = 1.0f; P->aC = 1.0f; P->aU = 0.1f;
+    P->a1 = 700.0f; P->a2 = 700.0f; P->aF = AB_FMAX; P->aC = 0.0f; P->aT = 700.0f; P->aU = 700.0f;
     P->wl = 1.0f; P->wh = 0.0f; P->sk = 0.0f;
     P->u0 = 0.0f; P->u1 = 0.0f; P->u2 = 0.0f; P->u3 = 0.0f; P->u4 = 0.0f;
     P->v0 = 0.0f; P->v1 = 0.0f; P->v2 = 0.0f; P->v3 = 0.0f; P->v4 = 0.0f;
+    /* every 2^x a model needs comes from these two ab_exp2 (one copy each) */
+    gdb = 2.0f * t - 1.0f; gdb = gdb * gdb * gdb;               /* MT-2 High: +-20 dB, cubic */
+    if (m == M_TS9 || m == M_RAT) ea = 6.643856f * d;           /* audio-taper Drive */
+    if (m == M_DIST) { ea = 6.643856f * (1.0f - d); eb = 4.321928f * t; }
+    if (m == M_RAT) eb = 3.321928f * (1.0f - t);
+    if (m == M_SFUZZ) ea = 5.0f * d;
+    if (m >= M_MT2) { ea = 4.328085f * d; eb = 3.321928f * ((gdb < 0.0f) ? -gdb : gdb); }
+    e1 = ab_exp2(ea); e2 = ab_exp2(eb);
+    au = (e1 - 1.0f) * 0.01010101f;                             /* audio taper (10^(2x) - 1) / 99 */
     if (m == M_TS9) {
-        rd = 51000.0f + 500000.0f * ab_audio(d);  /* 51k + Drive (500k A) */
-        P->a1 = ab_pole(720.5f);                 /* 4.7k / 0.047u     */
+        rd = 51000.0f + 500000.0f * au;          /* 51k + Drive (500k A) */
+        P->a1 = 720.5f;                 /* 4.7k / 0.047u     */
         P->gA = rd * 0.00021276596f;             /* Drive / 4.7k      */
-        P->aF = ab_pole(3120700000.0f * ab_inv(rd));   /* 1 / (2 pi Drive 51p) */
+        P->aF = 3120700000.0f * ab_inv(rd);   /* 1 / (2 pi Drive 51p) */
         P->c = 0.32379f; P->cg = 0.96065f; P->cm = 0.02424f; P->ch = 0.13193f; P->cap = 0.501f;
-        P->aT = ab_pole(723.0f);                 /* 1k / 0.22u        */
+        P->aT = 723.0f;                 /* 1k / 0.22u        */
         P->sk = 0.1f + 1.3f * t;                 /* treble control    */
         gpk = 1.0f + 0.7f * P->gA; ceil = 0.7f; trim = 2.0f;
     } else if (m == M_DIST) {
-        float rg = 4700.0f + 1000000.0f * ab_audio(1.0f - d);   /* Dist pot (1M) + 4.7k */
+        float rg = 4700.0f + 1000000.0f * au;    /* Dist pot (1M, audio, reversed) + 4.7k */
         float ir = ab_inv(rg);
-        P->a1 = ab_pole(3386275.0f * ir);        /* 1 / (2 pi Rg 0.047u) */
+        P->a1 = 3386275.0f * ir;        /* 1 / (2 pi Rg 0.047u) */
         P->gA = 1000000.0f * ir;                 /* 1M / Rg           */
-        P->aF = ab_pole(1000000.0f * ab_inv(1.0f + P->gA));   /* 741: 1 MHz / gain */
+        P->aF = 1000000.0f * ab_inv(1.0f + P->gA);   /* 741: 1 MHz / gain */
         P->rail = 3.5f;
-        P->aC = ab_pole(15915.0f);               /* 10k / 1n          */
+        P->aC = 15915.0f;               /* 10k / 1n          */
         P->c = 0.09437f; P->cg = 0.55241f; P->cm = 0.22582f; P->ch = 1.27299f; P->cap = 0.25f;
-        P->aT = ab_pole(800.0f * ab_exp2(4.321928f * t));      /* 800 Hz .. 16 kHz */
+        P->aT = 800.0f * e2;      /* 800 Hz .. 16 kHz */
         gpk = 1.0f + P->gA; ceil = 0.24f; trim = 1.0f;
     } else if (m == M_DS1) {                     /* DS-1: TD-3 = DS-1 */
         rd = 100000.0f * d;                      /* Dist, 100k linear */
         P->pre = 56.0f;                          /* booster, 35 dB    */
-        P->a1 = ab_pole(33.0f);                  /* booster's input high-pass */
-        P->a2 = ab_pole(72.0f);                  /* 4.7k / 0.47u leg  */
+        P->a1 = 33.0f;                  /* booster's input high-pass */
+        P->a2 = 72.0f;                  /* 4.7k / 0.47u leg  */
         P->gA = rd * 0.00021276596f;             /* Dist / 4.7k       */
         fl = AB_FMAX;
         if (rd > 1000.0f) fl = 1591549431.0f * ab_inv(rd);   /* 1 / (2 pi Dist 100p) */
-        P->aF = ab_pole(fl);
-        P->aC = ab_pole(7234.0f);                /* 2.2k / 0.01u      */
+        P->aF = fl;
+        P->aC = 7234.0f;                /* 2.2k / 0.01u      */
         P->c = 0.428f; P->cg = 0.8931f; P->cm = 0.1514f; P->ch = 0.6116f; P->cap = 1.0f;
-        P->aT = ab_pole(234.0f);                 /* tone: LP 6.8k / 0.1u */
-        P->aU = ab_pole(1063.0f);                /*       HP 1.06 kHz    */
+        P->aT = 234.0f;                 /* tone: LP 6.8k / 0.1u */
+        P->aU = 1063.0f;                /*       HP 1.06 kHz    */
         P->wl = 1.0f - t; P->wh = t;
         gpk = 56.0f * (1.0f + P->gA); ceil = 0.6f; trim = 2.8f;
     } else if (m == M_RAT) {                     /* RAT 2 */
-        rd = 100000.0f * ab_audio(d);            /* Dist, 100k audio  */
-        P->a1 = ab_pole(60.5f);                  /* 560R / 4.7u  */
-        P->a2 = ab_pole(1539.0f);                /* 47R / 2.2u   */
+        rd = 100000.0f * au;                     /* Dist, 100k audio  */
+        P->a1 = 60.5f;                  /* 560R / 4.7u  */
+        P->a2 = 1539.0f;                /* 47R / 2.2u   */
         P->gA = rd * 0.0017857143f;              /* Dist / 560   */
         P->gB = rd * 0.021276596f;               /* Dist / 47    */
         fl = 1000000.0f * ab_inv(1.0f + rd * 0.023049645f);  /* LM308: 1 MHz / (1 + Dist / (47 || 560)) */
@@ -424,11 +467,11 @@ static inline void ab_prepare(AbParams *P, const float *k)
             float fc = 1591549431.0f * ab_inv(rd);           /* 100p across Dist */
             if (fc < fl) fl = fc;
         }
-        P->aF = ab_pole(fl);
+        P->aF = fl;
         P->c = 0.6076f; P->cg = 0.9516f; P->cm = 0.0935f; P->ch = 0.3322f; P->cap = 1.0f;
         {   /* Filter: 1.5k + 100k audio pot into 3.3n, Tone 100 = pot at 0 */
-            float rt = 11111.11f * (ab_exp2(3.321928f * (1.0f - t)) - 1.0f);   /* 100k (10^(1-t) - 1) / 9 */
-            P->aT = ab_pole(48228770.0f * ab_inv(1500.0f + rt));
+            float rt = 11111.11f * (e2 - 1.0f);   /* 100k (10^(1-t) - 1) / 9 */
+            P->aT = 48228770.0f * ab_inv(1500.0f + rt);
         }
         gpk = 1.0f + P->gA + 0.5f * P->gB; ceil = 0.75f; trim = 1.0f;
     } else if (m == M_MUFF) {                    /* Big Muff Pi */
@@ -453,47 +496,53 @@ static inline void ab_prepare(AbParams *P, const float *k)
         }
         ceil = 0.795f; trim = 6.7f;
     } else if (m == M_SFUZZ) {                   /* Univox Super-Fuzz */
-        P->pre = 10.0f * ab_exp2(5.0f * d);      /* preamp, Expander: 10x .. 320x */
-        P->a1 = ab_pole(80.0f);                  /* input coupling    */
-        P->a2 = ab_pole(50.0f);                  /* doubler's coupling cap */
+        P->pre = 10.0f * e1;      /* preamp, Expander: 10x .. 320x */
+        P->a1 = 80.0f;                  /* input coupling    */
+        P->a2 = 50.0f;                  /* doubler's coupling cap */
         P->c = 0.09437f; P->cg = 0.55241f; P->cm = 0.22582f; P->ch = 1.27299f; P->cap = 0.25f;
         P->sk = SF_K * (1.0f - t);               /* Tone switch, made continuous */
         gpk = 100.0f; ceil = 0.24f; trim = 1.0f;
     } else {                                     /* MT-2 */
-        float D = (ab_exp2(4.328085f * d) - 1.0f) * 0.052396f;   /* guitarix LogPot(3, d) */
-        float G = 1.21f + 53.8f * D, gdb, g;
+        float D = (e1 - 1.0f) * 0.052396f;      /* guitarix LogPot(3, d) */
+        float G = 1.21f + 53.8f * D, ig;
         P->pre = G;
-        P->a1 = ab_pole(629.2f);                 /* Dist stage treble shelf */
+        P->a1 = 629.2f;                 /* Dist stage treble shelf */
         fl = AB_FMAX;
         if (D > 0.3f) fl = 4800.0f * ab_inv(D);  /* .. and its closing low-pass */
-        P->aF = ab_pole(fl);
+        P->aF = fl;
         P->c = 0.0621f; P->cg = 100.0f; P->cm = 7.8705f; P->ch = 14.2186f; P->cap = 0.5745f;
-        gdb = 2.0f * t - 1.0f; gdb = gdb * gdb * gdb;            /* High: +-20 dB, cubic */
-        if (gdb >= 0.0f) {
-            g = ab_exp2(3.321928f * gdb);                        /* 10^(gdb) */
-            P->sk = g - 1.0f; P->aT = ab_pole(7200.0f);
+        if (gdb >= 0.0f) {                                       /* e2 = 10^|gdb| */
+            P->sk = e2 - 1.0f; P->aT = 7200.0f;
         } else {
-            g = ab_exp2(-3.321928f * gdb);
-            P->sk = ab_inv(g) - 1.0f; P->aT = ab_pole(7200.0f * ab_inv(g));
+            ig = ab_inv(e2);
+            P->sk = ig - 1.0f; P->aT = 7200.0f * ig;
         }
         gpk = 18.0f * G; ceil = 0.5745f; trim = 0.62f;
     }
+    P->a1 = ab_pole(P->a1); P->a2 = ab_pole(P->a2); P->aF = ab_pole(P->aF);
+    P->aC = (P->aC > 0.0f) ? ab_pole(P->aC) : 1.0f;
+    P->aT = ab_pole(P->aT); P->aU = ab_pole(P->aU);
     P->ic = ab_inv(P->c);
     gpk *= AB_REF;
     if (gpk > ceil) gpk = ceil;                  /* expected clip peak */
     P->wetScale = AB_REF * ab_inv(gpk) * (k[7] + k[7]) * trim;
-    /* EQ: knob 0..24 -> -12..+12 dB */
-    ab_shelf(ab_eqA(24.0f * k[3] - 12.0f), EQ_LO_C, EQ_LO_AL, 0, &P->l0, &P->l1, &P->l2, &P->l3, &P->l4);
-    {
-        float A = ab_eqA(24.0f * k[4] - 12.0f), iA = ab_inv(A), ia0;
-        ia0 = ab_inv(1.0f + EQ_MI_AL * iA);
-        P->m0 = (1.0f + EQ_MI_AL * A) * ia0;
-        P->m1 = -2.0f * EQ_MI_C * ia0;
-        P->m2 = (1.0f - EQ_MI_AL * A) * ia0;
-        P->m3 = P->m1;
-        P->m4 = (1.0f - EQ_MI_AL * iA) * ia0;
+    /* EQ: knob 0..24 -> -12..+12 dB. One loop over the bands keeps one copy of
+     * the coefficient code (0 low shelf, 1 mid peak, 2 high shelf). */
+    AB_NO_UNROLL
+    for (b = 0; b < 3; b++) {
+        float A = ab_eqA(24.0f * k[3 + b] - 12.0f), *q = P->eq + 5 * b;
+        if (b == 1) {
+            float iA = ab_inv(A), ia0 = ab_inv(1.0f + EQ_MI_AL * iA);
+            q[0] = (1.0f + EQ_MI_AL * A) * ia0;
+            q[1] = -2.0f * EQ_MI_C * ia0;
+            q[2] = (1.0f - EQ_MI_AL * A) * ia0;
+            q[3] = q[1];
+            q[4] = (1.0f - EQ_MI_AL * iA) * ia0;
+        } else {
+            ab_shelf(A, b ? EQ_HI_C : EQ_LO_C, b ? EQ_HI_AL : EQ_LO_AL, b,
+                     q, q + 1, q + 2, q + 3, q + 4);
+        }
     }
-    ab_shelf(ab_eqA(24.0f * k[5] - 12.0f), EQ_HI_C, EQ_HI_AL, 1, &P->n0, &P->n1, &P->n2, &P->n3, &P->n4);
     P->znr = (k[6] > 0.0f);
     P->margin = ab_exp2(1.0f + 3.0f * k[6]);
     P->dryG = 2.0f - 2.0f * k[8]; if (P->dryG > 1.0f) P->dryG = 1.0f;
@@ -515,25 +564,24 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
     invThr = ab_inv(nf * P->margin);
 
     for (i = 0; i < n; i++) {
-        float x = buf[i], ax = (x < 0.0f) ? -x : x, v, g, y, d;
+        float x = buf[i], ax = (x < 0.0f) ? -x : x, v, g, y, d, z, add = 0.0f;
         /* ZNR detector on the clean input */
         env *= AB_ENV_REL;
         if (ax > env) env = ax;
         if (m == M_TS9) {                                /* feedback clipper: x + clip(gain part) */
             h1 += P->a1 * (x - h1);
             fb += P->aF * (P->gA * (x - h1) - fb);
-            y = x + ab_diode(fb, P);
+            z = fb; add = x;
         } else if (m == M_MUFF) {
             v = ab_bq(BM_IN * x, &s->qa1, &s->qa2, P->u0, P->u1, P->u2, P->u3, P->u4);
             v = ab_diode(v, P);
-            v = ab_bq(v, &s->qb1, &s->qb2, BM_A_B0, BM_A_B1, BM_A_B2, BM_A_A1, BM_A_A2);
-            y = ab_diode(v, P);
+            z = ab_bq(v, &s->qb1, &s->qb2, BM_A_B0, BM_A_B1, BM_A_B2, BM_A_A1, BM_A_A2);
         } else if (m == M_SFUZZ) {
             h1 += P->a1 * (x - h1);
             v = ab_clip(P->pre * (x - h1), 2.0f, 0.5f);  /* preamp swing ~2 V */
             v = 0.8f * ((v < 0.0f) ? -v : v) + 0.2f * v; /* push-push doubler */
             h2 += P->a2 * (v - h2);
-            y = ab_diode(v - h2, P);                     /* germanium pair */
+            z = v - h2;                                  /* into the germanium pair */
         } else if (m == M_MT2) {
             v = ab_bq(x, &s->qa1, &s->qa2, MT_A_B0, MT_A_B1, MT_A_B2, MT_A_A1, 0.0f);
             v = ab_bq(v, &s->qb1, &s->qb2, 1.0f, MT_B_B1, 0.0f, MT_B_A1, MT_B_A2);
@@ -542,7 +590,7 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
             h1 += P->a1 * (v - h1);
             v += (MT_SHELF - 1.0f) * (v - h1);           /* .. its treble shelf */
             fb += P->aF * (v - fb);                      /* .. and low-pass */
-            y = ab_diode(fb, P);
+            z = fb;
         } else {                                         /* DIST+, DS-1, RAT2: op-amp stage */
             if (m == M_DS1) {                            /* DS-1 booster */
                 h1 += P->a1 * (x - h1);
@@ -558,8 +606,9 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
             fb += P->aF * (g - fb);                      /* gain rolls off in the treble */
             v = ab_rail(v + fb, P->rail);                /* op-amp rails */
             lc += P->aC * (v - lc);                      /* RC before the diodes (aC = 1: none) */
-            y = ab_diode(lc, P);
+            z = lc;
         }
+        y = add + ab_diode(z, P);                        /* the clipper, one copy for all models */
         d = y - dcx + AB_DC_R * dcy;                     /* DC blocker */
         dcx = y; dcy = d;
         /* the pedal's tone control */
@@ -589,9 +638,9 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
             d = t1;
         }
         /* acid EQ */
-        d = ab_bq(d, &s->el1, &s->el2, P->l0, P->l1, P->l2, P->l3, P->l4);
-        d = ab_bq(d, &s->em1, &s->em2, P->m0, P->m1, P->m2, P->m3, P->m4);
-        d = ab_bq(d, &s->eh1, &s->eh2, P->n0, P->n1, P->n2, P->n3, P->n4);
+        d = ab_bq(d, &s->el1, &s->el2, P->eq[0], P->eq[1], P->eq[2], P->eq[3], P->eq[4]);
+        d = ab_bq(d, &s->em1, &s->em2, P->eq[5], P->eq[6], P->eq[7], P->eq[8], P->eq[9]);
+        d = ab_bq(d, &s->eh1, &s->eh2, P->eq[10], P->eq[11], P->eq[12], P->eq[13], P->eq[14]);
         if (P->znr) {
             float r = env * invThr, tgt;
             if (r >= 1.0f) { hold = AB_HOLD; tgt = 1.0f; }
@@ -668,6 +717,13 @@ AB_DB_LABEL(ZDL_GetLabel_5)   /* High */
 
 #define ZDL_PTR(type, word) ((type)(uintptr_t)(word))
 
+/* the knob loop in the entry point needs Model..Mix in consecutive slots */
+typedef char ab_slots_consecutive[
+    (DIRTBOX_DRIVE_SLOT == DIRTBOX_MODEL_SLOT + 1 && DIRTBOX_TONE_SLOT == DIRTBOX_MODEL_SLOT + 2 &&
+     DIRTBOX_LOW_SLOT == DIRTBOX_MODEL_SLOT + 3 && DIRTBOX_MID_SLOT == DIRTBOX_MODEL_SLOT + 4 &&
+     DIRTBOX_HIGH_SLOT == DIRTBOX_MODEL_SLOT + 5 && DIRTBOX_ZNR_SLOT == DIRTBOX_MODEL_SLOT + 6 &&
+     DIRTBOX_LEVEL_SLOT == DIRTBOX_MODEL_SLOT + 7 && DIRTBOX_MIX_SLOT == DIRTBOX_MODEL_SLOT + 8) ? 1 : -1];
+
 AB_CODE_SECTION(DIRTBOX_AUDIO_FUNC)
 void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
 {
@@ -703,15 +759,20 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
 
     s = (AbState *)stateBase;
 
-    k[0] = ab_knob(params[DIRTBOX_MODEL_SLOT], (float)DIRTBOX_MODEL_UI_DEFAULT, 0.16666667f);
-    k[1] = ab_knob(params[DIRTBOX_DRIVE_SLOT], (float)DIRTBOX_DRIVE_UI_DEFAULT, 0.01f);
-    k[2] = ab_knob(params[DIRTBOX_TONE_SLOT],  (float)DIRTBOX_TONE_UI_DEFAULT,  0.01f);
-    k[3] = ab_knob(params[DIRTBOX_LOW_SLOT],   (float)DIRTBOX_LOW_UI_DEFAULT,   0.041666668f);
-    k[4] = ab_knob(params[DIRTBOX_MID_SLOT],   (float)DIRTBOX_MID_UI_DEFAULT,   0.041666668f);
-    k[5] = ab_knob(params[DIRTBOX_HIGH_SLOT],  (float)DIRTBOX_HIGH_UI_DEFAULT,  0.041666668f);
-    k[6] = ab_knob(params[DIRTBOX_ZNR_SLOT],   (float)DIRTBOX_ZNR_UI_DEFAULT,   0.01f);
-    k[7] = ab_knob(params[DIRTBOX_LEVEL_SLOT], (float)DIRTBOX_LEVEL_UI_DEFAULT, 0.01f);
-    k[8] = ab_knob(params[DIRTBOX_MIX_SLOT],   (float)DIRTBOX_MIX_UI_DEFAULT,   0.01f);
+    /* the nine knobs sit in consecutive slots (checked below at compile time);
+     * one loop keeps one copy of ab_knob. k[] starts at each knob's default. */
+    k[0] = (float)DIRTBOX_MODEL_UI_DEFAULT; k[1] = (float)DIRTBOX_DRIVE_UI_DEFAULT;
+    k[2] = (float)DIRTBOX_TONE_UI_DEFAULT;  k[3] = (float)DIRTBOX_LOW_UI_DEFAULT;
+    k[4] = (float)DIRTBOX_MID_UI_DEFAULT;   k[5] = (float)DIRTBOX_HIGH_UI_DEFAULT;
+    k[6] = (float)DIRTBOX_ZNR_UI_DEFAULT;   k[7] = (float)DIRTBOX_LEVEL_UI_DEFAULT;
+    k[8] = (float)DIRTBOX_MIX_UI_DEFAULT;
+    AB_NO_UNROLL
+    for (i = 0; i < 9; i++) {
+        float im = 0.01f;                                    /* 0..100 knobs   */
+        if (i == 0) im = 0.16666667f;                        /* Model 0..6     */
+        if (i >= 3 && i <= 5) im = 0.041666668f;             /* EQ 0..24       */
+        k[i] = ab_knob(params[DIRTBOX_MODEL_SLOT + i], k[i], im);
+    }
 
     ab_prepare(&P, k);
     if (s->magic != AB_MAGIC) ab_init(s, &P);
