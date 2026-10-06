@@ -28,8 +28,8 @@
  *
  * Receiving (dt_tempo, used by every tempo effect): the effect hands over its Tempo screen
  * number and gets back the one its existing code should use. Only with the knob on FOLLOW
- * (screen 0..39, shown FOLLW) does it listen: the BPM comes from the tag (120 when there is
- * none) and a bar from upstream (the counter changed) toggles the number to the other twin
+ * (screen 0..39, shown FOLLW) does it listen: the BPM comes from the tag (120 until a tag
+ * is heard; the last BPM is kept when the sender goes away) and a bar from upstream (the counter changed) toggles the number to the other twin
  * copy, exactly as a Mozaic flip of its own knob would, so each effect restarts the way it
  * already does on a flip. On any BPM the effect ignores the tag and runs on its own (free,
  * or its own resets) (Luca, 2026-10-06). In slots 1-3 a FOLLOW effect needs its Mozaic pad
@@ -80,7 +80,7 @@ typedef struct {
     unsigned int id, count, age;   /* last tag seen (id 0 = none yet) */
     unsigned int quiet;            /* blocks its age has not moved    */
     unsigned int ok;               /* a fresh tag from another sender */
-    unsigned int bpm16;            /* its BPM x 16                    */
+    unsigned int bpm16;            /* its BPM x 16; kept when the tag goes away */
 } DtRecv;
 
 /* Everything a tempo effect keeps for the tag (put it in the arena state). */
@@ -215,8 +215,7 @@ static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
     y->own_twin = tw;
     if (r) bar = dt_recv(&y->rx, r, id);
     if (follow) {                                            /* FOLLOW */
-        bpm = 120.0f;
-        if (y->rx.ok) bpm = (float)(int)((y->rx.bpm16 + 8u) >> 4);
+        bpm = (float)(int)((y->rx.bpm16 + 8u) >> 4);         /* last BPM heard, 120 before any */
     } else {
         bpm = (ui > 240.0f) ? ui - 201.0f : ui;
     }
