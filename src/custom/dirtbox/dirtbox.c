@@ -160,8 +160,10 @@
 #define MT_E_A2  0.99678836f
 #define MT_SHELF 0.2763f                     /* Dist stage treble: 629 Hz / 2277 Hz */
 
-/* Big Muff from guitarix bmp at 44.1 kHz. Input stage: -15 dB, flat in band. */
-#define BM_IN    0.1786f
+/* Big Muff from guitarix bmp at 44.1 kHz. Input: bmp's -15 dB plus the Muff's own
+ * input booster (Q1, about +24 dB, x16), which bmp leaves out: without it the Muff
+ * barely clipped at synth levels and played 10-14 dB below the other models. */
+#define BM_IN    2.8576f                     /* 0.1786 x 16 */
 /* second gain stage (bpmamp2) */
 #define BM_A_B0 (-2.051823554f)
 #define BM_A_B1 (-0.035029699f)
@@ -488,13 +490,13 @@ static inline void ab_prepare(AbParams *P, const float *k)
         P->v3 = -1.42432395f * 1.16858433f;
         P->v4 = 0.588060456f * 1.16858433f;
         P->c = 0.44241f; P->cg = 0.10949f; P->cm = 0.30544f; P->ch = 0.85402f; P->cap = 0.795f;
-        {   /* small-signal gain: Sustain stage at 300 Hz x the rest of the chain (~0.57) */
+        {   /* small-signal gain: input x16, Sustain stage at 300 Hz, rest of chain ~0.57 */
             float nr = P->u0 + P->u1 * 0.999086667f + P->u2 * 0.996348338f, ni = P->u1 * 0.042729744f + P->u2 * 0.085381434f;
             float dr = 1.0f + P->u3 * 0.999086667f + P->u4 * 0.996348338f, di = P->u3 * 0.042729744f + P->u4 * 0.085381434f;
             float n2 = nr * nr + ni * ni + 1e-12f;
-            gpk = 0.57f * n2 * ab_rsqrt(n2) * ab_rsqrt(dr * dr + di * di + 1e-12f);
+            gpk = 9.12f * n2 * ab_rsqrt(n2) * ab_rsqrt(dr * dr + di * di + 1e-12f);
         }
-        ceil = 0.795f; trim = 6.7f;
+        ceil = 0.795f; trim = 4.7f;
     } else if (m == M_SFUZZ) {                   /* Univox Super-Fuzz */
         P->pre = 10.0f * e1;      /* preamp, Expander: 10x .. 320x */
         P->a1 = 80.0f;                  /* input coupling    */
