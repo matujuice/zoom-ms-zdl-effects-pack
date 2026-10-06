@@ -54,7 +54,7 @@
       "name": "Tempo",
       "max": 441,
       "default": 120,
-      "comment": "BPM for the LFO (40..240), shown on screen. The LFO restarts whenever this number changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). The delays do not use it. Default 120. FOLLW (0..39, the bottom of the knob): the BPM comes from the bar sync sent by an effect in an earlier slot (120 without one). On any setting, bars sent from an earlier slot restart it like a flip of its own Tempo."
+      "comment": "BPM for the LFO (40..240), shown on screen. The LFO restarts whenever this number changes, including a flip to the twin copy of the same BPM (120 <-> 321), which restarts it without changing the tempo: a host can send that on each downbeat. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). The delays do not use it. Default 120. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 without one) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs that slot's Mozaic pad off."
     },
     {
       "name": "Mix",

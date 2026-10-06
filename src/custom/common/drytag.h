@@ -27,12 +27,14 @@
  * Dry buffer, so the tag passes through it unchanged.
  *
  * Receiving (dt_tempo, used by every tempo effect): the effect hands over its Tempo screen
- * number and gets back the one its existing code should use. A bar from upstream (the
- * counter changed) toggles that number to the other twin copy, exactly as a Mozaic flip of
- * its own knob would, so each effect restarts the way it already does on a flip. With the
- * knob on FOLLOW (screen 0..39) the BPM comes from the tag (120 when there is none). A LIVE
- * sender ignores upstream bars: it gets the same bars from Mozaic directly. A tag whose
- * "blocks since flip" stops moving for 1 s is stale (sender removed) and is ignored.
+ * number and gets back the one its existing code should use. Only with the knob on FOLLOW
+ * (screen 0..39, shown FOLLW) does it listen: the BPM comes from the tag (120 when there is
+ * none) and a bar from upstream (the counter changed) toggles the number to the other twin
+ * copy, exactly as a Mozaic flip of its own knob would, so each effect restarts the way it
+ * already does on a flip. On any BPM the effect ignores the tag and runs on its own (free,
+ * or its own resets) (Luca, 2026-10-06). In slots 1-3 a FOLLOW effect needs its Mozaic pad
+ * OFF, or Mozaic overwrites the knob with a BPM. A tag whose "blocks since flip" stops moving
+ * for 1 s is stale (sender removed) and is ignored.
  *
  * Pedal rules (docs/SAFE-DSP-RULES.md): no division, no tables, no libm, helpers inline.
  * The including file defines nothing; everything here is prefixed dt_ / DT_.
@@ -201,17 +203,18 @@ static inline void dt_sync_init(DtSync *y)
 /* For a tempo effect, once per block and before anything reads Tempo (also while switched
  * off). ui = the Tempo knob's screen number 0..441, r = Dry right (ctx[4] + 8) or 0, id =
  * dt_id(state). Receives, sends while LIVE, and returns the screen number the effect's own
- * code should use: the BPM (own, or the tag's on FOLLOW) on the copy the bars point at. */
+ * code should use: on a BPM the knob as it is (own flips still toggle the copy); on FOLLOW
+ * the tag's BPM on the copy its bars point at. */
 DT_ALWAYS_INLINE(dt_tempo)
 static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
 {
     int tw = (ui > 240.0f) ? 1 : 0;
     int flip = (y->own_twin >= 0 && tw != y->own_twin);
-    int bar = 0;
+    int bar = 0, follow = (ui <= DT_FOLLOW_MAX) ? 1 : 0;
     float bpm;
     y->own_twin = tw;
     if (r) bar = dt_recv(&y->rx, r, id);
-    if (ui <= DT_FOLLOW_MAX) {                               /* FOLLOW */
+    if (follow) {                                            /* FOLLOW */
         bpm = 120.0f;
         if (y->rx.ok) bpm = (float)(int)((y->rx.bpm16 + 8u) >> 4);
     } else {
@@ -220,7 +223,7 @@ static inline float dt_tempo(DtSync *y, float *r, float ui, unsigned int id)
     if (bpm < 40.0f) bpm = 40.0f;
     if (bpm > 240.0f) bpm = 240.0f;
     if (r) dt_send(&y->tx, r, flip, (unsigned int)(int)(bpm * 16.0f), id, 0);
-    if (flip || (bar && !(y->tx.flipped && y->tx.age < DT_LIVE_BLOCKS))) y->vtwin ^= 1u;
+    if (flip || (bar && follow)) y->vtwin ^= 1u;           /* bars count only on FOLLOW */
     return y->vtwin ? bpm + 201.0f : bpm;
 }
 

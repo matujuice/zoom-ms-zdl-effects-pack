@@ -1,7 +1,7 @@
 /* Bar tag across slots: two real EuGate entries share one Dry buffer, like slot 1 and slot 5.
- * Slot 1 gets Mozaic's twin flips; slot 5 never sees a knob edit and must restart on the same
- * blocks, follow the BPM on FOLLOW, drop a sender that disappears, and ignore upstream bars
- * while it is a sender itself. Also: a slot without Mozaic flips writes nothing, and an
+ * Slot 1 gets Mozaic's twin flips; slot 5 never sees a knob edit. On FOLLOW it must restart
+ * on the same blocks and take the BPM; on a BPM it must ignore the tag and run on its own; a
+ * sender that disappears is dropped. Also: a slot without Mozaic flips writes nothing, and an
  * effect that does not send leaves the tag untouched (pass-through). */
 #include <stdio.h>
 #include <string.h>
@@ -66,7 +66,8 @@ int main(void)
     for (i = 0; i < 3000; i++) block(&A, &B, 1);
     for (j = 0; j < 16; j++) CHECK(dry[j] == 0.0f, "Dry buffer written without any flip");
 
-    /* 2. Mozaic flips slot 1 every 1000 blocks; slot 5 restarts on the same block */
+    /* 2. Mozaic flips slot 1 every 1000 blocks; slot 5 on FOLLOW restarts on the same block */
+    tempo(&B, 0);
     for (i = 0; i < 8000; i++) {
         if (i % 1000 == 500) { flip(&A, 120); bars++; }
         pb = phase(&B);
@@ -80,7 +81,6 @@ int main(void)
     CHECK(dt_read(dry + 8, &t) && t.live && t.bpm16 == 1920u, "no LIVE tag at 120 BPM");
 
     /* 3. FOLLOW: slot 5 takes slot 1's BPM, and changes with it */
-    tempo(&B, 0);
     p0 = phase(&B); block(&A, &B, 1); inc120 = phase(&B) - p0;
     flip(&A, 150); bars++;                                    /* host tempo 150, on a flip */
     block(&A, &B, 1);
@@ -90,7 +90,7 @@ int main(void)
     CHECK(fabsf(inc150 / inc120 - 1.25f) < 1e-3f, "FOLLOW did not take 150 BPM from slot 1");
     CHECK(fabsf(pa) < 1e-4f, "FOLLOW slot out of step with slot 1");
 
-    /* 4. On a BPM, slot 5 keeps its own tempo but still restarts on bars */
+    /* 4. On a BPM, slot 5 keeps its own tempo and ignores the bars */
     tempo(&B, 100);
     for (i = 0; i < 20; i++) block(&A, &B, 1);
     p0 = phase(&B); block(&A, &B, 1);
@@ -99,7 +99,7 @@ int main(void)
     pb = phase(&B);
     flip(&A, 150); bars++;
     block(&A, &B, 1);
-    CHECK(phase(&B) < pb && phase(&B) < 0.01f, "own-BPM slot 5 did not restart on the bar");
+    CHECK(phase(&B) > pb, "slot 5 on its own BPM restarted on an upstream bar");
 
     /* 5. slot 1 removed: its last tag stays in the buffer but stops counting -> stale after 1 s */
     tempo(&B, 0);
@@ -120,7 +120,7 @@ int main(void)
         if (phase(&B) < pb) { if (i % 1000 == 103) hits++; else early++; }
     }
     printf("slot 5 flipped by Mozaic too: restarts on its own flips %d, on others %d\n", hits, early);
-    CHECK(hits == 4 && early <= 1, "a LIVE sender followed upstream bars too (double restarts)");
+    CHECK(hits == 4 && early == 0, "slot 5 on a BPM followed upstream bars too (double restarts)");
 
     /* 7. pass-through: a slot that is not sending leaves a tag as it is */
     {
