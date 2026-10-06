@@ -123,6 +123,6 @@ On every beat (or every Div) something moves: your sound, the built-in reverb, b
 | Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. |
 | Size | 0..100 | Reverb length, from a short room to a long wash. Bigger is also darker. |
 
-No Mix knob: Depth and Verb already set how much you hear. Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
+No Mix knob: Depth and Verb already set how much you hear. Out of the box it is a sidechain pump on your sound and the reverb together (BOTH + DUCK, Depth 80, 1/4, Verb 35). Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
 
 Try: DRY + DUCK on a pad (the classic pump); VERB + GATE on a snare or conga (gated reverb); VERB + RISE (the reverb swells into every kick); SEND + GATE (a dub throw: only the hits feed the reverb); DRY + GATE with Shift 50 (offbeat chops).

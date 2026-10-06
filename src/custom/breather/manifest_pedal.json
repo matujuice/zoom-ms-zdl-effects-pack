@@ -11,8 +11,8 @@
     {
       "name": "Targt",
       "max": 3,
-      "default": 0,
-      "comment": "What moves on the beat. DRY = your sound (the reverb, if Verb is up, stays steady). VERB = only the reverb; your sound passes untouched. BOTH = your sound and the reverb together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely (SEND + GATE = a dub throw, only the hits feed the reverb). Default DRY."
+      "default": 2,
+      "comment": "What moves on the beat. DRY = your sound (the reverb, if Verb is up, stays steady). VERB = only the reverb; your sound passes untouched. BOTH = your sound and the reverb together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely (SEND + GATE = a dub throw, only the hits feed the reverb). Default BOTH."
     },
     {
       "name": "Shape",
@@ -23,8 +23,8 @@
     {
       "name": "Depth",
       "max": 100,
-      "default": 70,
-      "comment": "How far the level moves. 0 = nothing, 100 = all the way to silence. Default 70."
+      "default": 80,
+      "comment": "How far the level moves. 0 = nothing, 100 = all the way to silence. Default 80."
     },
     {
       "name": "Div",
@@ -47,8 +47,8 @@
     {
       "name": "Verb",
       "max": 100,
-      "default": 30,
-      "comment": "Reverb level. 0 = no reverb (a pure pump). Default 30."
+      "default": 35,
+      "comment": "Reverb level. 0 = no reverb (a pure pump). Default 35."
     },
     {
       "name": "Tempo",
