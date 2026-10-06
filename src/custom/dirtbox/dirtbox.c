@@ -1,5 +1,5 @@
 /*
- * acidbox.c - "ACIDBOX": a distortion box for an acid machine (TB-303 / TD-3 lines
+ * dirtbox.c - "DIRTBOX": a distortion box for an acid machine (TB-303 / TD-3 lines
  * into the pedal). Seven pedal circuits on one Model knob, mildest first, a 3-band
  * EQ tuned for acid, and an automatic ZNR-style noise reducer. Mono.
  *
@@ -658,18 +658,18 @@ AB_DB_LABEL(ZDL_GetLabel_4)   /* Mid  */
 AB_DB_LABEL(ZDL_GetLabel_5)   /* High */
 
 /* ---- pedal entry point ---------------------------------------------------- */
-#ifndef ACIDBOX_HOST_TEST
+#ifndef DIRTBOX_HOST_TEST
 
-#include "acidbox_params.h"
+#include "dirtbox_params.h"
 
-#ifndef ACIDBOX_AUDIO_FUNC
-#define ACIDBOX_AUDIO_FUNC Fx_DLY_AcidBox
+#ifndef DIRTBOX_AUDIO_FUNC
+#define DIRTBOX_AUDIO_FUNC Fx_DLY_DirtBox
 #endif
 
 #define ZDL_PTR(type, word) ((type)(uintptr_t)(word))
 
-AB_CODE_SECTION(ACIDBOX_AUDIO_FUNC)
-void ACIDBOX_AUDIO_FUNC(unsigned int *ctx)
+AB_CODE_SECTION(DIRTBOX_AUDIO_FUNC)
+void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
@@ -703,15 +703,15 @@ void ACIDBOX_AUDIO_FUNC(unsigned int *ctx)
 
     s = (AbState *)stateBase;
 
-    k[0] = ab_knob(params[ACIDBOX_MODEL_SLOT], (float)ACIDBOX_MODEL_UI_DEFAULT, 0.16666667f);
-    k[1] = ab_knob(params[ACIDBOX_DRIVE_SLOT], (float)ACIDBOX_DRIVE_UI_DEFAULT, 0.01f);
-    k[2] = ab_knob(params[ACIDBOX_TONE_SLOT],  (float)ACIDBOX_TONE_UI_DEFAULT,  0.01f);
-    k[3] = ab_knob(params[ACIDBOX_LOW_SLOT],   (float)ACIDBOX_LOW_UI_DEFAULT,   0.041666668f);
-    k[4] = ab_knob(params[ACIDBOX_MID_SLOT],   (float)ACIDBOX_MID_UI_DEFAULT,   0.041666668f);
-    k[5] = ab_knob(params[ACIDBOX_HIGH_SLOT],  (float)ACIDBOX_HIGH_UI_DEFAULT,  0.041666668f);
-    k[6] = ab_knob(params[ACIDBOX_ZNR_SLOT],   (float)ACIDBOX_ZNR_UI_DEFAULT,   0.01f);
-    k[7] = ab_knob(params[ACIDBOX_LEVEL_SLOT], (float)ACIDBOX_LEVEL_UI_DEFAULT, 0.01f);
-    k[8] = ab_knob(params[ACIDBOX_MIX_SLOT],   (float)ACIDBOX_MIX_UI_DEFAULT,   0.01f);
+    k[0] = ab_knob(params[DIRTBOX_MODEL_SLOT], (float)DIRTBOX_MODEL_UI_DEFAULT, 0.16666667f);
+    k[1] = ab_knob(params[DIRTBOX_DRIVE_SLOT], (float)DIRTBOX_DRIVE_UI_DEFAULT, 0.01f);
+    k[2] = ab_knob(params[DIRTBOX_TONE_SLOT],  (float)DIRTBOX_TONE_UI_DEFAULT,  0.01f);
+    k[3] = ab_knob(params[DIRTBOX_LOW_SLOT],   (float)DIRTBOX_LOW_UI_DEFAULT,   0.041666668f);
+    k[4] = ab_knob(params[DIRTBOX_MID_SLOT],   (float)DIRTBOX_MID_UI_DEFAULT,   0.041666668f);
+    k[5] = ab_knob(params[DIRTBOX_HIGH_SLOT],  (float)DIRTBOX_HIGH_UI_DEFAULT,  0.041666668f);
+    k[6] = ab_knob(params[DIRTBOX_ZNR_SLOT],   (float)DIRTBOX_ZNR_UI_DEFAULT,   0.01f);
+    k[7] = ab_knob(params[DIRTBOX_LEVEL_SLOT], (float)DIRTBOX_LEVEL_UI_DEFAULT, 0.01f);
+    k[8] = ab_knob(params[DIRTBOX_MIX_SLOT],   (float)DIRTBOX_MIX_UI_DEFAULT,   0.01f);
 
     ab_prepare(&P, k);
     if (s->magic != AB_MAGIC) ab_init(s, &P);
@@ -720,4 +720,4 @@ void ACIDBOX_AUDIO_FUNC(unsigned int *ctx)
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
 }
 
-#endif /* ACIDBOX_HOST_TEST */
+#endif /* DIRTBOX_HOST_TEST */

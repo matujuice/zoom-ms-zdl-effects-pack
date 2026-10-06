@@ -1,4 +1,4 @@
-"""Generate src/airwindows/common/covers/AcidBox.json (128x64 cover override).
+"""Generate src/airwindows/common/covers/DirtBox.json (128x64 cover override).
 
 Concept (Luca, 2026-10-05): DubSiren's metal case, broken but neat and intentional.
   * the case: DubSiren's outer wall, inner lip and slotted screws, knocked about: the top
@@ -9,23 +9,23 @@ Concept (Luca, 2026-10-05): DubSiren's metal case, broken but neat and intention
   * the classic acid smiley as a big sticker stuck on later by whoever modded it: wrapped round
     the case's left edge (the wall stays visible) and the A's lower left corner (the title still reads), turned 10
     degrees, its upper right edge peeling,
-  * ACIDBOX in thick, even letters: 3 px stems, 2 px bars (the same weight on screen once
+  * DIRTBOX in thick, even letters: 3 px stems, 2 px bars (the same weight on screen once
     the 1.4x tall pixels are counted), centred on the box, slightly worn (a few chips).
 
-Run from anywhere:  py src\\custom\\acidbox\\make_cover.py
+Run from anywhere:  py src\\custom\\dirtbox\\make_cover.py
 Also writes cover_preview.png next to this script (black on white).
 """
 import json, math, random, sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]        # src/custom/acidbox/make_cover.py -> repo root
+ROOT = Path(__file__).resolve().parents[3]        # src/custom/dirtbox/make_cover.py -> repo root
 sys.path.insert(0, str(ROOT / "build"))
 sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
 from screen_image import Canvas
 import custom_covers as cc
 from custom_covers import _VSquash
 
-NAME = "AcidBox"
+NAME = "DirtBox"
 A=1.4
 def line(c,x0,y0,x1,y1,v=1,skip=None):
     n=max(abs(x1-x0),abs(y1-y0),1)
@@ -40,7 +40,7 @@ SCX,SCY,SR=13.5,24.5,14.0             # sticker centre and radius (screen units)
 def build():
     c=Canvas()
     rnd=random.Random(7)
-    TITLE,TX,TY="ACIDBOX",23,10        # title centred on the box, x 23..104
+    TITLE,TX,TY="DIRTBOX",23,10        # title centred on the box, x 23..104
     # title: thick, even strokes, 3 px stems and 2 px bars, 4 px counters, 10 x 14 a letter
     COLS,ROWS,LG=(3,4,3),(2,4,2,4,2),2
     main=set(); x=TX

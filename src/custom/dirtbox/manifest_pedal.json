@@ -1,10 +1,10 @@
 {
-  "effect_name": "AcidBox",
-  "comment": "ACIDBOX - a distortion box for an acid machine (TB-303 / TD-3), mono. Seven pedal circuits on the Model knob, mildest first: TS9 (Ibanez Tube Screamer, guitarix ts9sim), DIST+ (MXR Distortion+, ElectroSmash + guitarix mxrdist, germanium diodes), DS-1 (the TD-3's built-in distortion, a Boss DS-1 copy; ElectroSmash + DS1.lv2), RAT2 (ProCo RAT 2, Rudro085 Proco-Rat nodal model), MUFF (Big Muff Pi, guitarix bmp), SFUZZ (Univox Super-Fuzz, from the schematic: octave-up doubler, germanium diodes, 1 kHz scoop), MT-2 (Boss Metal Zone, guitarix MetalTone). Then a 3-band acid EQ (110 Hz shelf, 1 kHz peak, 4.5 kHz shelf, +-12 dB). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and expands the wet below it, holding 30 ms and releasing over ~80 ms to clear rests between 16ths. Makeup keeps the wet near the input level whatever the Drive.",
+  "effect_name": "DirtBox",
+  "comment": "DIRTBOX - a distortion box for an acid machine (TB-303 / TD-3), mono. Seven pedal circuits on the Model knob, mildest first: TS9 (Ibanez Tube Screamer, guitarix ts9sim), DIST+ (MXR Distortion+, ElectroSmash + guitarix mxrdist, germanium diodes), DS-1 (the TD-3's built-in distortion, a Boss DS-1 copy; ElectroSmash + DS1.lv2), RAT2 (ProCo RAT 2, Rudro085 Proco-Rat nodal model), MUFF (Big Muff Pi, guitarix bmp), SFUZZ (Univox Super-Fuzz, from the schematic: octave-up doubler, germanium diodes, 1 kHz scoop), MT-2 (Boss Metal Zone, guitarix MetalTone). Then a 3-band acid EQ (110 Hz shelf, 1 kHz peak, 4.5 kHz shelf, +-12 dB). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and expands the wet below it, holding 30 ms and releasing over ~80 ms to clear rests between 16ths. Makeup keeps the wet near the input level whatever the Drive.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 491,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 AcidBox (was DirtBox) (this pack). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox (this pack). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -63,7 +63,7 @@
       "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50 (parallel distortion)."
     }
   ],
-  "audio_func_name": "Fx_DLY_AcidBox",
+  "audio_func_name": "Fx_DLY_DirtBox",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
 }

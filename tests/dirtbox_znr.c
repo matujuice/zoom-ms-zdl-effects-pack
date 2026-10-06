@@ -1,10 +1,10 @@
-/* AcidBox ZNR: kicks (55 Hz, 1.2 s exponential tail) over -70 dBFS noise, then 2 s of
+/* DirtBox ZNR: kicks (55 Hz, 1.2 s exponential tail) over -70 dBFS noise, then 2 s of
  * noise only. Checks the noise between kicks is cut and the kick tails are kept. */
-#define ACIDBOX_HOST_TEST
+#define DIRTBOX_HOST_TEST
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "../src/custom/acidbox/acidbox.c"
+#include "../src/custom/dirtbox/dirtbox.c"
 #define SR 44100
 #define KICK (SR*3/8)            /* 160 BPM quarter notes */
 #define NK 64

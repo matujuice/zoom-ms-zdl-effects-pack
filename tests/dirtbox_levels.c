@@ -1,10 +1,10 @@
-/* AcidBox: wet level vs input for every model, Drive and input level; EQ flat and
+/* DirtBox: wet level vs input for every model, Drive and input level; EQ flat and
  * at the extremes; labels; no NaN, no blow-up. */
-#define ACIDBOX_HOST_TEST
+#define DIRTBOX_HOST_TEST
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include "../src/custom/acidbox/acidbox.c"
+#include "../src/custom/dirtbox/dirtbox.c"
 #define N 88200
 static double run(int m,float d,float t,float amp,float lo,float mi,float hi,float *pk,int *bad){
   static float x[N]; AbState s; AbParams P; float k[9]={m/6.0f,d,t,lo,mi,hi,0.0f,0.5f,1.0f};

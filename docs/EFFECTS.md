@@ -108,7 +108,7 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### ACIDBOX: a distortion box for an acid machine (new, not in a release yet)
+### DIRTBOX: a distortion box for an acid machine (new, not in a release yet)
 Made for a TB-303 / TD-3 (or a MeeBlip triode) going into the pedal: seven real distortion pedals on the Model knob, mildest first, a 3-band EQ voiced for acid, and an automatic noise reducer (ZNR). It was DirtBox until 2026-10-06 (same fxid 491). Drive mostly adds dirt rather than volume: an input peaking around -14 dBFS comes out at about the same level at any Drive.
 
 Each model follows the real circuit stage by stage, from a published analysis or a circuit-level digital model (filters evaluated at 44.1 kHz, diode and transistor curves fitted to the model's):
