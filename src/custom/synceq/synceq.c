@@ -15,11 +15,10 @@
  *   The Tempo knob runs 0..441 like every synced effect of the pack: 0..240 = the BPM (below
  *   40 reads as 40), 241..441 = a twin copy (BPM = screen - 201). Mozaic flips it between a
  *   BPM and its twin on each downbeat; each flip adds 1 to the bar counter in the tag. The
- *   tag also carries the BPM. SyncEQ sends on every block, also while switched off (then the
- *   input passes untouched, the tag still goes out), so it can sit in a patch as a silent
- *   clock. Without flips it still sends the BPM, marked not LIVE; a LIVE sender after it
- *   replaces that. An upstream tag from another sender is left alone unless it is not LIVE
- *   and SyncEQ is.
+ *   tag also carries the BPM. Like the tempo effects, SyncEQ sends only while Mozaic flips it
+ *   (LIVE: a flip in the last 60 s; Luca, 2026-10-06), also while switched off (then the
+ *   input passes untouched, the tag still goes out). A LIVE tag from an earlier sender is
+ *   left alone.
  *
  * AUDIO (in this order, every stage skipped while it is neutral)
  *   LoCut  high-pass 12 dB/oct, Q 0.707
@@ -490,12 +489,12 @@ void SYNCEQ_AUDIO_FUNC(unsigned int *ctx)
     s = (SqState *)stateBase;
     if (s->magic != SQ_MAGIC) sq_init(s);
 
-    /* the bar tag goes out every block, on or off */
+    /* the bar tag goes out while Mozaic flips Tempo, on or off */
     tempo = sq_tempo_ui(params[SYNCEQ_TEMPO_SLOT], (float)SYNCEQ_TEMPO_UI_DEFAULT);
     flip = sq_twin_flip(s, tempo);
     if (dryBuf)
         dt_send(&s->tag, dryBuf + 8, flip,
-                (unsigned int)(int)(sq_tempo_bpm(tempo) * 16.0f), dt_id(stateBase), 1);
+                (unsigned int)(int)(sq_tempo_bpm(tempo) * 16.0f), dt_id(stateBase));
 
     if (params[0] < 0.5f) return;                /* switched off: input untouched */
 

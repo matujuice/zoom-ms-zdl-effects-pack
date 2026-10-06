@@ -20,10 +20,9 @@
  * Valid = all 8 are exact whole numbers times 2^-24 in 0..4095 and the signature, version and
  * checksum match. Audio, silence or noise can't pass that.
  *
- * Who writes: a sender writes its tag unless a valid tag from another sender is already
- * there, in which case the upstream one stays (same Mozaic, same bar), except that a LIVE
- * sender replaces a tag that is not live. SyncEQ always sends; a tempo effect sends only
- * while LIVE (Mozaic is flipping its Tempo). An effect that is not sending never touches the
+ * Who writes: SyncEQ and the tempo effects send only while LIVE (Mozaic is flipping their
+ * Tempo; Luca, 2026-10-06). A sender writes its tag unless a LIVE tag from another sender is
+ * already there, in which case that one stays (same Mozaic, same bar). An effect that is not sending never touches the
  * Dry buffer, so the tag passes through it unchanged.
  *
  * Receiving (dt_tempo, used by every tempo effect): the effect hands over its Tempo screen
@@ -157,21 +156,19 @@ static inline void dt_write(float *r, unsigned int id, unsigned int count,
     for (j = 0; j < 8; j++) r[j] = dt_put(n[j]);
 }
 
-/* Sender, once per block. r = Dry right (ctx[4] + 8), flip = this block's Tempo twin flip,
- * bpm16 = BPM x 16, id = dt_id(state), always = send even while not LIVE (SyncEQ). Returns 1
- * when it wrote its own tag, 0 when it wrote nothing. */
+/* Sender, once per block (SyncEQ; the tempo effects do the same inside dt_tempo).
+ * r = Dry right (ctx[4] + 8), flip = this block's Tempo twin flip, bpm16 = BPM x 16,
+ * id = dt_id(state). Sends only while LIVE (Mozaic flips its Tempo) and no LIVE tag from
+ * another sender is there. Returns 1 when it wrote its own tag, 0 when it wrote nothing. */
 DT_ALWAYS_INLINE(dt_send)
-static inline int dt_send(DtSend *t, float *r, int flip, unsigned int bpm16, unsigned int id,
-                          int always)
+static inline int dt_send(DtSend *t, float *r, int flip, unsigned int bpm16, unsigned int id)
 {
     DtTag up;
-    unsigned int live;
     if (flip) { t->count = (t->count + 1u) & 0xFFFu; t->age = 0u; t->flipped = 1u; }
     else if (t->age < DT_AGE_MAX) t->age++;
-    live = (t->flipped && t->age < DT_LIVE_BLOCKS) ? 1u : 0u;
-    if (!live && !always) return 0;
-    if (dt_read(r, &up) && up.id != id && (up.live || !live)) return 0;
-    dt_write(r, id, t->count, bpm16, t->age, live);
+    if (!t->flipped || t->age >= DT_LIVE_BLOCKS) return 0;
+    if (dt_read(r, &up) && up.id != id && up.live) return 0;
+    dt_write(r, id, t->count, bpm16, t->age, 1u);
     return 1;
 }
 

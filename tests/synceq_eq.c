@@ -143,12 +143,13 @@ int main(void)
     CHECK(gain_db(700, 1.0f) > -100.0f, "NaN or silence with every knob at the top");
     defaults();
 
-    /* bar tag: sent every block, counter +1 per twin flip, BPM x 16 */
+    /* bar tag: nothing until Mozaic flips Tempo, then counter +1 per twin flip, BPM x 16 */
     knob(SYNCEQ_TEMPO_SLOT, 120);
     for (j = 0; j < 16; j++) dry[j] = 0.0f;
     gain_db(1000, 0.1f);
-    CHECK(dt_read(dry + 8, &t) && t.bpm16 == 1920u && !t.live, "no tag at 120 BPM before a flip");
-    c0 = t.count;
+    CHECK(!dt_read(dry + 8, &t), "tag sent before any flip");
+    for (j = 0; j < 16; j++) CHECK(dry[j] == 0.0f, "Dry buffer written before any flip");
+    c0 = 0u;
     knob(SYNCEQ_TEMPO_SLOT, 321); Fx_DLY_SyncEQ(ctx);
     CHECK(dt_read(dry + 8, &t) && t.count == ((c0 + 1u) & 0xFFFu) && t.live && t.age == 0u && t.bpm16 == 1920u,
           "twin flip 120 -> 321 did not count a bar");

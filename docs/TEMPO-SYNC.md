@@ -469,8 +469,8 @@ accepts it only when every value is exact and the checksum matches, so audio nev
 tag. A held tag instead of a one-block pulse means no missed pulse, no loudness threshold, and
 it still works if the pedal does not refresh the Dry buffer between blocks.
 
-**Rules:** a sender keeps a valid upstream tag from another sender (same Mozaic, same bar)
-unless that one is not LIVE and it is. Effects that are not sending never write `ctx[4]`, so
+**Rules:** SyncEQ and the tempo effects send only while Mozaic flips their Tempo (LIVE; Luca
+2026-10-06). A sender keeps a LIVE upstream tag from another sender (same Mozaic, same bar). Effects that are not sending never write `ctx[4]`, so
 the tag passes through them; checked for every effect of the pack, DirtBox and Breather.
 Every tempo effect (DualShft, Choral, EuGate, DubSiren, Scrub, Breather) sends while Mozaic
 flips it, through one call, `dt_tempo()`. Only with Tempo on FOLLOW (screen 0..39, shown

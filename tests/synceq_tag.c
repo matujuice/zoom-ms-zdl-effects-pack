@@ -56,38 +56,37 @@ int main(void)
     printf("false tags in 4M random blocks: %ld\n", bad);
     CHECK(bad < 1500, "too many random blocks pass (checksum only should let ~1/4096 of the second set through)");
 
-    /* sender: counter +1 per flip, age counts blocks, LIVE after a flip */
+    /* sender: nothing before a flip, counter +1 per flip, age counts blocks, quiet 60 s after */
     memset(r, 0, sizeof r);
     dt_send_init(&a);
-    wrote = dt_send(&a, r, 0, 1920u, 100u, 1);
-    CHECK(wrote && dt_read(r, &t) && t.id == 100u && t.bpm16 == 1920u && !t.live,
-          "sender before any flip: should write a tag that is not LIVE");
-    dt_send(&a, r, 1, 1920u, 100u, 1); dt_read(r, &t);
-    CHECK(t.count == 1u && t.age == 0u && t.live, "flip: counter 1, age 0, LIVE");
-    for (i = 0; i < 10; i++) dt_send(&a, r, 0, 1920u, 100u, 1);
+    wrote = dt_send(&a, r, 0, 1920u, 100u);
+    CHECK(!wrote && !dt_read(r, &t), "sender wrote a tag before any flip (Mozaic not flipping it)");
+    dt_send(&a, r, 1, 1920u, 100u); dt_read(r, &t);
+    CHECK(t.id == 100u && t.bpm16 == 1920u && t.count == 1u && t.age == 0u && t.live,
+          "flip: counter 1, age 0, LIVE");
+    for (i = 0; i < 10; i++) dt_send(&a, r, 0, 1920u, 100u);
     dt_read(r, &t);
     CHECK(t.count == 1u && t.age == 10u, "age should count blocks (%u)", t.age);
-    for (i = 0; i < (long)DT_LIVE_BLOCKS; i++) dt_send(&a, r, 0, 1920u, 100u, 1);
-    dt_read(r, &t);
-    CHECK(!t.live, "still LIVE 60 s after the last flip");
-    dt_send(&a, r, 1, 1920u, 100u, 1); dt_read(r, &t);
+    memset(r, 0, sizeof r);
+    for (i = 0; i < (long)DT_LIVE_BLOCKS; i++) wrote = dt_send(&a, r, 0, 1920u, 100u);
+    CHECK(!wrote, "still sending 60 s after the last flip");
+    dt_send(&a, r, 1, 1920u, 100u); dt_read(r, &t);
     CHECK(t.count == 2u && t.live, "second flip");
 
-    /* two senders in one block: upstream LIVE tag stays, a LIVE one replaces a non-LIVE one */
+    /* two LIVE senders in one block: the upstream tag stays */
     dt_send_init(&b);
     memset(r, 0, sizeof r);
-    dt_send(&a, r, 0, 1920u, 100u, 1);                   /* slot 1, LIVE */
-    wrote = dt_send(&b, r, 1, 2000u, 200u, 1);           /* slot 2, also LIVE */
+    dt_send(&a, r, 0, 1920u, 100u);                      /* slot 1, LIVE */
+    wrote = dt_send(&b, r, 1, 2000u, 200u);              /* slot 2, also LIVE */
     dt_read(r, &t);
     CHECK(!wrote && t.id == 100u, "second LIVE sender replaced the upstream LIVE tag");
-    dt_send_init(&a);
-    memset(r, 0, sizeof r);
-    dt_send(&a, r, 0, 1920u, 100u, 1);                   /* slot 1, never flipped */
-    wrote = dt_send(&b, r, 0, 2000u, 200u, 1);           /* slot 2, LIVE */
+    /* a tag that is not LIVE (left over from a sender that stopped) is replaced */
+    dt_write(r, 100u, 5u, 1920u, 400000u, 0u);
+    wrote = dt_send(&b, r, 0, 2000u, 200u);
     dt_read(r, &t);
-    CHECK(wrote && t.id == 200u && t.live, "LIVE sender did not replace a non-LIVE upstream tag");
+    CHECK(wrote && t.id == 200u && t.live, "LIVE sender did not replace a tag that is not LIVE");
     /* its own tag left over from the last block is replaced */
-    wrote = dt_send(&b, r, 0, 2000u, 200u, 1);
+    wrote = dt_send(&b, r, 0, 2000u, 200u);
     CHECK(wrote, "sender did not refresh its own tag");
 
     /* ids: 12 bits, never 0, different for arenas 64 KB apart */

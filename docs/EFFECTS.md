@@ -113,7 +113,7 @@ Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with 
 ### SyncEQ: EQ that passes the bar sync on
 In development: source and host tests only, not built or heard yet.
 
-The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with its pad on in Mozaic, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it, even in slots 4 to 6, can stay on the bar (they will learn to read it in a later update). Any tempo effect of the pack in slots 1 to 3 will send the same mark, so SyncEQ is only needed when none sits there. Switched off, the sound passes untouched and the bar still goes through, so it also works as a silent clock. The sound side is a clean EQ: with every knob at its default nothing changes.
+The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with its pad on in Mozaic, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it, even in slots 4 to 6, can stay on the bar (they will learn to read it in a later update). Any tempo effect of the pack in slots 1 to 3 will send the same mark, so SyncEQ is only needed when none sits there. Like the tempo effects, it sends only while Mozaic is flipping its Tempo. Switched off, the sound passes untouched and the bar still goes through. The sound side is a clean EQ: with every knob at its default nothing changes.
 
 | Knob | Range | What it does |
 |---|---|---|
