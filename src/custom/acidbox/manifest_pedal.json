@@ -1,0 +1,69 @@
+{
+  "effect_name": "AcidBox",
+  "comment": "ACIDBOX - a distortion box for an acid machine (TB-303 / TD-3), mono. Seven pedal circuits on the Model knob, mildest first: TS9 (Ibanez Tube Screamer, guitarix ts9sim), DIST+ (MXR Distortion+, ElectroSmash + guitarix mxrdist, germanium diodes), DS-1 (the TD-3's built-in distortion, a Boss DS-1 copy; ElectroSmash + DS1.lv2), RAT2 (ProCo RAT 2, Rudro085 Proco-Rat nodal model), MUFF (Big Muff Pi, guitarix bmp), SFUZZ (Univox Super-Fuzz, from the schematic: octave-up doubler, germanium diodes, 1 kHz scoop), MT-2 (Boss Metal Zone, guitarix MetalTone). Then a 3-band acid EQ (110 Hz shelf, 1 kHz peak, 4.5 kHz shelf, +-12 dB). ZNR listens to the clean input, measures the noise floor itself (capped at -60 dBFS) and expands the wet below it, holding 30 ms and releasing over ~80 ms to clear rests between 16ths. Makeup keeps the wet near the input level whatever the Drive.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 491,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 AcidBox (was DirtBox) (this pack). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Model",
+      "max": 6,
+      "default": 3,
+      "comment": "Pedal circuit, mildest first: 0 TS9, 1 DIST+, 2 DS-1, 3 RAT2, 4 MUFF, 5 SFUZZ, 6 MT-2. Changing it fades the wet back in over ~6 ms. Default RAT2."
+    },
+    {
+      "name": "Drive",
+      "max": 100,
+      "default": 50,
+      "comment": "The pedal's own gain pot: TS9 Drive (12..118x), DIST+ Distortion (2..214x), DS-1 Dist (56x booster then 1..22x), RAT2 Distortion (1..2100x), MUFF Sustain, SFUZZ Expander (10..320x), MT-2 Dist (1.2..55x). Only RAT2 is nearly clean at 0. Makeup keeps the loudness roughly steady. Default 50."
+    },
+    {
+      "name": "Tone",
+      "max": 100,
+      "default": 80,
+      "comment": "The pedal's tone control, 100 = brightest: TS9 treble over the 723 Hz low-pass; DIST+ (no tone on the pedal) low-pass 800 Hz..16 kHz; DS-1 234 Hz LP <-> 1.06 kHz HP blend; RAT2 Filter 475 Hz..16 kHz; MUFF tone stack (noon = mid scoop); SFUZZ Tone switch made continuous (0 = 1 kHz scoop in); MT-2 High, -20..+20 dB. Default 80."
+    },
+    {
+      "name": "Low",
+      "max": 24,
+      "default": 12,
+      "comment": "Acid EQ low shelf at 110 Hz, -12..+12 dB (screen shows dB), 12 = flat."
+    },
+    {
+      "name": "Mid",
+      "max": 24,
+      "default": 12,
+      "comment": "Acid EQ peak at 1 kHz, Q 0.8, -12..+12 dB, 12 = flat."
+    },
+    {
+      "name": "High",
+      "max": 24,
+      "default": 12,
+      "comment": "Acid EQ high shelf at 4.5 kHz, -12..+12 dB, 12 = flat."
+    },
+    {
+      "name": "ZNR",
+      "max": 100,
+      "default": 50,
+      "comment": "Automatic noise reducer on the wet path. Threshold this far above the measured noise floor: +6 dB at 1 .. +24 dB at 100 (+15 dB at 50); the floor is capped at -60 dBFS. 30 ms hold, ~80 ms close: clears rests between 16ths, note tails fade as on the input. 0 = off. Default 50."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "comment": "Wet output level, 0 .. 2x. 50 = about the input level."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50 (parallel distortion)."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_AcidBox",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}

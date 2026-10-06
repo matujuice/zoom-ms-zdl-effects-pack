@@ -108,26 +108,33 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### DirtBox: three distortions and a noise reducer (new, not in a release yet)
-One distortion with three characters on the Model knob, and an automatic noise reducer (ZNR) built in. Drive mostly adds dirt rather than volume: the output is levelled so that an input peaking around -14 dBFS comes out at about the same peak at any Drive.
+### ACIDBOX: a distortion box for an acid machine (new, not in a release yet)
+Made for a TB-303 / TD-3 (or a MeeBlip triode) going into the pedal: seven real distortion pedals on the Model knob, mildest first, a 3-band EQ voiced for acid, and an automatic noise reducer (ZNR). It was DirtBox until 2026-10-06 (same fxid 491). Drive mostly adds dirt rather than volume: an input peaking around -14 dBFS comes out at about the same level at any Drive.
 
-Each model follows a published analysis or digital recreation of the real pedal, stage by stage (filters evaluated at 44.1 kHz, diode curves fitted to the circuit's equations):
+Each model follows the real circuit stage by stage, from a published analysis or a circuit-level digital model (filters evaluated at 44.1 kHz, diode and transistor curves fitted to the model's):
 
-- **DS-1**: the distortion built into the Behringer TD-3 (the 303 clone; the original TB-303 has none). The TD-3's is a copy of the Boss DS-1, modelled from the [ElectroSmash DS-1 analysis](https://www.electrosmash.com/boss-ds1-analysis) and the [DS1.lv2](https://github.com/LiamLombard/DS1.lv2) circuit model: a 35 dB transistor booster, an op-amp stage boosting above 72 Hz (Dist up to 22x), 1N4148 diodes behind a 7.2 kHz low-pass, and the DS-1 tone. Made for acid lines and drones from a MeeBlip triode or similar.
-- **RAT**: the ProCo RAT, after the [Proco-Rat nodal model](https://github.com/Rudro085/Proco-Rat): two gain legs (from 60 Hz and from 1.5 kHz, up to about 67 dB), the LM308's limited bandwidth cutting the treble as the gain rises, 9 V rails, 1N914 diodes and the Filter (1.5k + 100k into 3.3 nF). Tone is the Filter, turned round: up = brighter.
-- **METAL**: the Boss MT-2 Metal Zone, from guitarix's [MetalTone](https://github.com/brummer10/MetalTone) circuit model: a fixed pre-filter that peaks +25 dB around 900 Hz, the Dist stage (1.2x to 55x, treble shelved down), the clipper's measured curve, then the fixed post filter (+5 dB at 100 Hz, +11 dB at 4.6 kHz). The other EQ knobs sit at noon; Tone is the High knob.
+- **TS9**: Ibanez TS9 Tube Screamer, after guitarix's [ts9sim](https://github.com/brummer10/guitarix/blob/master/trunk/src/plugins/ts9sim.dsp): gain only above 720 Hz, the 1N914s soft-clipping in the feedback, the 723 Hz low-pass with the treble control. The mid-hump overdrive.
+- **DIST+**: MXR Distortion+, after the ElectroSmash analysis and guitarix's [mxrdist](https://github.com/brummer10/guitarix/blob/master/trunk/src/LV2/faust/mxrdist.dsp): 741 gain up to 214x, the 741's limited bandwidth, germanium diodes. The pedal has no tone knob, so Tone is a gentle low-pass.
+- **DS-1**: the distortion built into the Behringer TD-3, a copy of the Boss DS-1 ([ElectroSmash](https://www.electrosmash.com/boss-ds1-analysis), [DS1.lv2](https://github.com/LiamLombard/DS1.lv2)): 35 dB booster, op-amp stage, 1N4148s, the DS-1 tone.
+- **RAT2**: ProCo RAT 2 (same gain stage and clipper as the RAT), after the [Proco-Rat nodal model](https://github.com/Rudro085/Proco-Rat): two gain legs, the LM308's treble loss as gain rises, 1N914s, the Filter.
+- **MUFF**: Big Muff Pi, guitarix's [bmp](https://github.com/brummer10/guitarix/blob/master/trunk/src/LV2/faust/bmp.dsp) circuit model: two transistor clipping stages and the Big Muff tone stack (noon = the mid scoop). Drive = Sustain.
+- **SFUZZ**: Univox Super-Fuzz, from the schematic (no circuit-level digital model was found): high-gain preamp, the push-push doubler (octave up), germanium diodes. Tone = the Tone switch made continuous: 0 = the 1 kHz scoop fully in (fat and bassy), 100 = off. Drive = Expander.
+- **MT-2**: Boss MT-2 Metal Zone, guitarix's [MetalTone](https://github.com/brummer10/MetalTone) circuit model: +25 dB mid pre-filter, Dist stage, the clipper, the post filter. Tone = the High knob.
 
-Drive is the pedal's own Dist knob: RAT is nearly clean at 0, but DS-1 and METAL still distort at 0, as the real pedals do. More gain also means more hiss between notes; ZNR takes it down, and turning ZNR up cuts more. No oversampling, so high notes at full Drive alias a little.
+Only RAT2 is nearly clean at Drive 0; the others still distort at 0, as the real pedals do. No oversampling, so high notes at full Drive alias a little.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Model | DS-1, RAT, METAL | Which distortion. Switching fades the effect back in over a few ms so it doesn't click. |
-| Drive | 0..100 | The pedal's Dist knob. DS-1: booster 56x then 1x..22x. RAT: 1x..2100x (audio taper), treble falling as it rises. METAL: 1.2x..55x after the +25 dB pre-filter. |
-| Tone | 0..100 | 100 = brightest on all three. DS-1: the DS-1 tone, blending a 234 Hz low-pass (0) with a 1.06 kHz high-pass (100); the middle scoops the mids. RAT: the Filter, low-pass 475 Hz..16 kHz. METAL: the High knob, -20..+20 dB above ~2 kHz, flat at 50. |
-| ZNR | 0..100 | Noise reducer on the distorted sound only (the dry sound is never touched). It measures your noise floor by itself and stays shut this far above it: +6 dB at 1, +15 dB at 50, +24 dB at 100. 0 = off. |
+| Model | TS9, DIST+, DS-1, RAT2, MUFF, SFUZZ, MT-2 | Which pedal, mildest first. Default RAT2. Switching fades the effect back in over a few ms so it doesn't click. |
+| Drive | 0..100 | The pedal's own gain knob (Drive, Distortion, Dist, Sustain, Expander). |
+| Tone | 0..100 | The pedal's tone control, 100 = brightest. Default 80. |
+| Low | -12..+12 dB | Shelf at 110 Hz: the 303's body. 0 = flat (default). |
+| Mid | -12..+12 dB | Peak at 1 kHz: the squelch of the resonance. 0 = flat (default). |
+| High | -12..+12 dB | Shelf at 4.5 kHz: the fizz. 0 = flat (default). |
+| ZNR | 0..100 | Noise reducer on the distorted sound only. It measures your noise floor by itself and stays shut this far above it: +6 dB at 1, +15 dB at 50, +24 dB at 100. 0 = off. |
 | Level | 0..100 | Distorted level, 50 = about the input level, 100 = +6 dB. |
-| Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. At 50 you get parallel distortion: the clean kick stays under the dirt. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50 (parallel distortion). |
 
-**How ZNR keeps kick tails.** It listens to the clean input, not the distorted sound, so it follows the kick's real decay. The noise floor it measures can never be set above -60 dBFS, so in a track that never goes quiet the threshold stays at -45 dBFS or lower (ZNR 50) and never climbs into the music. Below the threshold it does not cut: it waits 50 ms, then turns the distortion down gently (a 1:3 expander) over about 150 ms, so a tail fades the way it fades on the input. In the host test a 160 BPM kick pattern came through unchanged while the noise between songs dropped by about 30 dB.
+**ZNR for acid lines.** It listens to the clean input, not the distorted sound, so it follows each note's real decay. The noise floor it measures can never be set above -60 dBFS, so the threshold never climbs into the music. Below the threshold it waits 30 ms, then turns the distortion down gently (a 1:3 expander) over about 80 ms: quick enough to clear the hiss in a rest between 16ths at 140 BPM, while a note's tail still fades the way it does on the input. More gain means more hiss to clear; turning ZNR up cuts more.
 
-Try: Digitakt kick and bass at Drive 60, Mix 50 for parallel grit; RAT with Tone 30 for a fat, dark fuzz on a Shruthi bass; METAL on hats and snares only.
+Try: TD-3 into RAT2 at Drive 50, Tone 80, Mid +3 for a classic squelch; DS-1 for the TD-3's own distortion sound; SFUZZ with Tone 0 and Low +4 for fat, octave-up drones; Mix 50 to keep the clean line under the dirt.

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Build DirtBox.ZDL from dirtbox.c + manifest_pedal.json (6-knob pedal build).
+"""Build AcidBox.ZDL from acidbox.c + manifest_pedal.json (9-knob pedal build).
 
 Adapted from the Hydra build script: same compiler flags, same linker options,
 same 3-knob cover layout (the pedal screen shows the first three knobs).
 
 Finds the TI C6000 compiler automatically (see _find_ti_root). Run from the
-repo root:  py -B src\\custom\\dirtbox\\build.py   (or double-click
-build_dirtbox.bat). Output: dist\\DirtBox.ZDL
+repo root:  py -B src\\custom\\acidbox\\build.py   (or double-click
+build_acidbox.bat). Output: dist\\AcidBox.ZDL
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent.parent.parent           # src/custom/dirtbox/build.py -> repo root
+ROOT = HERE.parent.parent.parent           # src/custom/acidbox/build.py -> repo root
 sys.path.insert(0, str(ROOT / "build"))
 sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
 
@@ -60,9 +60,9 @@ CFLAGS = [
 
 def main() -> None:
     manifest = json.loads((HERE / "manifest_pedal.json").read_text(encoding="utf-8"))
-    write_param_header(manifest, HERE / "dirtbox_params.h", "DIRTBOX")
+    write_param_header(manifest, HERE / "acidbox_params.h", "ACIDBOX")
 
-    src_c = HERE / "dirtbox.c"
+    src_c = HERE / "acidbox.c"
     out_dir = ROOT / "dist"
     out_dir.mkdir(exist_ok=True)
 
@@ -73,12 +73,12 @@ def main() -> None:
     obj = HERE / f"{effect_name.lower()}.obj"
     out_zdl = out_dir / f"{effect_name}.ZDL"
 
-    print(f"[dirtbox] compiling {src_c.name} -> {obj.name}")
+    print(f"[acidbox] compiling {src_c.name} -> {obj.name}")
     subprocess.run(
         [
             str(CL6X),
             *CFLAGS,
-            f"--define=DIRTBOX_AUDIO_FUNC={audio_func}",
+            f"--define=ACIDBOX_AUDIO_FUNC={audio_func}",
             "-c",
             str(src_c),
             f"--output_file={obj}",
@@ -113,7 +113,7 @@ def main() -> None:
     )
     link(cfg)
 
-    print(f"\n[dirtbox] done -> {out_zdl}")
+    print(f"\n[acidbox] done -> {out_zdl}")
 
 
 if __name__ == "__main__":
