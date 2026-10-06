@@ -9,4 +9,5 @@ typedef FmState STATE;
 static float *params;
 static void defaults(void) { D(VOWEL); D(RESO); D(CHORD); D(PARAM); D(TEMPO); D(DIV); D(SHAPE); D(DEPTH); D(MIX); }
 static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
+#define HAS_FOLLOW 1
 #include "tempo_twin.h"

@@ -9,4 +9,5 @@ typedef DualShift STATE;
 static float *params;
 static void defaults(void) { D(PTCH1); D(PTCH2); D(DLY1); D(DLY2); D(TEMPO); D(DIV); D(DEPTH); D(SHAPE); D(MIX); }
 static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
+#define HAS_FOLLOW 1
 #include "tempo_twin.h"

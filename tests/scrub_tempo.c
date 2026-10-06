@@ -11,4 +11,5 @@ static float *params;
 static void defaults(void) { D(POS); D(GRAIN); D(REC); D(GLIDE); D(DIR); D(SPRAY); D(MIX); D(TEMPO);
                              params[SCRUB_GRAIN_SLOT] = 1.07f; }
 static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
+#define HAS_FOLLOW 1
 #include "tempo_twin.h"
