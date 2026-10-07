@@ -405,6 +405,7 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
     float dCur = s->dCur, xf = s->xf, wlT = P->wetG;
 
     if (L <= 0.0f) L = P->L;
+    if (P->rev && L > GD_MAXD * 0.5f) L = P->L;   /* chunk latched on another Type: too long to read backwards */
     if (dCur <= 0.0f) dCur = P->dT;
     if (P->tape) xf = 1.0f;
     else if (xf >= 1.0f && (P->dT - dCur > 0.5f || dCur - P->dT > 0.5f)) {

@@ -167,6 +167,20 @@ int main(void)
         CHECK(peak(0, 44096) == 0.0f, "Tail OFF: repeats after switching off");
     }
 
+    /* DIGI 2bar at 120 latches a 176400-sample chunk; switched to REVRS mid-chunk the
+     * backward read must stay inside the 348000-sample ring (it read up to 352800 before) */
+    {
+        GdState *st;
+        setup(); SET(TYPE, 0); SET(TIME, 113); SET(TEMPO, 120); settle();
+        run(44100 * 2, 2, 0.3f);
+        SET(TYPE, 3); run(8, 2, 0.3f);
+        st = (GdState *)(((uintptr_t)arena + 3u) & ~(uintptr_t)3u);
+        printf("REVRS after DIGI 2bar: chunk %.0f samples (max %.0f)\n", st->L, GD_MAXD * 0.5f);
+        CHECK(st->L <= GD_MAXD * 0.5f, "REVRS: chunk latched on DIGI reads past the ring");
+        run(44100 * 3, 2, 0.3f);
+        CHECK(peak(0, 44100 * 3) < 2.5f, "REVRS after DIGI 2bar: output not finite or too loud");
+    }
+
     printf("%d failed checks\n", fails);
     return fails ? 1 : 0;
 }
