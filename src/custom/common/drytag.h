@@ -34,8 +34,8 @@
  * is heard; the last BPM is kept when the sender goes away) and a bar from upstream (the counter changed) toggles the number to the other twin
  * copy, exactly as a Mozaic flip of its own knob would, so each effect restarts the way it
  * already does on a flip. On any BPM the effect ignores the tag and runs on its own (free,
- * or its own resets) (Luca, 2026-10-06). In slots 1-3 a FOLLOW effect needs its Mozaic pad
- * OFF, or Mozaic overwrites the knob with a BPM. A tag whose "blocks since flip" stops moving
+ * or its own resets) (Luca, 2026-10-06). In slots 1-3 a FOLLOW effect needs Mozaic's Send
+ * knob on another slot, or Mozaic overwrites the knob with a BPM. A tag whose "blocks since flip" stops moving
  * for 1 s is stale (sender removed) and is ignored.
  *
  * Pedal rules (docs/SAFE-DSP-RULES.md): no division, no tables, no libm, helpers inline.

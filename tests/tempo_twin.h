@@ -5,7 +5,7 @@
  *     (both FOLLOW checks only where HAS_FOLLOW is 1; effects without the bar tag show 40)
  *   - the twin copy runs at the same speed as its BPM (also read from raw 4.41)
  *   - flipping a BPM to its twin (1.20 -> 3.21) restarts the phase, and only once
- *   - a plain tempo change restarts it only where PLAIN_RESETS is 1 (DualShft, Choral)
+ *   - a plain tempo change restarts it only where PLAIN_RESETS is 1 (none since 2026-10-07: all restart only on a flip)
  *   - switched off, the input passes untouched while the phase keeps running at the same
  *     speed and a flip still restarts it (skipped where OFF_RUNS is 0: Scrub; the input
  *     check is skipped where OFF_DRY is 0: DubSiren, whose echo rings out)

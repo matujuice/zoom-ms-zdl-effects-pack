@@ -70,7 +70,7 @@
  *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
  *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
  *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs that slot's Mozaic pad OFF.
+ *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>

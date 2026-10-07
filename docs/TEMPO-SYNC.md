@@ -471,7 +471,7 @@ it still works if the pedal does not refresh the Dry buffer between blocks.
 
 **Rules:** SyncEQ and the tempo effects send only while Mozaic flips their Tempo (LIVE; Luca
 2026-10-06): a flip within 2.5 times the gap between their last two flips (60 s after a first
-flip), so a pad turned off stops its slot sending after about 2 bars. With several LIVE senders
+flip), so a slot Mozaic stops flipping (Send moved, pad off in v2) stops sending after about 2 flip gaps. With several LIVE senders
 the one with the lowest id sends and the others stay quiet, whatever their slot order (they are
 flipped on the same bar); a tag that stops moving (sender stopped or removed) is taken over
 within 8 blocks. First pedal test (2026-10-06): with pads on in more than one slot a FOLLW
@@ -484,7 +484,7 @@ flips it, through one call, `dt_tempo()`. Only with Tempo on FOLLOW (screen 0..3
 FOLLW) does it receive: it takes the tag's BPM, and a new bar toggles the Tempo screen number
 it hands to the effect's existing code to the other twin copy, so it restarts exactly as on a
 Mozaic flip. On a BPM it ignores the tag (Luca: some effects synced, some free). FOLLOW in
-slots 1-3 needs that slot's Mozaic pad off. A tag whose age stops moving for 1 s is stale; FOLLOW then keeps the last BPM. Host test of two slots: `tests/barsync_chain.c`.
+slots 1-3 needs Mozaic's Send knob on another slot. A tag whose age stops moving for 1 s is stale; FOLLOW then keeps the last BPM. Host test of two slots: `tests/barsync_chain.c`.
 
 **Status:** SyncEQ (fxid 494) and the tempo effects send it, the tempo effects receive it;
 host tests in `tests/synceq_tag.c`, `tests/synceq_eq.c` and `tests/barsync_chain.c`. Not built, nothing heard on the pedal; whether every bit survives stock

@@ -54,8 +54,8 @@
  * TEMPO (LFO only; the delays no longer use it)
  *   A custom ZDL cannot read the pedal's global BPM or its tap button
  *   (docs/TEMPO-SYNC.md), so the BPM comes from the Tempo knob, like the
- *   shipped Hydra / Spiral / Spool. The LFO phase restarts whenever the
- *   Tempo knob moves.
+ *   shipped Hydra / Spiral / Spool. The LFO phase restarts on a flip to the
+ *   other copy (below); a new BPM only changes its speed (Luca, 2026-10-07).
  *   SYNC RESET: the knob runs 0..441 and holds every BPM twice. 0..240 is
  *   the BPM (0..39 = FOLLOW, see BAR TAG); 241..441 is a twin copy, BPM = screen -
  *   201, so past 240 the screen shows 40 again. Both copies show the same
@@ -105,7 +105,7 @@
  *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
  *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
  *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs that slot's Mozaic pad OFF.
+ *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>
@@ -186,7 +186,7 @@ typedef struct {
     int   rsign;           /* smooth random: sign of the current target  */
     float dlyA, dlyB;      /* delays in use, samples, <0 = not set      */
     float gA, gB;          /* wet fade gain per voice, 0..1             */
-    float last_tempo;      /* Tempo screen number at the last LFO restart */
+    float last_tempo;      /* Tempo copy at the last LFO restart (0, 1 = twin; -1 = none) */
     DtSync sync;           /* bar tag to and from other slots (drytag.h) */
     float ring[RING_SIZE]; /* input history                             */
 } DualShift;
@@ -528,9 +528,9 @@ static inline void ds_ensure_init(DualShift *s)
  *   delay      = round(12 + 0.0988 * screen^2) ms * 44.1  [samples]
  *
  * "Tap" replacement: the pedal's tap button is invisible to a ZDL, so the
- * LFO phase restarts whenever the Tempo knob moves. Set the tempo, stop
- * turning, and the cycle starts from zero at that moment. Flipping to the
- * twin copy of the same BPM restarts it too, with no change of tempo.   */
+ * LFO phase restarts when Tempo flips to its other copy (the same BPM on
+ * the twin, by hand or from bar sync). A plain tempo change keeps the
+ * phase and only changes the speed (Luca, 2026-10-07).                  */
 DS_ALWAYS_INLINE(ds_prepare)
 static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kraw)
 {
@@ -563,9 +563,11 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     tempo_i = (int)(k[4] * TEMPO_MAX_F + 0.5f);   /* screen number 0..441     */
     bpm = (float)ds_tempo_bpm(tempo_i);
 
-    if ((float)tempo_i != s->last_tempo) {        /* Tempo moved (or flipped to its twin): restart LFO */
+    /* restart the LFO only on a flip to the other copy (bar sync, by hand or from the bar
+     * tag); a new BPM only changes its speed (Luca, 2026-10-07) */
+    if ((tempo_i > 240 ? 1.0f : 0.0f) != s->last_tempo) {
         P->retrig = 1;
-        s->last_tempo = (float)tempo_i;
+        s->last_tempo = (tempo_i > 240) ? 1.0f : 0.0f;
     } else {
         P->retrig = 0;
     }

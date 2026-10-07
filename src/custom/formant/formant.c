@@ -47,8 +47,8 @@
  * TEMPO SYNC
  *   A custom ZDL cannot read the pedal's global BPM or tap button, so, like
  *   DualShft, the BPM comes from the Tempo knob (screen number = BPM, 40..240)
- *   and Div picks the note value of one LFO cycle. The LFO restarts whenever
- *   Tempo moves, so you can line it up with the beat.
+ *   and Div picks the note value of one LFO cycle. A new BPM only changes the
+ *   LFO's speed; it restarts on a flip to the other copy (Luca, 2026-10-07).
  *   SYNC RESET: the knob runs 0..441 and holds every BPM twice: 0..240 is the
  *   BPM, 241..441 a twin copy (BPM = screen - 201, so past 240 the screen
  *   shows 40 again). Flipping between a BPM and its twin (120 <-> 321)
@@ -119,7 +119,7 @@
  *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
  *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
  *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs that slot's Mozaic pad OFF.
+ *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  *
  * SIZE: Choral is the largest effect of the pack (about 31 KB) and a ZDL much over that
  * freezes the pedal at boot. Every helper is inlined, so each call is a full copy: code
@@ -188,7 +188,7 @@ typedef struct {
     float dmain;           /* main voice vibrato-tap delay now (samples)      */
     float ein, eout, comp; /* loudness meters (input / output) and the auto-level gain */
     float lfo_ph;          /* LFO phase, 0..1                                 */
-    float last_tempo;      /* Tempo screen number at the last LFO restart     */
+    float last_tempo;      /* Tempo copy at the last restart (0, 1 = twin)    */
     DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
     unsigned int rng;      /* random vowel generator (LCG)                    */
     float rcur[5], rnext[5], rph[5], rmul[5]; /* per voice: vowel now / next; Rand: own cycle phase and speed */
@@ -644,8 +644,8 @@ static inline void fm_prepare(FmState *s, FmParams *P, const float *k)
         SR_NOUNROLL
         for (m = 0; m < 5; m++) P->vg[m] *= y;
     }
-    if (P->tempo != s->last_tempo) {                  /* Tempo moved or flipped to its twin */
-        s->lfo_ph = 0.0f; s->last_tempo = P->tempo;
+    if ((P->tempo > 240.0f ? 1.0f : 0.0f) != s->last_tempo) {   /* flipped to the other copy */
+        s->lfo_ph = 0.0f; s->last_tempo = (P->tempo > 240.0f) ? 1.0f : 0.0f;
         SR_NOUNROLL
         for (m = 0; m < 5; m++) { s->rph[m] = 0.0f; s->rmul[m] = 1.0f; }   /* random mode restarts with the beat too */
     }
