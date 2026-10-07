@@ -48,7 +48,7 @@
       "name": "ZNR",
       "max": 100,
       "default": 50,
-      "comment": "Automatic noise reducer on the wet path. Threshold this far above the measured noise floor: +6 dB at 1 .. +24 dB at 100 (+15 dB at 50); the floor is capped at -60 dBFS. 30 ms hold, ~80 ms close: clears rests between 16ths, note tails fade as on the input. 0 = off. Default 50."
+      "comment": "Automatic noise reducer on the wet path. Threshold this far above the measured noise floor: +9 dB at 1 .. +30 dB at 100 (+19.5 dB at 50), 1:5 expander below it; the floor is capped at -60 dBFS. 30 ms hold, ~80 ms close: clears rests between 16ths, note tails fade as on the input. 0 = off. Default 50."
     },
     {
       "name": "Level",
