@@ -451,3 +451,42 @@ above are partially applied (state[24]/state[30] rows added in
 STATE-ABI-PROGRESS, `reserved_a` and `0x28` flag annotated in
 build/ABI.md). Further edits to EDIT-HANDLER-ABI for the `B4` selector
 remain deferred until we hardware-confirm the TAPEECH3 reading.
+
+## 10. Bar tag: carrying bar sync to slots 4-6 (2026-10-06)
+
+Mozaic's bar sync flips the Tempo knob over USB SysEx, and the MS-60B accepts outside knob
+edits only on slots 1-3 (tested 2026-10-06 with `tools/zoom_sysex.py`). The DryPrb probe (PR
+#24, fxid 498) then showed on the MS-60B that a value written into the Dry buffer right half
+(`ctx[4] + 8`) in slot 1 is still there in slots 2, 3 and 5, also with a stock filter in
+between, and that nothing of it reaches the output. Idea from ELynx's Div0, which uses the
+same buffer (so not for the MS-70CDR, where Div0/RTFM need it).
+
+**The tag** (`src/custom/common/drytag.h`): the sender writes 8 values into Dry right on every
+block, each a whole number 0..4095 times 2^-24 (at most -72 dBFS): signature 0xA5C, sender id
+(12 bits of its arena address), bar counter (+1 per twin flip), BPM x 16, blocks since the last
+flip (two 12-bit halves), format 0x10 + LIVE bit (a flip in the last 60 s), checksum. A reader
+accepts it only when every value is exact and the checksum matches, so audio never reads as a
+tag. A held tag instead of a one-block pulse means no missed pulse, no loudness threshold, and
+it still works if the pedal does not refresh the Dry buffer between blocks.
+
+**Rules:** SyncEQ and the tempo effects send only while Mozaic flips their Tempo (LIVE; Luca
+2026-10-06): a flip within 2.5 times the gap between their last two flips (60 s after a first
+flip), so a slot Mozaic stops flipping (Send moved, pad off in v2) stops sending after about 2 flip gaps. With several LIVE senders
+the one with the lowest id sends and the others stay quiet, whatever their slot order (they are
+flipped on the same bar); a tag that stops moving (sender stopped or removed) is taken over
+within 8 blocks. First pedal test (2026-10-06): with pads on in more than one slot a FOLLW
+EuGate in slot 4 ran free; the host simulation (`tests/barsync_handover.c`) showed the cause:
+a pad turned off kept its slot claiming the tag for 60 s while the next sender waited behind it,
+and with a buffer swapped every block two senders could each own one copy. Effects that are not sending never write `ctx[4]`, so
+the tag passes through them; checked for every effect of the pack, DirtBox and Breather.
+Every tempo effect (DualShft, Choral, EuGate, DubSiren, Scrub, Breather) sends while Mozaic
+flips it, through one call, `dt_tempo()`. Only with Tempo on FOLLOW (screen 0..39, shown
+FOLLW) does it receive: it takes the tag's BPM, and a new bar toggles the Tempo screen number
+it hands to the effect's existing code to the other twin copy, so it restarts exactly as on a
+Mozaic flip. On a BPM it ignores the tag (Luca: some effects synced, some free). FOLLOW in
+slots 1-3 needs Mozaic's Send knob on another slot. A tag whose age stops moving for 1 s is stale; FOLLOW then keeps the last BPM. Host test of two slots: `tests/barsync_chain.c`.
+
+**Status:** SyncEQ (fxid 494) and the tempo effects send it, the tempo effects receive it;
+host tests in `tests/synceq_tag.c`, `tests/synceq_eq.c` and `tests/barsync_chain.c`. Not built, nothing heard on the pedal; whether every bit survives stock
+effects is the first pedal test. Design notes: `/mnt/project-files/ideas/slots-4-6-tempo-sync.md`
+(project files).

@@ -9,4 +9,5 @@ typedef ChState STATE;
 static float *params;
 static void defaults(void) { D(NOTES); D(STEPS); params[EUGATE_STEPS_SLOT] = 0.63f; D(SHIFT); D(SWING); D(RESET); D(GAP); D(SOFT); D(TEMPO); D(MIX); }
 static int label(unsigned v, char *o) { return ZDL_GetLabel_7(v, o); }
+#define HAS_FOLLOW 1
 #include "tempo_twin.h"

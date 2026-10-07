@@ -94,7 +94,7 @@
  *                    (squared curve); shown as "OFF", "+-1" .. "+-250" (ms; 5 characters)
  *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
- *   7 Tempo  40..240 BPM (the pedal's own number, below 40 reads as 40); only used when
+ *   7 Tempo  40..240 BPM (the pedal's own number; 0..39 = FOLLOW, see BAR TAG); only used when
  *                    Grain is a note value. The pedal gives effects no clock, so it is
  *                    dialled in, as on DubSiren and DualShft.
  *                    Screen 0..441: 241..441 is a twin copy of the same BPMs (BPM =
@@ -107,9 +107,17 @@
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
  * helper forced inline, no calls. 2^x is built from a polynomial and the float exponent.
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
+ *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
+ *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
+ *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SC_DO_PRAGMA(x) _Pragma(#x)
@@ -121,7 +129,7 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435234u        /* "SCR4": change whenever ScState changes */
+#define SC_MAGIC      0x53435236u        /* "SCR6": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
 #define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
@@ -155,6 +163,7 @@ typedef struct {
     int   bC, bO;          /* 1 = that voice plays backward                   */
     float fin;             /* wet fade-in 0..1                                */
     int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h) */
     short buf[SC_N];
 } ScState;
 
@@ -338,6 +347,7 @@ static inline void sc_init(ScState *s)
     s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0;
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
     s->bC = 0; s->bO = 0; s->twin = -1;
+    dt_sync_init(&s->sync);
     s->magic = SC_MAGIC;
 }
 
@@ -607,6 +617,7 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int len;
+    if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
     len = sc_put_int((int)sc_tempo_bpm((float)(int)value), out);
     out[len] = 0;
@@ -628,6 +639,7 @@ SC_CODE_SECTION(SCRUB_AUDIO_FUNC)
 void SCRUB_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -667,6 +679,8 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[7] = sc_tempo_ui(params[SCRUB_TEMPO_SLOT], (float)SCRUB_TEMPO_UI_DEFAULT);
 
     if (s->magic != SC_MAGIC) sc_init(s);
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
     if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */
 
     sc_prepare(&P, u);

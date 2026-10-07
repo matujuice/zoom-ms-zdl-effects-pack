@@ -1,8 +1,10 @@
-# The seven effects
+# The effects
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
 **Tempo knobs hold every BPM twice.** On DualShft, Choral, EuGate, DubSiren and Scrub the Tempo knob runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy. Tempo is the 8th knob on all five, so the host sends the same knob number whatever the effect. While one of these effects is switched off its LFO or pattern keeps running in the background, so it comes back in time (DubSiren needs Trig SHold or SPuls for that, EuGate Reset OFF, NOTE or SYNC).
+
+**Bar sync for slots 4 to 6 (in development, not in a release yet).** Mozaic can only edit the first three slots. A tempo effect there that Mozaic flips (or SyncEQ) passes each bar on, unheard, to the effects after it. A tempo effect with Tempo all the way down on **FOLLW** follows it: the same bars and BPM (120 until something upstream sends; if the sender goes away it keeps the last BPM). On a BPM it ignores it and runs on its own, so you can mix synced and free effects. Point Mozaic's Send knob at the one effect that sends and put the other synced effects on FOLLW (in slots 1 to 3 too). Effects without a Tempo knob let it through.
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
@@ -25,7 +27,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
-| Tempo | 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: vowel choir
@@ -40,7 +42,7 @@ Filters tuned to the vowels A E I O U turn the input into a small choir. Five vo
 | Div | 4 bars .. 1/64 | Length of one LFO cycle. |
 | Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
 | Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
-| Tempo | 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
@@ -55,7 +57,7 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 | Reset | OFF, NOTE, PEDAL, SYNC | What restarts the pattern: nothing, every new note after silence, or turning the effect on. SYNC is the setting for bar sync from a host: the same as OFF, only the host's restarts count. |
 | Gap | 0..50 % of a step | Small silence at the end of a note that is followed by another note. |
 | Soft | 0..100 | Softness of the note edges. 0 = hard chop. |
-| Tempo | 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pattern at step 1 (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pattern at step 1 (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. The gaps are silent in the wet sound. |
 
 Try 5 notes in 16 steps (the default), then 7 in 12 or 5 in 12 for a different feel.
@@ -72,7 +74,7 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Depth | 0..100 | How far the LFO sweeps the pitch. |
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
-| Tempo | 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
 
 ### S.GN_L: broken digital line
@@ -104,6 +106,23 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Dir | FWD, REV, PING, RAND | Which way the grain plays: forward, backward, ping-pong (forward then backward in turns) or random (each grain flips a coin). PING turns round on itself, so the loop has no jump and sounds smoother and more tonal. |
 | Spray | OFF, +-1..+-250 | Random offset for each new grain, either side of the head, shown in ms (+-250 = up to 250 ms before or after; never ahead of now): a moving cloud instead of a steady loop. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
-| Tempo | 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
+
+### SyncEQ: EQ that passes the bar sync on
+In development: source and host tests only, not built or heard yet.
+
+The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with Mozaic's Send knob pointing at it, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it, even in slots 4 to 6, can stay on the bar (they will learn to read it in a later update). Any tempo effect of the pack in slots 1 to 3 will send the same mark, so SyncEQ is only needed when none sits there. Like the tempo effects, it sends only while Mozaic is flipping its Tempo. Switched off, the sound passes untouched and the bar still goes through. The sound side is a clean EQ: with every knob at its default nothing changes.
+
+| Knob | Range | What it does |
+|---|---|---|
+| LoCut | OFF, 20..500 Hz | High-pass filter, 12 dB per octave. |
+| Low | -12..+12 dB | Bass shelf at 100 Hz. |
+| Mid | -12..+12 dB | Bell at MidF. |
+| MidF | 200..5.0k Hz | Frequency of the Mid bell. |
+| High | -12..+12 dB | Treble shelf at 8 kHz. |
+| HiCut | 1.0k..20k Hz, OFF | Low-pass filter, 12 dB per octave. |
+| Drive | 0..100 | Soft saturation after the EQ. 0 = clean; the output is turned down as Drive goes up. |
+| Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
+| Level | -12..+12 dB | Output level. |

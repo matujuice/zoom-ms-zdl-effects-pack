@@ -54,10 +54,10 @@
  * TEMPO (LFO only; the delays no longer use it)
  *   A custom ZDL cannot read the pedal's global BPM or its tap button
  *   (docs/TEMPO-SYNC.md), so the BPM comes from the Tempo knob, like the
- *   shipped Hydra / Spiral / Spool. The LFO phase restarts whenever the
- *   Tempo knob moves.
+ *   shipped Hydra / Spiral / Spool. The LFO phase restarts on a flip to the
+ *   other copy (below); a new BPM only changes its speed (Luca, 2026-10-07).
  *   SYNC RESET: the knob runs 0..441 and holds every BPM twice. 0..240 is
- *   the BPM (below 40 acts as 40); 241..441 is a twin copy, BPM = screen -
+ *   the BPM (0..39 = FOLLOW, see BAR TAG); 241..441 is a twin copy, BPM = screen -
  *   201, so past 240 the screen shows 40 again. Both copies show the same
  *   number. Flipping between a BPM and its twin (120 <-> 321) restarts the
  *   LFO without changing the tempo, so a host (iPhone, MIDI box) can send
@@ -99,9 +99,17 @@
  *   - patch reload behaviour
  * NOT CHECKED ON HARDWARE YET: the 44.1 kHz assumption written down as
  * exact delay times, long-term DSP load, behaviour across bypass toggling.
+ *
+ * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
+ *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
+ *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
+ *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
+ *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
+ *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>
+#include "../common/drytag.h"
 
 /* TI toolchain pragmas, same pattern as TapeEcho4: every helper is forced
  * inline so the object carries no .text and no local call relocations.
@@ -130,7 +138,7 @@
 #define CLEAR_CHUNK      1024                /* lazy ring clear per call       */
 
 /* Tempo knob: range 0..441 in the manifest, every BPM twice (sync reset).
- * Screen 0..240 IS the BPM (below 40 acts as 40); 241..441 is the twin copy,
+ * Screen 40..240 IS the BPM (0..39 = FOLLOW, see BAR TAG); 241..441 is the twin copy,
  * BPM = screen - 201. The pedal hands over screen/100 (up to 4.41);
  * ds_tempo_ui() turns that back into the screen number and ds_tempo_bpm()
  * into the BPM. */
@@ -139,7 +147,7 @@
 #define TEMPO_MAX_F      441.0f
 #define TEMPO_TWIN       201                 /* twin copy = BPM + 201          */
 
-#define DS_MAGIC         0x44533036u         /* "DS06": arena holds valid state */
+#define DS_MAGIC         0x44533038u         /* "DS08": arena holds valid state */
 
 #define SHAPE_TRI        0
 #define SHAPE_SQUARE     1
@@ -178,7 +186,8 @@ typedef struct {
     int   rsign;           /* smooth random: sign of the current target  */
     float dlyA, dlyB;      /* delays in use, samples, <0 = not set      */
     float gA, gB;          /* wet fade gain per voice, 0..1             */
-    float last_tempo;      /* Tempo screen number at the last LFO restart */
+    float last_tempo;      /* Tempo copy at the last LFO restart (0, 1 = twin; -1 = none) */
+    DtSync sync;           /* bar tag to and from other slots (drytag.h) */
     float ring[RING_SIZE]; /* input history                             */
 } DualShift;
 
@@ -492,6 +501,7 @@ static inline void ds_init(DualShift *s)
     s->gA = 0.0f;              /* wet fades in after load */
     s->gB = 0.0f;
     s->last_tempo = -1.0f;     /* forces one restart on the first block */
+    dt_sync_init(&s->sync);
     s->magic = DS_MAGIC;
 }
 
@@ -518,9 +528,9 @@ static inline void ds_ensure_init(DualShift *s)
  *   delay      = round(12 + 0.0988 * screen^2) ms * 44.1  [samples]
  *
  * "Tap" replacement: the pedal's tap button is invisible to a ZDL, so the
- * LFO phase restarts whenever the Tempo knob moves. Set the tempo, stop
- * turning, and the cycle starts from zero at that moment. Flipping to the
- * twin copy of the same BPM restarts it too, with no change of tempo.   */
+ * LFO phase restarts when Tempo flips to its other copy (the same BPM on
+ * the twin, by hand or from bar sync). A plain tempo change keeps the
+ * phase and only changes the speed (Luca, 2026-10-07).                  */
 DS_ALWAYS_INLINE(ds_prepare)
 static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kraw)
 {
@@ -534,7 +544,7 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
 
     for (i = 0; i < 9; i++) {
         k[i] = clamp01(kraw[i]);
-        if (kraw[i] != 0.0f) allzero = 0;
+        if (i != 4 && kraw[i] != 0.0f) allzero = 0;   /* Tempo comes through dt_tempo, never 0 */
     }
     if (allzero) {                       /* table not materialised yet */
         k[0] = DEF_PITCH_A;  k[1] = DEF_PITCH_B;
@@ -553,9 +563,11 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
     tempo_i = (int)(k[4] * TEMPO_MAX_F + 0.5f);   /* screen number 0..441     */
     bpm = (float)ds_tempo_bpm(tempo_i);
 
-    if ((float)tempo_i != s->last_tempo) {        /* Tempo moved (or flipped to its twin): restart LFO */
+    /* restart the LFO only on a flip to the other copy (bar sync, by hand or from the bar
+     * tag); a new BPM only changes its speed (Luca, 2026-10-07) */
+    if ((tempo_i > 240 ? 1.0f : 0.0f) != s->last_tempo) {
         P->retrig = 1;
-        s->last_tempo = (float)tempo_i;
+        s->last_tempo = (tempo_i > 240) ? 1.0f : 0.0f;
     } else {
         P->retrig = 0;
     }
@@ -788,6 +800,7 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value > 441u) value = 441u;
+    if (value <= 39u) return dt_follow_text(out);
     n = ds_tempo_bpm((int)value);
     while (n >= 100) { n -= 100; h++; }
     while (n >= 10)  { n -= 10;  t++; }
@@ -902,6 +915,7 @@ DS_CODE_SECTION(DUALSHFT_AUDIO_FUNC)
 void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
+    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -935,7 +949,11 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     k[1] = ds_knob(params[DUALSHFT_PTCH2_SLOT], (float)DUALSHFT_PTCH2_UI_DEFAULT, 0.0151515152f);
     k[2] = ds_knob(params[DUALSHFT_DLY1_SLOT],   (float)DUALSHFT_DLY1_UI_DEFAULT,   0.008928571f);
     k[3] = ds_knob(params[DUALSHFT_DLY2_SLOT],   (float)DUALSHFT_DLY2_UI_DEFAULT,   0.008928571f);
-    k[4] = ds_tempo_ui(params[DUALSHFT_TEMPO_SLOT], (float)DUALSHFT_TEMPO_UI_DEFAULT) * 0.0022675737f;   /* 1/441 */
+    ds_ensure_init(s);
+    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
+    k[4] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0,
+                    ds_tempo_ui(params[DUALSHFT_TEMPO_SLOT], (float)DUALSHFT_TEMPO_UI_DEFAULT),
+                    dt_id(stateBase)) * 0.0022675737f;   /* 1/441 */
     k[5] = ds_knob(params[DUALSHFT_DIV_SLOT],    (float)DUALSHFT_DIV_UI_DEFAULT,    0.0625f);
     k[6] = ds_knob(params[DUALSHFT_DEPTH_SLOT],  (float)DUALSHFT_DEPTH_UI_DEFAULT,  0.0125f);
     k[7] = ds_knob(params[DUALSHFT_SHAPE_SLOT],  (float)DUALSHFT_SHAPE_UI_DEFAULT,  0.1666667f);

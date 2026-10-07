@@ -1,6 +1,6 @@
 # Matujuice Zoom MS ZDL effects pack
 
-Seven free custom effects for Zoom MultiStomp pedals, with source code.
+Free custom effects for Zoom MultiStomp pedals, with source code.
 
 ![The seven covers as the pedal's screen shows them](release/covers.png)
 
@@ -13,6 +13,7 @@ Seven free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
+| **SyncEQ** | EQ with low and high cut, three bands and a little drive, which also passes the iPhone bar sync on to the effects in later slots. In development, not in a release yet. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
@@ -27,7 +28,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 494 SyncEQ). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 
@@ -39,12 +40,13 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `synceq`.
 
 ## Repository layout
 
 ```
 src/custom/<effect>/   DSP source (.c), manifest_pedal.json (knobs, defaults, ID), make_cover.py, build.py
+src/custom/common/     drytag.h, the bar tag that carries bar sync to later slots
 src/airwindows/common/ shared cover and parameter helpers; covers/*.json are the generated covers
 build/                 the ZDL linker and tools (from ZoomMultistompZDL, see Credits)
 docs/                  knob reference, install guide, DSP rules
