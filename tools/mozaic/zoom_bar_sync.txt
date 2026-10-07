@@ -1,7 +1,8 @@
 // Zoom MS bar sync v3, for Mozaic (AUM). Keeps our effects on the bar.
-// Needs the twin-Tempo builds (DualShft, Choral, EuGate, DubSiren, Scrub with
-// Tempo 0..441): screen T = BPM T, screen T + 201 = the same BPM again, and
-// flipping between the two restarts the LFO / pattern / grain.
+// Needs the bar-tag builds of the pack's tempo effects (DualShft, Choral, EuGate,
+// DubSiren, Scrub, Breather, GridDly, Sweep, SyncEQ; Tempo 0..441): screen
+// T = BPM T, screen T + 201 = the same BPM again, and flipping between the two
+// restarts the LFO / pattern / grain.
 // AUM routing: Mozaic MIDI out -> Zoom, Zoom MIDI out -> Mozaic in. AUM is the
 // master clock; start AUM's transport.
 //

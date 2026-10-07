@@ -5,7 +5,7 @@ __pycache__/
 linker.cmd
 compiler.opt
 .DS_Store
-# built effects: attach them to a release instead of committing them
+# dist/ holds the latest pedal-tested builds; releases attach the pack zip
 dist/*.ZDL
 release/*.zip
 tests/_gen/

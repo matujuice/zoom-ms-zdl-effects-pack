@@ -2,7 +2,7 @@
 
 Free custom effects for Zoom MultiStomp pedals, with source code.
 
-![The covers of the seven released effects as the pedal's screen shows them](release/covers.png)
+![The covers as the pedal's screen shows them](release/covers.png)
 
 | Effect | What it is |
 |---|---|
@@ -32,7 +32,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-The effects marked new are on `main` but not in a release yet; build them from source (below) until the next release.
+The effects marked new are on `main` but not in a release yet: take the tested builds from [dist/](dist/) or build them from source (below) until the next release.
 
 Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
