@@ -23,14 +23,19 @@
  *   the means up to t (YIN's normalised difference, without a divide), then the bottom of
  *   that dip, refined by a parabola and then by a cosine model of the dip (sub-sample
  *   period). A new note is taken once it has stayed within 40 cents for 24 blocks (4 ms).
- *   Octave jumps are where trackers fail, so they need more: with no new attack in the
- *   input (onset: fast envelope > 4 x slow envelope), an octave up must hold for 0.5 s and an
- *   octave down for 0.15 s; a re-attacked note is taken at once. While the input stays loud
- *   the note is kept through bad readings (up to 0.4 s); after that, or once the input
- *   fades, the singers keep singing for 60 ms after the last good reading, so a short glitch
- *   does not cut the voice. Host test (tests/choral_voice.c): within 10 cents on saw,
+ *   Octave jumps need one more look, because two detuned oscillators that beat cancel their
+ *   odd harmonics for a while and the wave then really is an octave up. With no new attack
+ *   in the input (onset: fast envelope > 4 x slow envelope), an octave up is taken as fast as
+ *   any note if the level stays near its peak or dropped all at once (a real jump), and only
+ *   after 0.5 s if it slid down (beating, which costs 3-6 dB); an octave down is taken fast
+ *   once the old note's period no longer fits the input, after 0.15 s while it still does.
+ *   While the input stays loud the note is kept through bad readings (up to 0.4 s); after
+ *   that, or once the input fades, the singers keep singing for 60 ms after the last good
+ *   reading, so a short glitch does not cut the voice. Host test (tests/choral_voice.c): within 10 cents on saw,
  *   square, sine, filtered saw and two detuned saws from 41 Hz to 1 kHz; a re-attacked note
- *   is found in at most ~55 ms; a legato octave up waits the 0.5 s.
+ *   is found in at most ~55 ms, a legato note in ~65 ms, a legato octave on a single oscillator
+ *   (saw, square, sine, filtered saw) in at most ~85 ms; two detuned saws never slip an
+ *   octave while held.
  *
  * VOICES
  *   Every singer is a band-limited saw (PolyBLEP) at 2^(note + section octave + Chord octave
@@ -120,7 +125,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define CH_MAGIC      0x43483032u          /* "CH02" */
+#define CH_MAGIC      0x43483033u          /* "CH03" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -129,8 +134,10 @@
 #define CH_THR        0.15f                /* YIN threshold                           */
 #define CH_LOG2_FD    12.428491f           /* log2(5512.5)                            */
 #define CH_STABLE     24                   /* blocks a new note must hold (4 ms)      */
-#define CH_STABLE_OCT 2750                 /* ... an octave up with no new attack (0.5 s) */
-#define CH_STABLE_DN  825                  /* ... an octave down with no new attack (0.15 s) */
+#define CH_STABLE_OCT 2750                 /* ... an octave up with no attack, level dipped (0.5 s) */
+#define CH_STABLE_DN  825                  /* ... an octave down while the old note still fits (0.15 s) */
+#define CH_PK_DECAY   0.99997732f          /* input power peak, falls over ~8 s       */
+#define CH_PK_RATIO   0.6f                 /* octave up taken fast above this x peak (-2.2 dB) */
 #define CH_LOST       2200                 /* blocks the note is kept without a reading while loud (0.4 s) */
 #define CH_ONSET      220                  /* blocks an attack counts as a new note (40 ms) */
 #define CH_HOLD       330                  /* blocks the voice holds without a reading (60 ms) */
@@ -156,6 +163,9 @@ typedef struct {
     float cand;                            /* candidate note, octaves                 */
     int   stable, hold, lost;              /* blocks the candidate held; left to sing; since a reading */
     float lref;                            /* input power at the last good reading    */
+    float pk;                              /* input power peak (slow fall)            */
+    float es;                              /* input power, ~45 ms                     */
+    int   cnear;                           /* level was near its peak as this candidate began */
     float note;                            /* accepted note, octaves (log2 Hz)        */
     float base;                            /* note after Glide                        */
     float vamp;                            /* voice level (after Feel)                */
@@ -378,7 +388,7 @@ static inline void ch_clear(ChState *s)
 {
     int i;
     s->hpx = 0.0f; s->hpy = 0.0f; s->l1 = 0.0f; s->l2 = 0.0f; s->m1 = 0.0f; s->m2 = 0.0f;
-    s->e2 = 0.0f; s->ef = 0.0f; s->onset = 0; s->wp = 0; s->stable = 0; s->hold = 0; s->lost = 0; s->lref = 0.0f; s->cand = 0.0f; s->vamp = 0.0f;
+    s->e2 = 0.0f; s->ef = 0.0f; s->onset = 0; s->wp = 0; s->stable = 0; s->hold = 0; s->lost = 0; s->lref = 0.0f; s->pk = 0.0f; s->es = 0.0f; s->cnear = 0; s->cand = 0.0f; s->vamp = 0.0f;
     s->vibon = 0.0f; s->wsm = -1.0f; s->pw = 0.0f; s->pa = 0.0f; s->gn = 1.0f;
     SR_NOUNROLL
     for (i = 0; i < CH_RING; i++) s->ring[i] = 0.0f;
@@ -467,6 +477,15 @@ static inline void ch_tick(ChState *s, const ChParams *P)
     if (s->since < 0x7FFFFFFFu) s->since++;
 }
 
+/* bottom of a dip y1 between y0 and y2, by a parabola (y1 if they don't curve up) */
+SR_ALWAYS_INLINE(ch_dip)
+static inline float ch_dip(float y0, float y1, float y2)
+{
+    float den = y0 - y1 - y1 + y2;
+    float m = (den > 1e-20f) ? y1 - 0.125f * (y0 - y2) * (y0 - y2) * ch_recip(den) : y1;
+    return (m < y1) ? m : y1;
+}
+
 SR_ALWAYS_INLINE(ch_process)
 static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 {
@@ -476,8 +495,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     float tl[4];
     int   act[4];
     unsigned int cw;
-    int   i, j, n, b, nsec, best;
-    float v, h, y, cum, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa;
+    int   i, j, n, b, nsec, best, ln;
+    float v, h, y, cum, cn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa;
 
     /* ---- tracker: this block's input, low-passed and averaged to one sample ---- */
     v = 0.0f;
@@ -493,6 +512,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         s->e2 += 0.0025f * (in * in - s->e2);         /* ~9 ms power follower */
         s->ef += 0.05f * (in * in - s->ef);           /* ~0.5 ms */
     }
+    s->pk = (s->e2 > s->pk) ? s->e2 : s->pk * CH_PK_DECAY;
+    s->es += 0.004f * (s->e2 - s->es);
     if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) s->onset = CH_ONSET;   /* a fast attack: a new note */
     else if (s->onset > 0) s->onset--;
     if (s->hpy < 1e-20f && s->hpy > -1e-20f) s->hpy = 0.0f;
@@ -501,19 +522,20 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     v *= 0.125f;
     s->wp = (s->wp + 1) & CH_RMASK;
     s->ring[s->wp] = v;
-    cum = 0.0f; best = 0; p1 = 1e30f; p2 = 1e30f;
+    cum = 0.0f; best = 0; p1 = 1e30f; p2 = 1e30f; cn = 0.0f;
+    ln = (int)(ch_exp2(CH_LOG2_FD - s->note) + 0.5f);    /* lag of the note being sung */
     SR_NOUNROLL
     for (n = 1; n <= CH_MAXLAG; n++) {
-        float e = v - s->ring[(s->wp - n) & CH_RMASK], d, den;
+        float e = v - s->ring[(s->wp - n) & CH_RMASK], d;
         d = s->dm[n] + s->cc[n] * (e * e - s->dm[n]);
         s->dm[n] = d;
         /* lag n-1 is a dip: is its bottom (by a parabola) under the threshold? */
         if (best == 0 && n > CH_MINLAG && p1 <= p2 && p1 <= d) {
-            den = p2 - p1 - p1 + d;
-            h = (den > 1e-20f) ? p1 - 0.125f * (p2 - d) * (p2 - d) * ch_recip(den) : p1;
+            h = ch_dip(p2, p1, d);
             if (h * (float)(n - 1) < CH_THR * cum) best = n - 1;
         }
         cum += d;
+        if (n == ln) cn = cum;
         p2 = p1; p1 = d;
     }
     if (best > 0) {
@@ -536,15 +558,21 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         tgt = CH_LOG2_FD - ch_log2((float)best + off);  /* octaves (log2 Hz) */
         h = tgt - s->cand;
         if (h < 0.0333f && h > -0.0333f) { if (s->stable < CH_STABLE_OCT) s->stable++; }
-        else s->stable = 0;
+        else { s->stable = 0; s->cnear = (s->es > CH_PK_RATIO * s->pk); }
         s->cand = tgt;
-        /* a jump of exactly an octave up while singing, with no new attack in the input,
-         * must hold for half a second (down: 0.15 s): two detuned oscillators that beat lose
-         * their odd harmonics for a while and read an octave up */
+        /* Octave jumps while singing, with no new attack in the input. Two detuned
+         * oscillators that beat cancel their odd harmonics for a while: the wave then really
+         * is an octave up, but its level dips by 3-6 dB. So an octave up is taken as fast as
+         * any note while the level stays near its peak, and waits 0.5 s if it dipped. An
+         * octave down is taken fast once the old note's period no longer fits the input,
+         * and waits 0.15 s while it still does (a reading of an undertone). */
         h = tgt - s->note;
         n = (s->hold <= 0 || s->onset > 0) ? CH_STABLE
-          : (h > 0.95f && h < 1.05f) ? CH_STABLE_OCT
-          : (h < -0.95f && h > -1.05f) ? CH_STABLE_DN : CH_STABLE;
+          : (h > 0.95f && h < 1.05f) ? ((s->cnear || s->e2 > CH_PK_RATIO * s->pk) ? CH_STABLE : CH_STABLE_OCT)
+          : (h < -0.95f && h > -1.05f)
+            ? ((ln >= 2 && ln < CH_MAXLAG && ch_dip(s->dm[ln - 1], s->dm[ln], s->dm[ln + 1]) * (float)ln < 0.6f * cn)
+               ? CH_STABLE_DN : CH_STABLE)
+          : CH_STABLE;
         if (s->stable >= n) {
             if (s->hold <= 0 || s->vamp < 1e-5f) { s->note = tgt; s->base = tgt; s->vibon = 0.0f; }
             else s->note = tgt;

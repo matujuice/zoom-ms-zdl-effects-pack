@@ -87,8 +87,19 @@ int main(void){
       double ms=(lock-gap)*8000.0/SR; if (lock<0) ms=999;
       printf("  %s %d -> %d Hz: new note after %.1f ms\n", arp ? "arp   " : "legato", pairs[p][0], pairs[p][1], ms);
       if (arp) { if (ms>worsta) worsta=ms; } else if (ms>worst) worst=ms; }
-    printf("note change: worst %.1f ms legato (an octave up waits 0.5 s), %.1f ms re-attacked; wrong blocks after the change %d\n", worst, worsta, wrong);
-    CHECK(worst < 520 && worsta < 70 && wrong == 0, "note changes"); }
+    printf("note change: worst %.1f ms legato, %.1f ms re-attacked; wrong blocks after the change %d\n", worst, worsta, wrong);
+    CHECK(worst < 70 && worsta < 70 && wrong == 0, "note changes"); }
+
+  /* 2b. legato octave jumps on every single-oscillator source (saw, square, sine, low-passed
+   *     saw, whose level drops an octave up): taken as fast as any other note */
+  { double worst=0; int f0s[]={82,110,220,330};
+    for (int k=0;k<4;k++) for (int i=0;i<4;i++) for (int dn=0;dn<2;dn++){ setup(); defaults(); fconst=f0s[i]; run(SR/2, k, f_const, 0, 9);
+      fconst = dn ? f0s[i]/2.0 : f0s[i]*2.0; int lock=-1;
+      for (int b=0;b<(SR/2)/8;b++){ for(int j=0;j<8;j++){ float x=src(k,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx);
+        if (fabs(1200*(st->note-log2(fconst)))<15){ if(lock<0) lock=b; } else lock=-1; }
+      double ms = lock<0 ? 999 : lock*8000.0/SR; if (ms>worst) worst=ms; }
+    printf("legato octave up/down, 4 sources x 4 notes: new note after at most %.1f ms\n", worst);
+    CHECK(worst < 100, "legato octave jumps"); }
 
   /* 3. level: choir (Mix 100) vs input, every Choir x Size x Sing, notes 55..660 Hz, saw */
   { double lo=99, hi=-99; int wlo[4]={0}, whi[4]={0};
