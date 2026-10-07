@@ -1,4 +1,4 @@
-// Zoom MS bar sync v3, for Mozaic (AUM). Keeps our effects on the bar.
+// Zoom MS bar sync v2, for Mozaic (AUM). Keeps our effects on the bar.
 // Needs the twin-Tempo builds (DualShft, Choral, EuGate, DubSiren, Scrub with
 // Tempo 0..441): screen T = BPM T, screen T + 201 = the same BPM again, and
 // flipping between the two restarts the LFO / pattern / grain.
@@ -6,19 +6,19 @@
 // master clock; start AUM's transport.
 //
 // Every N bars, Early ms before the downbeat, the script flips the Tempo knob of
-// ONE effect, in the slot the Send knob picks (1..3), to its other copy. When the
-// host tempo changes it sends the new BPM to that knob and to the patch tempo.
-// That effect passes the bar on to every later slot; set the other synced effects'
-// Tempo to FOLLW (v3, 2026-10-07: one sender is all a patch needs).
-// Tempo is the 8th knob on every synced effect, so the script does not need to know
-// which effect is in the Send slot. Only the first 3 effects of a patch accept edits.
+// the effects in slots 1..3 to its other copy. When the host tempo changes it
+// sends the new BPM to those knobs and to the patch tempo.
+// Tempo is the 8th knob on all five effects (v2 builds), so the script does not
+// need to know which effect is where. Turn a slot OFF when it holds any other
+// effect: the script would set that effect's 8th knob.
+// Only the first 3 effects of a patch accept edits.
 //
 // Knobs: 0 Early (0..127 ms; default 17: 12 measured on the MS-60B + iPhone 2026-10-05, plus 5)
 //        1 Every (1, 2, 4 or 8 bars)
-//        2 Tempo (100..227 BPM, used when Host tempo is off)
-//        3 Send: OFF / Slot 1 / Slot 2 / Slot 3 (the one slot that gets the flips)
-// Pads (Mozaic shows 4): 0 Sync on/off   1 Host tempo on/off   2 Sync now   3 ID 58/5F
-// (Edit enable stays in the code as hidden pad 7.)
+//        2 Tempo (100..227 BPM, used when Follow host is off)
+//        3 Follow host (left half off, right half on)
+// Pads (Mozaic shows 4): 0..2 slot 1..3 sync on/off (tap to switch)   3 Sync on/off
+// (Sync now, ID swap and Edit enable stay in the code as hidden pads 4, 6, 7.)
 // Log shows what was sent.
 
 @OnLoad
@@ -33,7 +33,9 @@
   twin = 0
   armed = 0
   fireat = 0
-  send = 1
+  slot[0] = 1
+  slot[1] = 1
+  slot[2] = 1
   // Mozaic wants every variable set here before other events use it
   barlen = 0
   nextbar = 0
@@ -46,31 +48,36 @@
   e = 0
   t = 0
   p = 0
+  i = 0
+  pad = 0
+  f = 0
   SetKnobValue 0, early
   SetKnobValue 1, 0
   SetKnobValue 2, manual - 100
-  SetKnobValue 3, 48
+  SetKnobValue 3, 127
   LabelKnobs {Zoom bar sync}
   LabelKnob 0, {Early }, early, {ms}
   LabelKnob 1, {Every }, every, { bar}
   LabelKnob 2, {BPM }, manual
-  Call @LabelSend
-  LabelPad 0, {Sync ON}
-  LabelPad 1, {Host tempo ON}
-  LabelPad 2, {Sync now}
-  LabelPad 3, {ID 58}
+  LabelKnob 3, {Follow host ON}
+  for i = 0 to 2
+    pad = i
+    Call @LabelSlot
+  endfor
+  LabelPad 3, {Sync ON}
+  LabelPad 6, {ID 58}
   LabelPad 7, {Edit enable}
   SetTimerInterval 5
   StartTimer
   Call @SendEnable
-  Log {Loaded. Send = slot of the effect that keeps the bar, others on FOLLW. Start AUM.}
+  Log {Loaded. Turn off any slot without one of our five effects, then start AUM.}
 @End
 
-@LabelSend
-  if send = 0
-    LabelKnob 3, {Send OFF}
+@LabelSlot
+  if slot[pad] = 1
+    LabelPad pad, {Slot }, pad + 1, { ON}
   else
-    LabelKnob 3, {Send slot }, send
+    LabelPad pad, {Slot }, pad + 1, { OFF}
   endif
 @End
 
@@ -95,15 +102,16 @@
   SendSysex syx, 8
 @End
 
-// Sends the Tempo knob of the Send slot, on the current copy (twin)
+// Sends the Tempo knob of every slot that is ON, on the current copy (twin)
 @SendKnobs
-  if send > 0
-    ps = send - 1
-    // Tempo is the 8th knob on every effect (param 2 = knob 1)
-    pp = 9
-    pv = tempo + 201 * twin
-    Call @SendParam
-  endif
+  for ps = 0 to 2
+    if slot[ps] = 1
+      // Tempo is the 8th knob on every effect (param 2 = knob 1)
+      pp = 9
+      pv = tempo + 201 * twin
+      Call @SendParam
+    endif
+  endfor
 @End
 
 @SendTempo
@@ -152,49 +160,49 @@
       Call @SendTempo
     endif
   elseif k = 3
-    e = RoundDown (v / 32)
-    if e > 3
-      e = 3
+    f = 0
+    if v >= 64
+      f = 1
     endif
-    if e <> send
-      send = e
-      Call @LabelSend
-      Call @SendEnable
-      Call @SendKnobs
+    if f <> follow
+      follow = f
+      if follow = 1
+        LabelKnob 3, {Follow host ON}
+      else
+        LabelKnob 3, {Follow host OFF}
+        tempo = manual
+        Call @SendTempo
+      endif
     endif
   endif
 @End
 
 @OnPadDown
   p = LastPad
-  if p = 0
-    syncon = 1 - syncon
-    armed = 0
-    if syncon = 1
-      LabelPad 0, {Sync ON}
-    else
-      LabelPad 0, {Sync OFF}
-    endif
-  elseif p = 1
-    follow = 1 - follow
-    if follow = 1
-      LabelPad 1, {Host tempo ON}
-      tempo = Round HostTempo
-    else
-      LabelPad 1, {Host tempo OFF}
-      tempo = manual
-    endif
-    Call @SendTempo
-  elseif p = 2
+  if p <= 2
+    slot[p] = 1 - slot[p]
+    pad = p
+    Call @LabelSlot
+    Call @SendEnable
+    Call @SendKnobs
+  elseif p = 4
     Call @Flip
     Log {Sync now}
   elseif p = 3
+    syncon = 1 - syncon
+    armed = 0
+    if syncon = 1
+      LabelPad 3, {Sync ON}
+    else
+      LabelPad 3, {Sync OFF}
+    endif
+  elseif p = 6
     if zid = 0x58
       zid = 0x5F
-      LabelPad 3, {ID 5F}
+      LabelPad 6, {ID 5F}
     else
       zid = 0x58
-      LabelPad 3, {ID 58}
+      LabelPad 6, {ID 58}
     endif
     Call @SendEnable
   elseif p = 7
