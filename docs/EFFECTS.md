@@ -30,20 +30,20 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Tempo | FOLLW, 40..240 BPM, twice | Tempo for the LFO. Changing it only changes the LFO speed; the second copy of the same BPM restarts the LFO (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
-### Choral: vowel choir
-Filters tuned to the vowels A E I O U turn the input into a small choir. Five voices, a main voice with a human touch (vibrato, drift, breath) and four side voices.
+### Choral: choir
+Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 50 ms; an octave jump played legato waits half a second before the choir follows, so the tracker does not jump octaves on its own.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Vowel | A..U | Morphs between the five vowels. |
-| Reso | 0..100 | How sharp the vowel is. Higher = more vocal. |
-| Chord | OFF, detune, 2..7 semitones, 35 chords | The pitch of the side voices relative to the main voice. |
-| Param | 0..100 | Changes meaning with Shape (lag, glide, independence, chance, speed ...). |
-| Div | 4 bars .. 1/64 | Length of one LFO cycle. |
-| Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
-| Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the vowel LFO. Changing it only changes the LFO speed; the second copy of the same BPM restarts the LFO (see above). |
-| Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
+| Choir | MEN, WOMEN, KIDS, GIANT, M+W, M+KID, W+KID, G+M, ALL | Who sings. MEN on your note, WOMEN an octave up, KIDS two up, GIANT one down; each section has its own throat, breath and vibrato. |
+| Size | SOLO, DUO, TRIO, QUART, QUINT, SEXT | How many singers (1..6). A bigger choir is looser in timing and tuning. |
+| Chord | UNIS, OCT | How they sing together: all on the note, or every second singer an octave up. More to come. |
+| Sing | AAH, OOH, OOAH | What they sing. OOAH opens from "oo" to "ah" and back once per Pace cycle. More to come. |
+| Pace | 4bar .. 1/64 | Length of one cycle of the movement. |
+| Feel | 0..100 | 0 = soft and legato (slow attack, wide vibrato, breathy, dark) .. 100 = punchy and staccato (fast attack and release, bright, OOAH snaps). |
+| Glide | 0..100 | How fast the voice slides to a new note, ~3 ms .. ~0.6 s. |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo for Pace. Changing it only changes the speed; the second copy of the same BPM marks a downbeat (see above), and the movement lands where it should be after that many bars, so a 2-bar or dotted Pace is never cut. |
+| Mix | 0..100 | Dry synth / choir crossfade, DJ style: the dry sound stays full up to 50, the choir is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
 Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are spread as evenly as possible over the steps (a Euclidean rhythm).

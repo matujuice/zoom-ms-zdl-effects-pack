@@ -1,6 +1,6 @@
 {
   "effect_name": "Choral",
-  "comment": "Choral - vowel-filter choir (folder and source keep the working name \"formant\"). Three parallel resonant band-pass filters (RBJ biquads, 4th order each) tuned to the first three formants of A E I O U; Vowel morphs between neighbouring vowels, a tempo-synced LFO (Tempo + Div, like DualShft) sweeps it back and forth. Chord (5 voices, pitch and formants) / Lag make a choir out of the filters alone; the Shape knob picks the LFO shape (sine, steps, random, solo, canon, ripple, fan ...); the main voice has a 3 kHz singer's-formant band. Footswitch off = bypass. Mono.",
+  "comment": "Choral - a choir that sings the note your synth plays (folder and source keep the working name \"formant\"). Rewritten 2026-10-07: a pitch tracker follows the input (one note at a time) and 1..6 singers (band-limited saws in their section's register, each with its own detune and vibrato) sing it through three vowel formants per section. Levels are fixed, so every synth gets the same choir; the voice follows the input's loudness. Tempo-synced movement (Pace) with bar-aware restarts and the bar tag. For synths, never drums or guitar. Footswitch off = bypass. Mono.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped with the rest of the pack.",
   "fxid": 486,
@@ -9,58 +9,58 @@
   "flags_byte": 1,
   "params": [
     {
-      "name": "Vowel",
-      "max": 40,
-      "default": 20,
-      "comment": "Vowel Select (screen 0..40 = tenths): 0 A, 1 E, 2 I, 3 O, 4 U, in between = morph. Shown as five letters: AAAAA, AAAAE, AAAEE, AAEEE, AEEEE, EEEEE ..."
+      "name": "Choir",
+      "max": 8,
+      "default": 4,
+      "comment": "Who sings: 0 MEN (on your note), 1 WOMEN (an octave up), 2 KIDS (two octaves up), 3 GIANT (an octave down), 4 M+W, 5 M+KID, 6 W+KID, 7 G+M, 8 ALL (men, women, giants, kids). Each section has its own throat size, darkness, breath and vibrato. Singers are dealt to the sections in turn. Default M+W."
     },
     {
-      "name": "Reso",
-      "max": 100,
-      "default": 80,
-      "comment": "Sharpness of the throat: filter Q from about 2 (soft) to 33 (very vocal), two filters in series per formant. The level is lifted towards the top of the range so it does not get weaker."
+      "name": "Size",
+      "max": 5,
+      "default": 2,
+      "comment": "How many sing: SOLO DUO TRIO QUART QUINT SEXT (1..6 singers). Every singer is a few cents apart with its own vibrato and drift; a bigger choir spreads wider and the extra singers come in a little late. Default TRIO."
     },
     {
       "name": "Chord",
-      "max": 83,
-      "default": 50,
-      "comment": "OFF, then 1..42 a close detune of the four side voices, 0.01 to 1.00 semitone (shown as that number; steps of 0.01 up to 0.20, 0.02 up to 0.40, 0.05 up to 1.00), then 2.00 to 7.00 semitones in whole steps, then the 35 chords of a classic chord-machine set: minor, Major, sus2, sus4, m7, M7, mMaj7, Maj7, 7sus4, dim7, madd9, Madd9, m6, M6, mb5, Mb5, m7b5, M7b5, M#5, m7#5, M7#5, mb6, m9no5, M9no5, M9b5 (Madd9b5), Mj7b5 (Maj7b5), M7b9 (M7b9no5), s4#5 (sus4#5b9), s4a#5 (sus4add#5), Madb5 (Maddb5), M6a4 (M6add4no5), Mj7/6 (Maj7/6no5), Mj9 (Maj9no5), 4ths (Fourths), 5ths (Fifths). The main voice is the root. The side voices move in pitch by the full interval and in formants by 40% of it, each with its own vibrato, drift and small delay, so they sound like separate singers. No in-between settings."
-    },
-    {
-      "name": "Param",
-      "max": 100,
-      "default": 30,
-      "comment": "A parameter whose meaning follows the Shape (0..100). Sine: Lag (side voices ahead of / behind the main voice, on slightly different vowels). Step: Glide (hard steps .. smooth). Rand: Independence (0 all voices change together .. 100 each on its own clock). Solo: Soloists (1..4 voices move together each cycle, in turn). Some: Chance that a voice changes (10..90%). Canon: Lag, the entries are smeared in time. Ripl: Ripple speed (delay between voices). Fan: Glide (how fast the voices open and gather). Walk: Step size (small blends .. whole-vowel leaps). Swell: Attack (how much of the cycle the rise takes). Spot: Width of the spotlight."
-    },
-    {
-      "name": "Div",
-      "max": 16,
-      "default": 8,
-      "comment": "Length of one LFO cycle: 0 4bar (64 steps), 1 3bar (48), 2 2bar (32), 3 1.5b (24 = 3/4 of 2 bars), 4 1bar (16), 5 1/2. (12 = 3/4 of a bar), 6 1/2, 7 1/4., 8 1/4, 9 1/8., 10 1/8, 11 1/8T, 12 1/16, 13 1/16T, 14 1/32, 15 1/32T, 16 1/64 (bar = 4 beats = 16 steps). Default 8 = 1/4."
-    },
-    {
-      "name": "Shape",
-      "max": 10,
+      "max": 1,
       "default": 0,
-      "comment": "LFO shape: 0 Sine (smooth sweep), 1 Step (hold a whole vowel, glide on), 2 Rand (every voice draws its own random vowels, on its own clock), 3 Solo (a few voices change per cycle, in turn, the others hold), 4 Some (each voice changes on its own chance), 5 Canon (all voices sing the same random melody, one cycle apart), 6 Ripl (one new vowel ripples through the voices one after another), 7 Fan (the voices open out into a vowel chord and gather again), 8 Walk (every voice steps a vowel up or down on its own), 9 Swell (slow eased crescendo, quick fall), 10 Spot (a spotlight of vowel travels through the voices). Depth sets how far the shape reaches."
+      "comment": "How they sing together: 0 UNIS (all on the note, in their section's register), 1 OCT (every second singer an octave up). More settings to come (5th, triads, drone)."
     },
     {
-      "name": "Depth",
+      "name": "Sing",
+      "max": 2,
+      "default": 2,
+      "comment": "What they sing: 0 AAH, 1 OOH, 2 OOAH (opens from oo to ah and closes again once per Pace cycle). More to come (hum, la, doo, canon, swell). Default OOAH."
+    },
+    {
+      "name": "Pace",
+      "max": 16,
+      "default": 4,
+      "comment": "Length of one cycle of the movement: 0 4bar, 1 3bar, 2 2bar, 3 1.5b, 4 1bar, 5 1/2., 6 1/2, 7 1/4., 8 1/4, 9 1/8., 10 1/8, 11 1/8T, 12 1/16, 13 1/16T, 14 1/32, 15 1/32T, 16 1/64 (bar = 4 beats). Default 1bar."
+    },
+    {
+      "name": "Feel",
       "max": 100,
-      "default": 100,
-      "comment": "How far the LFO shape reaches from Vowel, 0..100 = 0..4 vowels (0 = the shape does nothing)."
+      "default": 40,
+      "comment": "0 = soft and legato (slow attack and release, wide vibrato that fades in late, breathy, dark) .. 100 = punchy and staccato (fast attack and release, narrow vibrato, bright; OOAH snaps between its two vowels). Default 40."
+    },
+    {
+      "name": "Glide",
+      "max": 100,
+      "default": 20,
+      "comment": "How fast the voice slides to a new note: 0 = about 3 ms .. 100 = about 0.6 s, the same time for every interval. After a silence the next note starts directly. Default 20."
     },
     {
       "name": "Tempo",
       "max": 441,
       "default": 120,
-      "comment": "BPM for the LFO (40..240), shown on screen. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the LFO without changing the tempo: a host can send that on each downbeat. A plain tempo change does not restart it, it only changes the speed. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs Mozaic's Send knob on another slot."
+      "comment": "BPM for Pace (40..240), shown on screen. Flipping to the twin copy of the same BPM (120 <-> 321) marks a downbeat: the movement goes to where it should be that many bars after the last downbeat, so long and dotted Paces are never cut. A plain tempo change only changes the speed. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201; both copies show the BPM). Default 120. FOLLW (0..39): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs Mozaic's Send knob on another slot."
     },
     {
       "name": "Mix",
       "max": 100,
-      "default": 100,
-      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50."
+      "default": 70,
+      "comment": "Dry synth / choir, DJ style: dry full up to 50, choir full from 50, both full at 50. Default 70."
     }
   ],
   "audio_func_name": "Fx_DLY_Formant",
