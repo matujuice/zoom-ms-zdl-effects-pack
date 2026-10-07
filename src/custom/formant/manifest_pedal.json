@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped with the rest of the pack.",
   "fxid": 486,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate (this pack). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [

@@ -1,10 +1,10 @@
 {
   "effect_name": "Sweep",
-  "comment": "Sweep - phaser, flanger and resonant filter in one effect, swept by a tempo-locked LFO that can run from 1/4 note to 8 bars, for synths and drum machines. Type picks the engine (PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH); Rate = free speed in Hz or a synced sweep length; Depth = how far it sweeps; Cntr = where it sweeps around; Reso = feedback or resonance; Shape = LFO shape; Tone = feedback brightness (phaser/flanger) or drive (filters); Tempo is the BPM (0..39 = FOLLW); Mix is dry/wet.",
+  "comment": "Sweep - phaser, flanger and resonant filter in one effect, swept by a tempo-locked LFO that can run from a 1/32 note to 8 bars, for synths and drum machines. Type picks the engine (PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH); Rate = free speed in Hz or a synced sweep length; Depth = how far it sweeps; Cntr = where it sweeps around; Reso = feedback or resonance; Shape = LFO shape; Tone = feedback brightness (phaser/flanger) or drive (filters); Tempo is the BPM (0..39 = FOLLW); Mix is dry/wet.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 496,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 Delay, 496 Sweep. Unique inside the repo.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [

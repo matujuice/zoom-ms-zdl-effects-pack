@@ -1,0 +1,44 @@
+{
+  "effect_name": "DryPrb",
+  "comment": "DryPrb - hardware probe, not a release effect. Tests whether one effect can leave a marker in a buffer that later effects in the chain can read without it reaching the output (the Div0 trick, docs/TEMPO-SYNC.md). Load it twice: Role SEND in an early slot writes a marker, Role READ in a later slot listens and plays a tone when it finds the marker. The input passes through unchanged.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_, same as TempoPrb.",
+  "fxid": 498,
+  "fxid_comment": "Probe id (TempoPrb is 499), kept away from the pack's 480..496.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Role",
+      "max": 2,
+      "default": 0,
+      "comment": "OFF = pass through. SEND = write the marker. READ = look for the marker and play a tone. Default OFF."
+    },
+    {
+      "name": "Where",
+      "max": 2,
+      "default": 0,
+      "comment": "Which buffer half carries the marker. DRYR = Dry buffer right half (the idea), DRYL = Dry buffer left half, FXR = Fx buffer right half (control: that one the effects chain may mix into the output). Set SEND and READ the same. Default DRYR."
+    },
+    {
+      "name": "Shape",
+      "max": 2,
+      "default": 0,
+      "comment": "Marker shape. DC = constant. ALT = alternates sign each sample (survives a DC filter). PULSE = on about 0.74 s, off about 0.74 s, like a bar marker. Default DC."
+    },
+    {
+      "name": "Amp",
+      "max": 100,
+      "default": 50,
+      "comment": "Marker level on SEND (screen number / 100). Raise it to 100 to hunt for leaks into the output; READ finds anything above 0.25 percent of full scale."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "comment": "Level of the tone READ plays. The input is never changed on SEND or OFF."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_DryPrb",
+  "audio_nop": false
+}
