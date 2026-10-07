@@ -15,7 +15,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 | EuGate | Reset SYNC (works like OFF). | NOTE (restarts on a note after silence) and PEDAL (restarts when you press). |
 | DubSiren | Trig SHold or SPuls: the siren waits for the next beat. Rate on a note value (the top of the knob) keeps its tones on the bar. | Hold and Pulse: they start at the press and restart the LFO. |
 | Scrub | Grain on a note value (past 1 s on the knob). Rec LIVE or HOLD. | Switching it on starts a new grain at once, so it is back on the bar at the next flip. STOMP freezes at the press. |
-| BarDelay | Time on a note value (the top of the knob). REVRS chunks restart on each bar. In development, not tested on the pedal. | Turning Tempo by hand on REVRS: it restarts the chunk. |
+| GridDly | Time on a note value (the top of the knob). REVRS chunks restart on each bar. In development, not tested on the pedal. | Turning Tempo by hand on REVRS: it restarts the chunk. |
 | SyncEQ | Put it in slots 1 to 3 with that slot's pad ON. It passes the bar on to later slots, also while switched off. In development, not tested on the pedal. | |
 
 **Slots 4 to 6 (in development, not tested on the pedal yet).** A tempo effect that the script flips in slots 1 to 3 (or SyncEQ) passes each bar on to the effects after it. Effects with Tempo all the way down on FOLLW follow it, bars and BPM; on a BPM they run on their own. Turn ON one pad only, for the one tempo effect or SyncEQ that sends, and put every other synced effect on FOLLW (two pads on still work, one of them sends, but there is no reason for it); an effect in slots 1 to 3 on FOLLW needs its pad OFF, or the script sets its Tempo to a BPM.

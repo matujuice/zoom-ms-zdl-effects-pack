@@ -1,4 +1,4 @@
-/* BarDelay engines: runs the real pedal entry on every Type and checks
+/* GridDly engines: runs the real pedal entry on every Type and checks
  *   - labels (Type, Time, Tail)
  *   - DIGI: a click comes back at the set Time (free 500 ms and synced 1/4 at 120), Fdbk decays
  *   - every engine stays finite and under +-2.5 with noise in, Fdbk 100, Char 0 and 100
@@ -6,7 +6,7 @@
  *   - REVRS plays something back (reversed chunks), TAPS has three echoes before the 1/4
  *   - Duck 100 lowers the repeats while the input plays
  *   - switched off: Tail OFF = output equals input; Tail ON = input plus decaying repeats */
-#include "../src/custom/bardelay/bardelay.c"
+#include "../src/custom/griddly/griddly.c"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -18,8 +18,8 @@ static unsigned char *m; static unsigned int *ctx, *magic, *desc; static float *
 static unsigned char *arena;
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); puts(""); fails++; } } while (0)
-#define D(n) params[BARDELAY_##n##_SLOT] = BARDELAY_##n##_UI_DEFAULT / 100.0f
-#define SET(n, v) params[BARDELAY_##n##_SLOT] = (v) / 100.0f
+#define D(n) params[GRIDDLY_##n##_SLOT] = GRIDDLY_##n##_UI_DEFAULT / 100.0f
+#define SET(n, v) params[GRIDDLY_##n##_SLOT] = (v) / 100.0f
 
 static void setup(void)
 {
@@ -52,7 +52,7 @@ static void run(int n, int kind, float amp)
             if (kind == 2) x = amp * noise();
             fx[j] = x; fx[j + 8] = x;
         }
-        Fx_DLY_BarDelay(ctx);
+        Fx_DLY_GridDly(ctx);
         for (j = 0; j < 8; j++) out[b * 8 + j] = fx[j];
     }
 }
@@ -150,7 +150,7 @@ int main(void)
         for (b = 0; b < 2000; b++) {
             float in[8];
             for (j = 0; j < 8; j++) { in[j] = 0.5f * noise(); fx[j] = in[j]; fx[j + 8] = in[j]; }
-            Fx_DLY_BarDelay(ctx);
+            Fx_DLY_GridDly(ctx);
             for (j = 0; j < 8; j++) if (fx[j] != in[j]) same = 0;
         }
         CHECK(same, "Tail OFF: switched off but the input was changed");

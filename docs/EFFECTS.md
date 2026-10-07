@@ -110,8 +110,8 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### BarDelay: one tempo-synced delay, six engines
-In development: source and host tests only, not built or heard yet. Named BarDelay because the pedal already has a stock effect called Delay.
+### GridDly: one tempo-synced delay, six engines
+In development: built once (as BarDelay), not tested on the pedal yet.
 
 One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at Tempo), and Char changes what it means with each engine.
 

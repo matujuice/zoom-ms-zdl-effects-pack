@@ -1,7 +1,7 @@
 /*
- * bardelay.c - "BarDelay": one tempo-synced delay with six engines on a Type knob, mono
+ * griddly.c - "GridDly": one tempo-synced delay with six engines on a Type knob, mono
  *
- * Shown on the pedal as BarDelay (the stock pedal already has an effect called Delay).
+ * Shown on the pedal as GridDly (Luca picked the name 2026-10-07; first built as BarDelay).
  * Scoped with Luca 2026-10-06/07 (/mnt/project-files/ideas/delay-scope.md): six engines,
  * Time as note values like DualShft, Tempo on knob 8 with FOLLW, Tail toggle (decay or no
  * decay when switched off, like the factory delays), no Hold.
@@ -39,7 +39,7 @@
  *   Loop gain at Fdbk 100: DIGI 0.95, TAPE 1.08, DUB 1.25, REVRS 0.9, TAPS 0.85, LOFI 1.0
  *   (before the loop filters' losses), so only TAPE, DUB and LOFI can run on forever.
  *   All engines share one ring, one loop filter pair and one saturator; the per-engine
- *   numbers are blended from 0/1 flags in bd_prepare, so the sample loop has no branch on
+ *   numbers are blended from 0/1 flags in gd_prepare, so the sample loop has no branch on
  *   Type except the REVRS / TAPS / LOFI read and write paths.
  *
  * TIME
@@ -100,30 +100,30 @@
 #include "../common/drytag.h"
 
 #ifdef __TI_COMPILER_VERSION__
-#define BD_DO_PRAGMA(x) _Pragma(#x)
-#define BD_EXPAND_PRAGMA(x) BD_DO_PRAGMA(x)
-#define BD_ALWAYS_INLINE(fn) BD_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
-#define BD_CODE_SECTION(fn) BD_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define GD_DO_PRAGMA(x) _Pragma(#x)
+#define GD_EXPAND_PRAGMA(x) GD_DO_PRAGMA(x)
+#define GD_ALWAYS_INLINE(fn) GD_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
+#define GD_CODE_SECTION(fn) GD_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
-#define BD_ALWAYS_INLINE(fn)
-#define BD_CODE_SECTION(fn)
+#define GD_ALWAYS_INLINE(fn)
+#define GD_CODE_SECTION(fn)
 #endif
 
-#define BD_MAGIC      0x42444C31u        /* "BDL1": change whenever BdState changes      */
-#define BD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
-#define BD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
-#define BD_TEMPO_MAX  441.0f
-#define BD_TEMPO_TWIN 201.0f
-#define BD_CLEAR_BLK  2048
-#define BD_TO16       16384.0f
-#define BD_FROM16     6.1035156e-5f      /* 1 / 16384 */
-#define BD_MS         44.1f              /* samples per ms */
-#define BD_XF_STEP    9.765625e-4f       /* Time crossfade: 1024 samples = 23 ms */
-#define BD_W2C        2.0555e-4f         /* 2 pi / 44100 / ln 2: one-pole coef from Hz */
-#define BD_ENV_REL    0.9999f            /* duck follower release, about 0.23 s */
-#define BD_DG_RATE    0.003f             /* duck gain smoothing, about 7.5 ms */
-#define BD_WL_RATE    0.01f              /* wet level ramp on switch-on, about 2 ms */
-#define BD_GLIDE      1.134e-4f          /* TAPE head glide, about 0.2 s */
+#define GD_MAGIC      0x47444C31u        /* "GDL1": change whenever GdState changes      */
+#define GD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
+#define GD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
+#define GD_TEMPO_MAX  441.0f
+#define GD_TEMPO_TWIN 201.0f
+#define GD_CLEAR_BLK  2048
+#define GD_TO16       16384.0f
+#define GD_FROM16     6.1035156e-5f      /* 1 / 16384 */
+#define GD_MS         44.1f              /* samples per ms */
+#define GD_XF_STEP    9.765625e-4f       /* Time crossfade: 1024 samples = 23 ms */
+#define GD_W2C        2.0555e-4f         /* 2 pi / 44100 / ln 2: one-pole coef from Hz */
+#define GD_ENV_REL    0.9999f            /* duck follower release, about 0.23 s */
+#define GD_DG_RATE    0.003f             /* duck gain smoothing, about 7.5 ms */
+#define GD_WL_RATE    0.01f              /* wet level ramp on switch-on, about 2 ms */
+#define GD_GLIDE      1.134e-4f          /* TAPE head glide, about 0.2 s */
 
 typedef struct {
     unsigned int magic;
@@ -140,8 +140,8 @@ typedef struct {
     float wl;              /* wet level: ramps in on switch-on                */
     float hold, hacc;      /* LOFI sample-hold value and its clock            */
     DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
-    short buf[BD_N];
-} BdState;
+    short buf[GD_N];
+} GdState;
 
 typedef struct {
     int   rev, taps, lofi, tape, on;
@@ -153,10 +153,10 @@ typedef struct {
     float fadeInv;         /* REVRS: 1 / edge fade (fraction of a chunk)      */
     float qk, qinv, hinc;  /* LOFI quantiser scale and its inverse, hold clock */
     float duck, dryG, wetG;
-} BdParams;
+} GdParams;
 
-BD_ALWAYS_INLINE(bd_ui)
-static inline float bd_ui(float raw, float def_ui, float max_ui)
+GD_ALWAYS_INLINE(gd_ui)
+static inline float gd_ui(float raw, float def_ui, float max_ui)
 {
     float ui;
     if (!(raw >= 0.0f && raw <= 300.0f)) ui = def_ui;
@@ -168,29 +168,29 @@ static inline float bd_ui(float raw, float def_ui, float max_ui)
     return ui;
 }
 
-BD_ALWAYS_INLINE(bd_tempo_ui)
-static inline float bd_tempo_ui(float raw, float def_ui)
+GD_ALWAYS_INLINE(gd_tempo_ui)
+static inline float gd_tempo_ui(float raw, float def_ui)
 {
     float ui;
     if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
     else if (raw <= 4.415f) ui = raw * 100.0f;
     else ui = raw;
     ui = (float)(int)(ui + 0.5f);
-    if (ui > BD_TEMPO_MAX) ui = BD_TEMPO_MAX;
+    if (ui > GD_TEMPO_MAX) ui = GD_TEMPO_MAX;
     return ui;
 }
 
-BD_ALWAYS_INLINE(bd_tempo_bpm)
-static inline float bd_tempo_bpm(float ui)
+GD_ALWAYS_INLINE(gd_tempo_bpm)
+static inline float gd_tempo_bpm(float ui)
 {
-    if (ui > 240.0f) ui -= BD_TEMPO_TWIN;
+    if (ui > 240.0f) ui -= GD_TEMPO_TWIN;
     if (ui < 40.0f) ui = 40.0f;
     if (ui > 240.0f) ui = 240.0f;
     return ui;
 }
 
-BD_ALWAYS_INLINE(bd_exp2)
-static inline float bd_exp2(float x)
+GD_ALWAYS_INLINE(gd_exp2)
+static inline float gd_exp2(float x)
 {
     union { float f; unsigned int u; } c;
     int   n = (int)x;
@@ -203,8 +203,8 @@ static inline float bd_exp2(float x)
 }
 
 /* 1 / x for x > 0: a first guess from the float bits, then three Newton steps */
-BD_ALWAYS_INLINE(bd_recip)
-static inline float bd_recip(float x)
+GD_ALWAYS_INLINE(gd_recip)
+static inline float gd_recip(float x)
 {
     union { float f; unsigned int u; } c;
     float y;
@@ -218,15 +218,15 @@ static inline float bd_recip(float x)
 }
 
 /* one-pole coefficient 1 - e^(-2 pi fc / fs) */
-BD_ALWAYS_INLINE(bd_coef)
-static inline float bd_coef(float hz)
+GD_ALWAYS_INLINE(gd_coef)
+static inline float gd_coef(float hz)
 {
-    return 1.0f - bd_exp2(-hz * BD_W2C);
+    return 1.0f - gd_exp2(-hz * GD_W2C);
 }
 
 /* Synced Time 101..113 in beats: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar */
-BD_ALWAYS_INLINE(bd_note_beats)
-static inline float bd_note_beats(int d)
+GD_ALWAYS_INLINE(gd_note_beats)
+static inline float gd_note_beats(int d)
 {
     if (d <= 0) return 0.125f;
     if (d == 1) return 0.16666667f;
@@ -244,58 +244,58 @@ static inline float bd_note_beats(int d)
 }
 
 /* bipolar sine-like LFO from a phase 0..1 (parabola, within 6 %) */
-BD_ALWAYS_INLINE(bd_lfo)
-static inline float bd_lfo(float p)
+GD_ALWAYS_INLINE(gd_lfo)
+static inline float gd_lfo(float p)
 {
     float t = p + p - 1.0f, a = (t < 0.0f) ? -t : t;
     return -4.0f * t * (1.0f - a);
 }
 
 /* soft clip, flat at +-1 from |x| = 1.5 */
-BD_ALWAYS_INLINE(bd_sat)
-static inline float bd_sat(float x)
+GD_ALWAYS_INLINE(gd_sat)
+static inline float gd_sat(float x)
 {
     if (x > 1.5f) x = 1.5f;
     if (x < -1.5f) x = -1.5f;
     return x - 0.14814815f * x * x * x;
 }
 
-BD_ALWAYS_INLINE(bd_read)
-static inline float bd_read(const short *b, int wp, float age)
+GD_ALWAYS_INLINE(gd_read)
+static inline float gd_read(const short *b, int wp, float age)
 {
     int a0 = (int)age, j, j1;
     float fr = age - (float)a0, x0, x1;
     j = wp - a0;
-    if (j < 0) j += BD_N;
+    if (j < 0) j += GD_N;
     j1 = j - 1;
-    if (j1 < 0) j1 += BD_N;
+    if (j1 < 0) j1 += GD_N;
     x0 = (float)b[j];
     x1 = (float)b[j1];
-    return (x0 + fr * (x1 - x0)) * BD_FROM16;
+    return (x0 + fr * (x1 - x0)) * GD_FROM16;
 }
 
 /* read at the new delay, crossfaded from the old one while a Time change settles */
-BD_ALWAYS_INLINE(bd_xread)
-static inline float bd_xread(const short *b, int wp, float aN, float aO, float xf)
+GD_ALWAYS_INLINE(gd_xread)
+static inline float gd_xread(const short *b, int wp, float aN, float aO, float xf)
 {
-    float y = bd_read(b, wp, aN);
-    if (xf < 1.0f) y = xf * y + (1.0f - xf) * bd_read(b, wp, aO);
+    float y = gd_read(b, wp, aN);
+    if (xf < 1.0f) y = xf * y + (1.0f - xf) * gd_read(b, wp, aO);
     return y;
 }
 
-BD_ALWAYS_INLINE(bd_write)
-static inline void bd_write(BdState *s, float v)
+GD_ALWAYS_INLINE(gd_write)
+static inline void gd_write(GdState *s, float v)
 {
-    v *= BD_TO16;
+    v *= GD_TO16;
     if (v > 32767.0f) v = 32767.0f;
     if (v < -32767.0f) v = -32767.0f;
     s->buf[s->wp] = (short)(int)v;
     s->wp++;
-    if (s->wp >= BD_N) s->wp = 0;
+    if (s->wp >= GD_N) s->wp = 0;
 }
 
-BD_ALWAYS_INLINE(bd_init)
-static inline void bd_init(BdState *s)
+GD_ALWAYS_INLINE(gd_init)
+static inline void gd_init(GdState *s)
 {
     s->clr = 0; s->wp = 0; s->twin = -1;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
@@ -303,23 +303,23 @@ static inline void bd_init(BdState *s)
     s->lp = 0.0f; s->hs = 0.0f; s->wow = 0.0f; s->flt = 0.25f;
     s->env = 0.0f; s->dg = 1.0f; s->wl = 0.0f; s->hold = 0.0f; s->hacc = 0.0f;
     dt_sync_init(&s->sync);
-    s->magic = BD_MAGIC;
+    s->magic = GD_MAGIC;
 }
 
-BD_ALWAYS_INLINE(bd_clearing)
-static inline int bd_clearing(BdState *s)
+GD_ALWAYS_INLINE(gd_clearing)
+static inline int gd_clearing(GdState *s)
 {
     int i, n = s->clr;
-    if (n >= BD_N) return 0;
-    for (i = 0; i < BD_CLEAR_BLK && n < BD_N; i++) { s->buf[n] = 0; n++; }
+    if (n >= GD_N) return 0;
+    for (i = 0; i < GD_CLEAR_BLK && n < GD_N; i++) { s->buf[n] = 0; n++; }
     s->clr = n;
     return 1;
 }
 
 /* Knobs (u[] = screen values) -> per-block numbers. Engine numbers are blended from 0/1
  * flags so no branch on Type is needed (a dense if/else on an int can become a jump table). */
-BD_ALWAYS_INLINE(bd_prepare)
-static inline void bd_prepare(BdParams *P, const float *u, int on)
+GD_ALWAYS_INLINE(gd_prepare)
+static inline void gd_prepare(GdParams *P, const float *u, int on)
 {
     int type = (int)(u[0] + 0.5f), n = (int)(u[1] + 0.5f), z, bits;
     float eD = (float)(type == 0), eT = (float)(type == 1), eB = (float)(type == 2);
@@ -330,12 +330,12 @@ static inline void bd_prepare(BdParams *P, const float *u, int on)
     P->on = on;
 
     /* Time */
-    lim = P->rev ? BD_MAXD * 0.5f : BD_MAXD;
+    lim = P->rev ? GD_MAXD * 0.5f : GD_MAXD;
     if (n > 100) {
-        d = bd_note_beats(n - 101) * 2646000.0f * bd_recip(bd_tempo_bpm(u[7]));
+        d = gd_note_beats(n - 101) * 2646000.0f * gd_recip(gd_tempo_bpm(u[7]));
         while (d > lim) d *= 0.5f;
     } else {
-        d = (float)(int)(12.0f + 0.0988f * (float)(n * n) + 0.5f) * BD_MS;
+        d = (float)(int)(12.0f + 0.0988f * (float)(n * n) + 0.5f) * GD_MS;
     }
     P->dT = d;
     P->L = d;
@@ -343,13 +343,13 @@ static inline void bd_prepare(BdParams *P, const float *u, int on)
     /* loop */
     fbMax = 0.95f * eD + 1.08f * eT + 1.25f * eB + 0.9f * eR + 0.85f * eP + 1.0f * eL;
     P->fb = u[2] * 0.01f * fbMax;
-    lpHz = (eD + eR + eP + eL) * 800.0f * bd_exp2(4.3f * tone)
-         + eT * 600.0f * bd_exp2(3.7f * tone) + eB * 500.0f * bd_exp2(3.0f * tone);
-    hpHz = (eD + eR + eP + eL) * 25.0f + eT * 50.0f + eB * 100.0f * bd_exp2(2.0f * tone);
-    P->cl = bd_coef(lpHz);
-    P->ch = bd_coef(hpHz);
+    lpHz = (eD + eR + eP + eL) * 800.0f * gd_exp2(4.3f * tone)
+         + eT * 600.0f * gd_exp2(3.7f * tone) + eB * 500.0f * gd_exp2(3.0f * tone);
+    hpHz = (eD + eR + eP + eL) * 25.0f + eT * 50.0f + eB * 100.0f * gd_exp2(2.0f * tone);
+    P->cl = gd_coef(lpHz);
+    P->ch = gd_coef(hpHz);
     P->drive = 0.5f * (eD + eR + eP) + 1.2f * eT + (1.0f + 3.0f * ch) * eB + 0.8f * eL;
-    P->dinv = bd_recip(P->drive);
+    P->dinv = gd_recip(P->drive);
     P->mk = 1.0f + 1.5f * ch * eB;
 
     /* modulation: DIGI slow and slight, TAPE wow + flutter */
@@ -364,13 +364,13 @@ static inline void bd_prepare(BdParams *P, const float *u, int on)
     P->f2 = 0.5f * (float)(z == 0) + 0.75f * (float)(z == 1) + 0.6666667f * (float)(z == 2) + 0.75f * (float)(z == 3);
 
     /* REVRS edge fade 1 % .. 25 % of the chunk */
-    P->fadeInv = bd_recip(0.01f + 0.24f * ch);
+    P->fadeInv = gd_recip(0.01f + 0.24f * ch);
 
     /* LOFI: 12 .. 4 bits, hold 1 .. 8 samples */
     bits = 12 - (int)(8.0f * ch + 0.5f);
     P->qk = (float)(1 << (bits - 1));
-    P->qinv = bd_recip(P->qk);
-    P->hinc = bd_recip(1.0f + 7.0f * ch);
+    P->qinv = gd_recip(P->qk);
+    P->hinc = gd_recip(1.0f + 7.0f * ch);
 
     /* Duck, Mix, Tail */
     P->duck = u[5] * 0.01f;
@@ -389,18 +389,18 @@ static inline void bd_prepare(BdParams *P, const float *u, int on)
 }
 
 /* restart the beat clock (REVRS chunk) and latch the chunk length */
-BD_ALWAYS_INLINE(bd_restart)
-static inline void bd_restart(BdState *s, const BdParams *P)
+GD_ALWAYS_INLINE(gd_restart)
+static inline void gd_restart(GdState *s, const GdParams *P)
 {
     s->ph = 0.0f;
     s->L = P->L;
 }
 
-BD_ALWAYS_INLINE(bd_process)
-static inline void bd_process(BdState *s, const BdParams *P, float *buf, int n)
+GD_ALWAYS_INLINE(gd_process)
+static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
 {
     int i, wp;
-    float ph = s->ph, L = s->L, invL = bd_recip(P->L), lp = s->lp, hs = s->hs;
+    float ph = s->ph, L = s->L, invL = gd_recip(P->L), lp = s->lp, hs = s->hs;
     float wow = s->wow, flt = s->flt, env = s->env, dg = s->dg, wl = s->wl;
     float dCur = s->dCur, xf = s->xf, wlT = P->wetG;
 
@@ -416,10 +416,10 @@ static inline void bd_process(BdState *s, const BdParams *P, float *buf, int n)
         float x = buf[i], ax = (x < 0.0f) ? -x : x, y, v, mod, tg;
 
         /* duck: peak follower on the input */
-        env = (ax > env) ? ax : env * BD_ENV_REL;
+        env = (ax > env) ? ax : env * GD_ENV_REL;
         tg = env * 3.0f; if (tg > 1.0f) tg = 1.0f;
-        dg += (1.0f - P->duck * tg - dg) * BD_DG_RATE;
-        wl += (wlT - wl) * BD_WL_RATE;
+        dg += (1.0f - P->duck * tg - dg) * GD_DG_RATE;
+        wl += (wlT - wl) * GD_WL_RATE;
 
         /* beat clock: runs at the current Time; the REVRS read keeps the chunk length it
          * started with, so a Time change mid-chunk slows or speeds that chunk, never clicks */
@@ -429,30 +429,30 @@ static inline void bd_process(BdState *s, const BdParams *P, float *buf, int n)
         /* LFOs (offsets are >= 0, so the read never gets nearer than the set time) */
         wow += P->modInc; if (wow >= 1.0f) wow -= 1.0f;
         flt += P->fltInc; if (flt >= 1.0f) flt -= 1.0f;
-        mod = P->modA * (1.0f + bd_lfo(wow)) + P->fltA * (1.0f + bd_lfo(flt));
-        if (P->tape) dCur += (P->dT - dCur) * BD_GLIDE;
+        mod = P->modA * (1.0f + gd_lfo(wow)) + P->fltA * (1.0f + gd_lfo(flt));
+        if (P->tape) dCur += (P->dT - dCur) * GD_GLIDE;
 
         wp = s->wp;
         if (P->rev) {
             float w = ph * P->fadeInv, w2 = (1.0f - ph) * P->fadeInv;
             if (w2 < w) w = w2;
             if (w > 1.0f) w = 1.0f;
-            y = w * bd_read(s->buf, wp, (ph + ph) * L + 1.0f);
+            y = w * gd_read(s->buf, wp, (ph + ph) * L + 1.0f);
             v = y;
         } else {
-            y = bd_xread(s->buf, wp, dCur + mod, s->dOld + mod, xf);
+            y = gd_xread(s->buf, wp, dCur + mod, s->dOld + mod, xf);
             v = y;
             if (P->taps)
-                y = 0.5f * y + 0.85f * bd_xread(s->buf, wp, P->f1 * dCur + 1.0f, P->f1 * s->dOld + 1.0f, xf)
-                             + 0.65f * bd_xread(s->buf, wp, P->f2 * dCur + 1.0f, P->f2 * s->dOld + 1.0f, xf);
-            if (xf < 1.0f) { xf += BD_XF_STEP; if (xf > 1.0f) xf = 1.0f; }
+                y = 0.5f * y + 0.85f * gd_xread(s->buf, wp, P->f1 * dCur + 1.0f, P->f1 * s->dOld + 1.0f, xf)
+                             + 0.65f * gd_xread(s->buf, wp, P->f2 * dCur + 1.0f, P->f2 * s->dOld + 1.0f, xf);
+            if (xf < 1.0f) { xf += GD_XF_STEP; if (xf > 1.0f) xf = 1.0f; }
         }
 
         /* feedback loop: low-pass, high-pass, saturate (LOFI: crush and hold) */
         lp += P->cl * (v - lp);
         hs += P->ch * (lp - hs);
         v = P->inG * x + P->fb * (lp - hs);
-        v = bd_sat(v * P->drive) * P->dinv;
+        v = gd_sat(v * P->drive) * P->dinv;
         if (P->lofi) {
             s->hacc += P->hinc;
             if (s->hacc >= 1.0f) {
@@ -461,7 +461,7 @@ static inline void bd_process(BdState *s, const BdParams *P, float *buf, int n)
             }
             v = s->hold;
         }
-        bd_write(s, v);
+        gd_write(s, v);
 
         buf[i] = P->dryG * x + wl * dg * y;
     }
@@ -476,8 +476,8 @@ static inline void bd_process(BdState *s, const BdParams *P, float *buf, int n)
 /* Fdbk, Tone, Char, Duck and Mix show plain numbers.                    */
 /* ------------------------------------------------------------------ */
 
-BD_ALWAYS_INLINE(bd_put4)
-static inline int bd_put4(char *out, int a, int b, int c, int d, int e)
+GD_ALWAYS_INLINE(gd_put4)
+static inline int gd_put4(char *out, int a, int b, int c, int d, int e)
 {
     int n = 3;
     out[0] = (char)a; out[1] = (char)b; out[2] = (char)c;
@@ -489,12 +489,12 @@ static inline int bd_put4(char *out, int a, int b, int c, int d, int e)
 
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
-    if (value >= 5u) return bd_put4(out, 'L', 'O', 'F', 'I', 0);
-    if (value == 4u) return bd_put4(out, 'T', 'A', 'P', 'S', 0);
-    if (value == 3u) return bd_put4(out, 'R', 'E', 'V', 'R', 'S');
-    if (value == 2u) return bd_put4(out, 'D', 'U', 'B', 0, 0);
-    if (value == 1u) return bd_put4(out, 'T', 'A', 'P', 'E', 0);
-    return bd_put4(out, 'D', 'I', 'G', 'I', 0);
+    if (value >= 5u) return gd_put4(out, 'L', 'O', 'F', 'I', 0);
+    if (value == 4u) return gd_put4(out, 'T', 'A', 'P', 'S', 0);
+    if (value == 3u) return gd_put4(out, 'R', 'E', 'V', 'R', 'S');
+    if (value == 2u) return gd_put4(out, 'D', 'U', 'B', 0, 0);
+    if (value == 1u) return gd_put4(out, 'T', 'A', 'P', 'E', 0);
+    return gd_put4(out, 'D', 'I', 'G', 'I', 0);
 }
 
 /* Time: 12ms .. 1.00s, then 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar */
@@ -504,23 +504,23 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     if (value > 113u) value = 113u;
     if (value > 100u) {
         v = (int)value - 101;
-        if (v == 12) return bd_put4(out, '2', 'b', 'a', 'r', 0);
-        if (v == 11) return bd_put4(out, '1', 'b', 'a', 'r', 0);
-        if (v == 0)  return bd_put4(out, '1', '/', '3', '2', 0);
-        if (v == 1)  return bd_put4(out, '1', '/', '1', '6', 'T');
-        if (v == 2)  return bd_put4(out, '1', '/', '1', '6', 0);
-        if (v == 3)  return bd_put4(out, '1', '/', '8', 'T', 0);
-        if (v == 4)  return bd_put4(out, '1', '/', '1', '6', '.');
-        if (v == 5)  return bd_put4(out, '1', '/', '8', 0, 0);
-        if (v == 6)  return bd_put4(out, '1', '/', '4', 'T', 0);
-        if (v == 7)  return bd_put4(out, '1', '/', '8', '.', 0);
-        if (v == 8)  return bd_put4(out, '1', '/', '4', 0, 0);
-        if (v == 9)  return bd_put4(out, '1', '/', '4', '.', 0);
-        return bd_put4(out, '1', '/', '2', 0, 0);
+        if (v == 12) return gd_put4(out, '2', 'b', 'a', 'r', 0);
+        if (v == 11) return gd_put4(out, '1', 'b', 'a', 'r', 0);
+        if (v == 0)  return gd_put4(out, '1', '/', '3', '2', 0);
+        if (v == 1)  return gd_put4(out, '1', '/', '1', '6', 'T');
+        if (v == 2)  return gd_put4(out, '1', '/', '1', '6', 0);
+        if (v == 3)  return gd_put4(out, '1', '/', '8', 'T', 0);
+        if (v == 4)  return gd_put4(out, '1', '/', '1', '6', '.');
+        if (v == 5)  return gd_put4(out, '1', '/', '8', 0, 0);
+        if (v == 6)  return gd_put4(out, '1', '/', '4', 'T', 0);
+        if (v == 7)  return gd_put4(out, '1', '/', '8', '.', 0);
+        if (v == 8)  return gd_put4(out, '1', '/', '4', 0, 0);
+        if (v == 9)  return gd_put4(out, '1', '/', '4', '.', 0);
+        return gd_put4(out, '1', '/', '2', 0, 0);
     }
     v = (int)value;
     ms = (int)(12.0f + 0.0988f * (float)(v * v) + 0.5f);
-    if (ms >= 1000) return bd_put4(out, '1', '.', '0', '0', 's');
+    if (ms >= 1000) return gd_put4(out, '1', '.', '0', '0', 's');
     while (ms >= 100) { ms -= 100; h++; }
     while (ms >= 10)  { ms -= 10;  t++; }
     if (h > 0) { out[len] = (char)('0' + h); len++; }
@@ -538,7 +538,7 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
     int n, h = 0, t = 0, len = 0;
     if (value <= 39u) return dt_follow_text(out);
     if (value > 441u) value = 441u;
-    n = (int)bd_tempo_bpm((float)(int)value);
+    n = (int)gd_tempo_bpm((float)(int)value);
     while (n >= 100) { n -= 100; h++; }
     while (n >= 10)  { n -= 10;  t++; }
     if (h > 0) { out[len] = (char)('0' + h); len++; }
@@ -551,21 +551,21 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 int ZDL_GetLabel_8(unsigned int value, char *out)
 {
     if (value >= 1u) { out[0] = 'O'; out[1] = 'N'; out[2] = 0; return 2; }
-    return bd_put4(out, 'O', 'F', 'F', 0, 0);
+    return gd_put4(out, 'O', 'F', 'F', 0, 0);
 }
 
-#ifndef BARDELAY_HOST_TEST
+#ifndef GRIDDLY_HOST_TEST
 
-#include "bardelay_params.h"
+#include "griddly_params.h"
 
-#ifndef BARDELAY_AUDIO_FUNC
-#define BARDELAY_AUDIO_FUNC Fx_DLY_BarDelay
+#ifndef GRIDDLY_AUDIO_FUNC
+#define GRIDDLY_AUDIO_FUNC Fx_DLY_GridDly
 #endif
 
 #define ZDL_PTR(type, word) ((type)(uintptr_t)(word))
 
-BD_CODE_SECTION(BARDELAY_AUDIO_FUNC)
-void BARDELAY_AUDIO_FUNC(unsigned int *ctx)
+GD_CODE_SECTION(GRIDDLY_AUDIO_FUNC)
+void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
     float *dryBuf = ZDL_PTR(float *, ctx[4]);
@@ -576,8 +576,8 @@ void BARDELAY_AUDIO_FUNC(unsigned int *ctx)
     volatile unsigned int *desc;
     uintptr_t base, end, stateBase;
     unsigned int span;
-    BdState *s;
-    BdParams P;
+    GdState *s;
+    GdParams P;
     float u[9];
     int i, tw;
 
@@ -593,33 +593,33 @@ void BARDELAY_AUDIO_FUNC(unsigned int *ctx)
 
     if (base == 0u || end <= base) return;
     if ((base & 3u) != 0u || (end & 3u) != 0u || (span & 3u) != 0u) return;
-    if ((end - base) < sizeof(BdState) || span < (end - base)) return;
-    if (stateBase + sizeof(BdState) > end) return;
+    if ((end - base) < sizeof(GdState) || span < (end - base)) return;
+    if (stateBase + sizeof(GdState) > end) return;
 
-    s = (BdState *)stateBase;
+    s = (GdState *)stateBase;
 
-    u[0] = bd_ui(params[BARDELAY_TYPE_SLOT],  (float)BARDELAY_TYPE_UI_DEFAULT,  5.0f);
-    u[1] = bd_ui(params[BARDELAY_TIME_SLOT],  (float)BARDELAY_TIME_UI_DEFAULT,  113.0f);
-    u[2] = bd_ui(params[BARDELAY_FDBK_SLOT],  (float)BARDELAY_FDBK_UI_DEFAULT,  100.0f);
-    u[3] = bd_ui(params[BARDELAY_TONE_SLOT],  (float)BARDELAY_TONE_UI_DEFAULT,  100.0f);
-    u[4] = bd_ui(params[BARDELAY_CHAR_SLOT],  (float)BARDELAY_CHAR_UI_DEFAULT,  100.0f);
-    u[5] = bd_ui(params[BARDELAY_DUCK_SLOT],  (float)BARDELAY_DUCK_UI_DEFAULT,  100.0f);
-    u[6] = bd_ui(params[BARDELAY_MIX_SLOT],   (float)BARDELAY_MIX_UI_DEFAULT,   100.0f);
-    u[7] = bd_tempo_ui(params[BARDELAY_TEMPO_SLOT], (float)BARDELAY_TEMPO_UI_DEFAULT);
-    u[8] = bd_ui(params[BARDELAY_TAIL_SLOT],  (float)BARDELAY_TAIL_UI_DEFAULT,  1.0f);
+    u[0] = gd_ui(params[GRIDDLY_TYPE_SLOT],  (float)GRIDDLY_TYPE_UI_DEFAULT,  5.0f);
+    u[1] = gd_ui(params[GRIDDLY_TIME_SLOT],  (float)GRIDDLY_TIME_UI_DEFAULT,  113.0f);
+    u[2] = gd_ui(params[GRIDDLY_FDBK_SLOT],  (float)GRIDDLY_FDBK_UI_DEFAULT,  100.0f);
+    u[3] = gd_ui(params[GRIDDLY_TONE_SLOT],  (float)GRIDDLY_TONE_UI_DEFAULT,  100.0f);
+    u[4] = gd_ui(params[GRIDDLY_CHAR_SLOT],  (float)GRIDDLY_CHAR_UI_DEFAULT,  100.0f);
+    u[5] = gd_ui(params[GRIDDLY_DUCK_SLOT],  (float)GRIDDLY_DUCK_UI_DEFAULT,  100.0f);
+    u[6] = gd_ui(params[GRIDDLY_MIX_SLOT],   (float)GRIDDLY_MIX_UI_DEFAULT,   100.0f);
+    u[7] = gd_tempo_ui(params[GRIDDLY_TEMPO_SLOT], (float)GRIDDLY_TEMPO_UI_DEFAULT);
+    u[8] = gd_ui(params[GRIDDLY_TAIL_SLOT],  (float)GRIDDLY_TAIL_UI_DEFAULT,  1.0f);
 
-    if (s->magic != BD_MAGIC) bd_init(s);
+    if (s->magic != GD_MAGIC) gd_init(s);
     /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
     u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
-    if (bd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
+    if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
 
-    bd_prepare(&P, u, params[0] >= 0.5f);
+    gd_prepare(&P, u, params[0] >= 0.5f);
     tw = (u[7] > 240.0f) ? 1 : 0;                /* sync reset, followed while off too */
-    if (s->twin >= 0 && tw != s->twin) bd_restart(s, &P);
+    if (s->twin >= 0 && tw != s->twin) gd_restart(s, &P);
     s->twin = tw;
-    bd_process(s, &P, fxBuf, 8);                 /* mono: left half in place */
+    gd_process(s, &P, fxBuf, 8);                 /* mono: left half in place */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R */
 }
 
-#endif /* BARDELAY_HOST_TEST */
+#endif /* GRIDDLY_HOST_TEST */

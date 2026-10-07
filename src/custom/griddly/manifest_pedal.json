@@ -1,13 +1,13 @@
 {
-  "effect_name": "BarDelay",
-  "comment": "BarDelay - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated, self-oscillating loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the Tempo knob; Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tempo (knob 8, twin copies, FOLLW), Tail (repeats ring out or stop when switched off). 7.9 s 16-bit ring.",
+  "effect_name": "GridDly",
+  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated, self-oscillating loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the Tempo knob; Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tempo (knob 8, twin copies, FOLLW), Tail (repeats ring out or stop when switched off). 7.9 s 16-bit ring.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 495,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 BarDelay. Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly. Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
-  "audio_func_name": "Fx_DLY_BarDelay",
+  "audio_func_name": "Fx_DLY_GridDly",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
   "params": [
