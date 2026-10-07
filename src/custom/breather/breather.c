@@ -92,7 +92,7 @@
 #define PU_CODE_SECTION(fn)
 #endif
 
-#define PU_MAGIC        0x50553032u          /* "PU02" */
+#define PU_MAGIC        0x50553033u          /* "PU03" */
 #define PU_BPM_MIN      40.0f
 #define PU_BPM_MAX      240.0f
 #define PU_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
