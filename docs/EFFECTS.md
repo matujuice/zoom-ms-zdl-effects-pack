@@ -133,7 +133,7 @@ In development: source and host tests only, not built or heard yet. One tempo-lo
 | Knob | Range | What it does |
 |---|---|---|
 | Type | PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH | The engine. PH 4 / PH 8: phaser with 4 or 8 all-pass stages (2 or 4 notches). FL +: flanger. FL -: flanger with negative feedback, hollow and metallic. LP / BP / HP / NTCH: resonant low-pass, band-pass, high-pass, notch. |
-| Rate | 0.05..8 Hz, 1/4, 1/2, 3/4, 1BAR, 1.5B, 2BAR..8BAR | Free speed in Hz on the lower part of the knob. At the top, one full sweep (up and down) lasts a note value or a number of bars at the Tempo BPM. |
+| Rate | 0.05..8 Hz, then 8BAR, 7BAR .. 2BAR, 1.5B, 1BAR, 3/4, 1/2, 1/4, 1/8, 1/16, 1/32 | The knob goes faster all the way up. Free speed in Hz on the lower part; at the top, one full sweep (up and down) lasts a number of bars or a note value at the Tempo BPM, slowest (8 bars) first, fastest (1/32 note) last. |
 | Depth | 0..100 | How far the sweep goes each way around Cntr. 0 = parked, 100 = 2.5 octaves each way. |
 | Cntr | 0..100 | Where it sweeps around. Phaser notch and filter cutoff 80 Hz to 10 kHz; flanger delay 8 ms down to 0.3 ms. Higher is brighter for all three. |
 | Reso | 0..100 | Feedback (phaser, flanger; the sign comes from Type) or filter resonance. |

@@ -105,7 +105,7 @@ int main(void)
     for (t = 0; t < 8; t++) for (sh = 0; sh < 6; sh++) {
         long b; int j, bad = 0; float peak = 0.0f;
         setup(); SET(TYPE, t); SET(SHAPE, sh); SET(DEPTH, 100); SET(RESO, 100); SET(TONE, 100);
-        SET(RATE, (sh & 1) ? 100 : 101); SET(CNTR, (sh * 20) % 101); SET(MIX, 50 + 10 * (sh & 1));
+        SET(RATE, (sh & 1) ? 100 : 115); SET(CNTR, (sh * 20) % 101); SET(MIX, 50 + 10 * (sh & 1));
         for (b = 0; b < 30000; b++) {
             for (j = 0; j < 8; j++) { fx[j] = 0.9f * noise(); fx[j + 8] = fx[j]; }
             Fx_DLY_Sweep(ctx);

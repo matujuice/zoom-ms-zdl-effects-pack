@@ -10,8 +10,8 @@
   "params": [
     {"name": "Type", "max": 7, "default": 0,
      "comment": "Engine. 0 PH 4 (4-stage phaser), 1 PH 8 (8-stage), 2 FL + (flanger), 3 FL - (flanger, negative feedback), 4 LP, 5 BP, 6 HP, 7 NTCH (notch). Default PH 4."},
-    {"name": "Rate", "max": 112, "default": 104,
-     "comment": "0..100 free speed, about 0.05 Hz to 8 Hz, shown in Hz. 101..112 = one full sweep lasts 1/4 note, 1/2, 3/4, 1 bar, 1.5 bars, 2, 3, 4, 5, 6, 7, 8 bars at the Tempo BPM. Default 104 = 1 bar."},
+    {"name": "Rate", "max": 115, "default": 109,
+     "comment": "0..100 free speed, about 0.05 Hz to 8 Hz, shown in Hz. 101..115 = one full sweep lasts 8 bars (101), 7, 6, 5, 4, 3, 2, 1.5 bars, 1 bar (109), 3/4, 1/2, 1/4, 1/8, 1/16, 1/32 note (115) at the Tempo BPM, so the knob goes faster all the way up. Default 109 = 1 bar."},
     {"name": "Depth", "max": 100, "default": 70,
      "comment": "How far the sweep travels each way around Cntr: 0 = parked, 100 = +-2.5 octaves (phaser and filter frequency, flanger delay). Default 70."},
     {"name": "Cntr", "max": 100, "default": 50,

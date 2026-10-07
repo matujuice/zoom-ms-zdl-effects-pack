@@ -25,9 +25,10 @@
  *
  * KNOBS (screen values)
  *   0 Type  0..7    PH 4 / PH 8 / FL + / FL - / LP / BP / HP / NTCH
- *   1 Rate  0..112  0..100 free, about 0.05 Hz to 8 Hz (shown in Hz); 101..112 synced to
- *                   Tempo, one full sweep (up and down) lasts 1/4 note (101), 1/2 (102),
- *                   3/4 (103), 1 bar (104), 1.5 bars (105), 2, 3, 4, 5, 6, 7, 8 bars (112)
+ *   1 Rate  0..115  faster all the way up. 0..100 free, about 0.05 Hz to 8 Hz (shown in Hz);
+ *                   101..115 synced to Tempo, one full sweep (up and down) lasts 8 bars (101),
+ *                   7, 6, 5, 4, 3, 2 bars, 1.5 bars (108), 1 bar (109), 3/4 (110), 1/2 (111),
+ *                   1/4 (112), 1/8 (113), 1/16 (114), 1/32 note (115)
  *   2 Depth 0..100  how far the sweep travels each way around Cntr, 0 = parked, 100 = +-2.5
  *                   octaves (phaser/filter frequency, flanger delay)
  *   3 Cntr  0..100  centre of the sweep, low to high: phaser notch / filter cutoff 80 Hz to
@@ -47,7 +48,7 @@
  * TEMPO / SYNC RESET
  *   Same scheme as EuGate / DualShft (docs/TEMPO-SYNC.md). Flipping between a BPM and its twin
  *   (120 <-> 321) happens once per bar when a host sends it. With a synced Rate the LFO jumps
- *   to where it would be after that many bars, (4 x bars mod length) / length, so a 4 bar sweep
+ *   to where it would be after that many bars, (32 x bars mod length) / length, lengths counted in 32nd notes, so a 4 bar sweep
  *   keeps going across the flips instead of restarting each bar. With a free Rate a flip
  *   restarts the sweep at its centre. A plain tempo change restarts nothing. Switched off, the
  *   input passes untouched but the LFO keeps running and follows flips.
@@ -74,7 +75,7 @@
 #define SW_CODE_SECTION(fn)
 #endif
 
-#define SW_MAGIC        0x53573031u          /* "SW01" */
+#define SW_MAGIC        0x53573032u          /* "SW02" */
 #define SW_BPM_MIN      40.0f
 #define SW_BPM_MAX      240.0f
 #define SW_TEMPO_MAX    441.0f
@@ -93,7 +94,7 @@ typedef struct {
     float r0, r1;          /* RAND: the height it glides from and to                 */
     float lfo;             /* smoothed LFO value, -1..1                              */
     unsigned int rng;
-    unsigned int bt;       /* beats into the sweep at the last synced flip           */
+    unsigned int bt;       /* 32nd notes into the sweep at the last synced flip      */
     int twin;              /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     unsigned int was_off;
     unsigned int w;        /* ring write index                                       */
@@ -234,23 +235,27 @@ static inline float sw_sine(float ph)
     return t * (1.5706268f + t2 * (-0.6432292f + t2 * 0.0727102f));
 }
 
-/* Rate screen 101..112 -> the sweep length in beats (1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 28,
- * 32) and its reciprocal. An if-chain, never a switch. */
-SW_ALWAYS_INLINE(sw_beats)
-static inline unsigned int sw_beats(unsigned int r, float *inv)
+/* Rate screen 101..115 -> the sweep length in 32nd notes (a bar is 32) and its reciprocal.
+ * 101 is the slowest (8 bars) and 115 the fastest (1/32 note), so the knob goes faster all
+ * the way up, free range included. An if-chain, never a switch. */
+SW_ALWAYS_INLINE(sw_len)
+static inline unsigned int sw_len(unsigned int r, float *inv)
 {
-    if (r <= 101u) { *inv = 1.0f;         return 1u; }
-    if (r == 102u) { *inv = 0.5f;         return 2u; }
-    if (r == 103u) { *inv = 0.33333334f;  return 3u; }
-    if (r == 104u) { *inv = 0.25f;        return 4u; }
-    if (r == 105u) { *inv = 0.16666667f;  return 6u; }
-    if (r == 106u) { *inv = 0.125f;       return 8u; }
-    if (r == 107u) { *inv = 0.083333336f; return 12u; }
-    if (r == 108u) { *inv = 0.0625f;      return 16u; }
-    if (r == 109u) { *inv = 0.05f;        return 20u; }
-    if (r == 110u) { *inv = 0.041666668f; return 24u; }
-    if (r == 111u) { *inv = 0.035714287f; return 28u; }
-    *inv = 0.03125f;                      return 32u;
+    if (r <= 101u) { *inv = 0.00390625f;  return 256u; }   /* 8 bars   */
+    if (r == 102u) { *inv = 0.004464286f; return 224u; }   /* 7        */
+    if (r == 103u) { *inv = 0.005208333f; return 192u; }   /* 6        */
+    if (r == 104u) { *inv = 0.00625f;     return 160u; }   /* 5        */
+    if (r == 105u) { *inv = 0.0078125f;   return 128u; }   /* 4        */
+    if (r == 106u) { *inv = 0.010416667f; return 96u; }    /* 3        */
+    if (r == 107u) { *inv = 0.015625f;    return 64u; }    /* 2        */
+    if (r == 108u) { *inv = 0.020833334f; return 48u; }    /* 1.5      */
+    if (r == 109u) { *inv = 0.03125f;     return 32u; }    /* 1 bar    */
+    if (r == 110u) { *inv = 0.041666668f; return 24u; }    /* 3/4      */
+    if (r == 111u) { *inv = 0.0625f;      return 16u; }    /* 1/2      */
+    if (r == 112u) { *inv = 0.125f;       return 8u; }     /* 1/4      */
+    if (r == 113u) { *inv = 0.25f;        return 4u; }     /* 1/8      */
+    if (r == 114u) { *inv = 0.5f;         return 2u; }     /* 1/16     */
+    *inv = 1.0f;                          return 1u;       /* 1/32     */
 }
 
 SW_ALWAYS_INLINE(sw_init)
@@ -315,8 +320,8 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
     P->flip_sync = (rate >= 101u) ? 1u : 0u;
     P->bt_len = 1u; P->inv_len = 1.0f;
     if (rate >= 101u) {
-        P->bt_len = sw_beats(rate, &P->inv_len);
-        P->inc = bpm * SW_INC_PER_BPM * P->inv_len;
+        P->bt_len = sw_len(rate, &P->inv_len);
+        P->inc = bpm * SW_INC_PER_BPM * 8.0f * P->inv_len;   /* a length is len / 8 beats */
     } else {
         P->inc = 0.05f * sw_exp2((float)rate * 0.0732f) * SW_HZ_TO_INC;
     }
@@ -431,7 +436,7 @@ static inline void sw_advance(SwState *s, const SwParams *P, int flip)
 {
     if (flip) {
         if (P->flip_sync) {
-            s->bt += 4u;
+            s->bt += 32u;
             while (s->bt >= P->bt_len) s->bt -= P->bt_len;
             s->ph = (float)s->bt * P->inv_len;
         } else {
@@ -457,19 +462,25 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
     return 4;
 }
 
-/* Rate: free 0..100 as Hz (".05Hz" .. "8.0Hz"), 101..112 as the sweep length */
+/* Rate: free 0..100 as Hz (".05Hz" .. "8.0Hz"), 101..115 as the sweep length, slowest first */
 int ZDL_GetLabel_1(unsigned int value, char *out)
 {
     if (value >= 101u) {
         unsigned int v = value;
-        if (v > 112u) v = 112u;
-        if (v == 101u) { out[0] = '1'; out[1] = '/'; out[2] = '4'; out[3] = 0; return 3; }
-        if (v == 102u) { out[0] = '1'; out[1] = '/'; out[2] = '2'; out[3] = 0; return 3; }
-        if (v == 103u) { out[0] = '3'; out[1] = '/'; out[2] = '4'; out[3] = 0; return 3; }
-        if (v == 105u) { out[0] = '1'; out[1] = '.'; out[2] = '5'; out[3] = 'B'; out[4] = 0; return 4; }
+        if (v > 115u) v = 115u;
+        if (v >= 113u) {                        /* 1/8, 1/16, 1/32 */
+            out[0] = '1'; out[1] = '/';
+            if (v == 113u) { out[2] = '8'; out[3] = 0; return 3; }
+            out[2] = (v == 114u) ? '1' : '3'; out[3] = (v == 114u) ? '6' : '2'; out[4] = 0;
+            return 4;
+        }
+        if (v == 112u) { out[0] = '1'; out[1] = '/'; out[2] = '4'; out[3] = 0; return 3; }
+        if (v == 111u) { out[0] = '1'; out[1] = '/'; out[2] = '2'; out[3] = 0; return 3; }
+        if (v == 110u) { out[0] = '3'; out[1] = '/'; out[2] = '4'; out[3] = 0; return 3; }
+        if (v == 108u) { out[0] = '1'; out[1] = '.'; out[2] = '5'; out[3] = 'B'; out[4] = 0; return 4; }
         {
-            int bars = 1;                       /* 104 = 1 bar, 106 = 2, 107 = 3, ... 112 = 8 */
-            if (v >= 106u) bars = (int)v - 104;
+            int bars = 1;                       /* 101 = 8 bars .. 107 = 2, 109 = 1 bar */
+            if (v <= 107u) bars = 109 - (int)v;
             out[0] = (char)('0' + bars); out[1] = 'B'; out[2] = 'A'; out[3] = 'R'; out[4] = 0;
             return 4;
         }
@@ -563,7 +574,7 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     s = (SwState *)stateBase;
 
     u[0] = sw_ui(params[SWEEP_TYPE_SLOT],  (float)SWEEP_TYPE_UI_DEFAULT,  7.0f);
-    u[1] = sw_ui(params[SWEEP_RATE_SLOT],  (float)SWEEP_RATE_UI_DEFAULT,  112.0f);
+    u[1] = sw_ui(params[SWEEP_RATE_SLOT],  (float)SWEEP_RATE_UI_DEFAULT,  115.0f);
     u[2] = sw_ui(params[SWEEP_DEPTH_SLOT], (float)SWEEP_DEPTH_UI_DEFAULT, 100.0f);
     u[3] = sw_ui(params[SWEEP_CNTR_SLOT],  (float)SWEEP_CNTR_UI_DEFAULT,  100.0f);
     u[4] = sw_ui(params[SWEEP_RESO_SLOT],  (float)SWEEP_RESO_UI_DEFAULT,  100.0f);
