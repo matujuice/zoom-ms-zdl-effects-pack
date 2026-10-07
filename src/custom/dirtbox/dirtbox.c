@@ -64,11 +64,12 @@
  *     a minimum follower that drops quickly in quiet moments and creeps up by about
  *     2.4 dB/s otherwise, capped at -60 dBFS so the threshold never climbs into the
  *     music.
- *   - Threshold = floor x margin, margin 2^(1 + 3 z): +6 dB at ZNR 1 .. +24 dB at
- *     ZNR 100, +15 dB at the default 50.
+ *   - Threshold = floor x margin, margin 2^(1.5 + 3.5 z): +9 dB at ZNR 1 .. +30 dB
+ *     at ZNR 100, +19.5 dB at the default 50 (made stronger on Luca's request,
+ *     2026-10-07; was +6 .. +24 dB with a 1:3 expander).
  *   - Above the threshold the wet passes untouched; 30 ms after the input last
- *     crossed it, the gain eases down as a 1:3 downward expander (gain =
- *     (env / threshold)^2) over ~80 ms: fast enough to clear the hiss in a rest
+ *     crossed it, the gain eases down as a 1:5 downward expander (gain =
+ *     (env / threshold)^4) over ~80 ms: fast enough to clear the hiss in a rest
  *     between 16ths at 140 BPM, while a note's tail still fades as on the input.
  *     Anything back above the threshold opens it in under 1 ms. ZNR 0 = off.
  *
@@ -546,7 +547,7 @@ static inline void ab_prepare(AbParams *P, const float *k)
         }
     }
     P->znr = (k[6] > 0.0f);
-    P->margin = ab_exp2(1.0f + 3.0f * k[6]);
+    P->margin = ab_exp2(1.5f + 3.5f * k[6]);     /* +9 .. +30 dB */
     P->dryG = 2.0f - 2.0f * k[8]; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * k[8];        if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
@@ -647,7 +648,7 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
             float r = env * invThr, tgt;
             if (r >= 1.0f) { hold = AB_HOLD; tgt = 1.0f; }
             else if (hold > 0) { hold--; tgt = 1.0f; }
-            else tgt = r * r;                            /* 1:3 downward expander */
+            else { tgt = r * r; tgt *= tgt; }            /* 1:5 downward expander */
             gz += ((tgt > gz) ? AB_G_ATT : AB_G_REL) * (tgt - gz);
         } else {
             gz = 1.0f;
