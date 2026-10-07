@@ -18,6 +18,7 @@ Some settings restart an effect on their own (a press, a note), which pulls it o
 | SyncEQ | Put it in slots 1 to 3 and point the Send knob at its slot. It passes the bar on to later slots, also while switched off. In development, not tested on the pedal. | |
 | Breather | Any Targt, Shape, Div and Shift. | Nothing: while the script runs, switching it on keeps the bar (it restarts on the one only when no restart has come for 8 s). |
 | Sweep | Rate on a note value (101..115): the sweep keeps its place across bars, a 4 or 8 bar sweep is not restarted by each flip. On a free Rate every flip restarts the sweep at its centre. In development, not tested on the pedal. | Turning Tempo by hand: it changes the speed (nothing restarts). |
+| GridDly | Time on a note value (the top of the knob). REVRS chunks restart on each bar. In development, not tested on the pedal. | Turning Tempo by hand on REVRS: it restarts the chunk. |
 
 **Slots 4 to 6 (in development, not tested on the pedal yet).** A tempo effect that the script flips in slots 1 to 3 (or SyncEQ) passes each bar on to the effects after it. Effects with Tempo all the way down on FOLLW follow it, bars and BPM; on a BPM they run on their own. Point the Send knob at the slot of the one tempo effect or SyncEQ that sends, and put every other synced effect, in slots 1 to 3 too, on FOLLW. Script v3 needs these builds (bar tag); with release v1.4 effects use v2, which flips each slot's Tempo itself.
 
