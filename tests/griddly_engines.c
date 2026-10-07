@@ -1,8 +1,9 @@
 /* GridDly engines: runs the real pedal entry on every Type and checks
  *   - labels (Type, Time, Tail)
  *   - DIGI: a click comes back at the set Time (free 500 ms and synced 1/4 at 120), Fdbk decays
- *   - every engine stays finite and under +-2.5 with noise in, Fdbk 100, Char 0 and 100
- *   - DUB at Fdbk 100 keeps ringing after the input stops; DIGI at Fdbk 45 dies away
+ *   - every engine stays finite and under +-2.5 with noise in, Fdbk 120, Char 0 and 100
+ *   - Fdbk 100 = 1:1: every engine fades at 100 and drones at 120 (DUB with dark Tone excepted);
+ *     DIGI at Fdbk 45 dies away
  *   - REVRS plays something back (reversed chunks), TAPS has three echoes before the 1/4
  *   - Duck 100 lowers the repeats while the input plays
  *   - switched off: Tail OFF = output equals input; Tail ON = input plus decaying repeats */
@@ -103,21 +104,41 @@ int main(void)
     CHECK(area(5505, 5520) > 0.38f && area(11018, 11032) > 0.28f && area(22043, 22057) > 0.2f, "TAPS taps missing");
     CHECK(area(5505, 5520) > area(11018, 11032) && area(11018, 11032) > area(22043, 22057), "TAPS levels do not fall");
 
-    /* every engine: noise, Fdbk 100, Char 0 and 100, Tone 0 and 100 */
+    /* every engine: noise, Fdbk 120, Char 0 and 100, Tone 0 and 100 */
     for (ty = 0; ty < 6; ty++) for (i = 0; i < 4; i++) {
         float p;
-        setup(); SET(TYPE, ty); SET(FDBK, 100); SET(CHAR, (i & 1) ? 100 : 0); SET(TONE, (i & 2) ? 100 : 0);
+        setup(); SET(TYPE, ty); SET(FDBK, 120); SET(CHAR, (i & 1) ? 100 : 0); SET(TONE, (i & 2) ? 100 : 0);
         SET(MIX, 100); SET(TIME, 103); settle();
         run(44100 * 3, 2, 0.9f);
         p = peak(0, 44100 * 3);
         CHECK(p < 2.5f, "%s Char %d Tone %d: peak %.3f (or NaN)", types[ty], (i & 1) * 100, (i >> 1) * 100, p);
     }
 
-    /* DUB Fdbk 100 rings on, DIGI Fdbk 45 dies */
-    setup(); SET(TYPE, 2); SET(FDBK, 100); SET(CHAR, 50); SET(MIX, 100); SET(TIME, 106); settle();
-    run(44100, 2, 0.5f); run(44100 * 5, 0, 0.0f);
-    printf("DUB Fdbk 100, 4..5 s after the input stopped: rms %.4f\n", rms(44100 * 4, 44100 * 5));
-    CHECK(rms(44100 * 4, 44100 * 5) > 0.02f, "DUB at Fdbk 100 died away");
+    /* Fdbk: 100 = 1:1 into the loop, the filters still take their share; 120 drones.
+     * Change in dB from 1..2 s to 4..5 s after a noise burst, Tone 0 and 100, Char 0. */
+    {
+        static const int fd[4] = {90, 100, 110, 120};
+        unsigned int rng0 = rng;
+        float db[4][6][2];
+        int f, tn;
+        for (f = 0; f < 4; f++) {
+            printf("Fdbk %3d dB from 1..2 s to 4..5 s:", fd[f]);
+            for (ty = 0; ty < 6; ty++) for (tn = 0; tn < 2; tn++) {
+                float a, b;
+                setup(); SET(TYPE, ty); SET(FDBK, fd[f]); SET(CHAR, 0); SET(TONE, tn * 100);
+                SET(MIX, 100); SET(TIME, 106); settle();
+                run(22048, 2, 0.5f); run(44100 * 5, 0, 0.0f);
+                a = rms(44100, 88200) + 1e-9f; b = rms(44100 * 4, 44100 * 5) + 1e-9f;
+                db[f][ty][tn] = 20.0f * log10f(b / a);
+                printf(" %s/%d %+.1f", types[ty], tn * 100, db[f][ty][tn]);
+                if (fd[f] <= 100) CHECK(db[f][ty][tn] < -2.0f, "%s Tone %d Fdbk %d does not die away", types[ty], tn * 100, fd[f]);
+                if (fd[f] == 120 && !(ty == 2 && tn == 0))
+                    CHECK(db[f][ty][tn] > 0.0f && b < 2.5f, "%s Tone %d Fdbk 120 does not grow into a drone (rms %.3f)", types[ty], tn * 100, b);
+            }
+            puts("");
+        }
+        rng = rng0;
+    }
     setup(); SET(MIX, 100); SET(TIME, 106); settle();
     run(44100, 2, 0.5f); run(44100 * 5, 0, 0.0f);
     printf("DIGI Fdbk 45, 4..5 s after: rms %.6f\n", rms(44100 * 4, 44100 * 5));
