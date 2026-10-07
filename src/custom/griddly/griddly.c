@@ -55,8 +55,8 @@
  *   Tail OFF: the repeats stop at once; the ring keeps recording the dry input (no feedback),
  *   so switching back on starts echoing what you just played. The beat clock keeps running
  *   and follows twin flips while off. Tail ON needs the pedal to call a switched-off effect,
- *   which the synced effects already rely on for their clocks; the ring-out has not been heard
- *   on the pedal yet.
+ *   which the synced effects already rely on for their clocks; it passed on the pedal
+ *   (2026-10-07).
  *
  * DUCK
  *   A peak follower on the input (instant attack, about 0.23 s release) pulls the wet level
@@ -80,7 +80,7 @@
  *   7 Tempo  0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 is a twin copy
  *                    (BPM = screen - 201). Flipping between a BPM and its twin restarts the
  *                    REVRS chunk without changing the tempo. A plain tempo change does not.
- *                    Read as raw x 100 (sc_tempo_ui), never through the 3.05 guess.
+ *                    Read as raw x 100 (gd_tempo_ui), never through the 3.05 guess.
  *   8 Tail   0..1    OFF / ON (above)
  *
  * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
@@ -92,8 +92,8 @@
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch or if-chains on Type in the audio path, no double / long long,
- * no float-to-unsigned casts, every helper forced inline. Not yet built, heard or measured
- * for CPU (host tests only).
+ * no float-to-unsigned casts, every helper forced inline. Built and passed on the MS-60B
+ * (2026-10-07, every engine and Tail); CPU never measured.
  */
 
 #include <stdint.h>
