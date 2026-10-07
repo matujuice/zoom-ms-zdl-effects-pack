@@ -20,7 +20,9 @@ GEN = HERE / "_gen"
 GEN.mkdir(exist_ok=True)
 for folder, prefix in [("wavefold", "WAVEFOLD"), ("dualshft", "DUALSHFT"), ("formant", "FORMANT"),
                        ("eugate", "EUGATE"), ("dubsiren", "DUBSIREN"), ("sgnl", "SGNL"),
-                       ("scrub", "SCRUB"), ("synceq", "SYNCEQ"), ("breather", "BREATHER"), ("dirtbox", "DIRTBOX"), ("sweep", "SWEEP"), ("griddly", "GRIDDLY"), ("../probes/tempoprb", "TEMPOPRB")]:
+                       ("scrub", "SCRUB"), ("synceq", "SYNCEQ"), ("breather", "BREATHER"),
+                       ("dirtbox", "DIRTBOX"), ("sweep", "SWEEP"), ("griddly", "GRIDDLY"),
+                       ("../probes/tempoprb", "TEMPOPRB"), ("../probes/dryprb", "DRYPRB")]:
     m = json.loads((ROOT / "src" / "custom" / folder / "manifest_pedal.json").read_text(encoding="utf-8"))
     write_param_header(m, GEN / f"{Path(folder).name}_params.h", prefix)
 
