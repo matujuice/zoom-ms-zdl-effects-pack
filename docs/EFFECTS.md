@@ -126,3 +126,22 @@ The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, p
 | Drive | 0..100 | Soft saturation after the EQ. 0 = clean; the output is turned down as Drive goes up. |
 | Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
 | Level | -12..+12 dB | Output level. |
+
+### Breather: tempo-synced pump with a reverb (new, not in a release yet)
+On every beat (or every Div) something moves: your sound, the built-in reverb, both, or what goes into the reverb. Targt picks what, Shape picks how. Made for pads, basses, percussion and drum machines around 160 BPM.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Targt | DRY, VERB, BOTH, SEND | What moves. DRY = your sound (the reverb stays steady). VERB = only the reverb; your sound passes untouched. BOTH = both together. SEND = what goes into the reverb: your sound is untouched and the tail rings out freely. |
+| Shape | DUCK, GATE, RISE | How it moves, starting on the downbeat. DUCK drops on the beat and comes back (classic sidechain pump). GATE cuts on the beat, stays cut for Curve, then opens (a hard duck). RISE is quiet after the beat, grows into the next one and drops on it. |
+| Depth | 0..100 | How far the level moves. 100 = all the way to silence. |
+| Div | 1/16, 1/8, 1/4, 1/2, BAR | How often it fires. |
+| Shift | 0..100 % of a beat | Moves the whole pump later: +1/16 at 25, +1/8 (the offbeat) at 50, +3/16 at 75, +1/4 at 100. Small values nudge it onto the body of the kick. At 50 the sound is loudest on the kick and dips in between. |
+| Curve | 0..100 | How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays cut, how long RISE grows. |
+| Verb | 0..100 | Reverb level. 0 = no reverb, a pure pump. |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. FOLLW (the bottom of the knob) follows the bar sync sent by an effect in an earlier slot: its BPM (120 until one is heard, the last one kept if the sender goes away) and its bars, each restarting the pump on beat 1. On a BPM it ignores that and runs on its own. In slots 1-3, FOLLW needs that slot's Mozaic pad off. |
+| Size | 0..100 | Reverb length, from a short room to a long wash. Bigger is also darker. |
+
+No Mix knob: Depth and Verb already set how much you hear. Out of the box it is a sidechain pump on your sound and the reverb together (BOTH + DUCK, Depth 80, 1/4, Verb 35). Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
+
+Try: DRY + DUCK on a pad (the classic pump); DRY + GATE (hard pump: silent on the kick, back after Curve); VERB + RISE (the reverb swells into every kick); SEND + GATE (the hits stay dry, the gaps wash out); DRY + GATE with Shift 50 and Curve 50 (open on the beat, cut on the offbeat: a chop).
