@@ -39,7 +39,8 @@
  *   Fdbk 0..120 (Luca 2026-10-07): gain into the loop = screen / 100 on every engine, so
  *   100 = 1:1. The loop filters still take their share, so each engine keeps its own decay:
  *   at 100 they all fade (DUB fastest, its band is tight), above 100 they grow into a drone
- *   the saturator holds; DUB with a dark Tone stays just under that even at 120.
+ *   the saturator holds; DUB makes up its tight band's loss above 100 (fully at 120), so it
+ *   drones at any Tone.
  *   All engines share one ring, one loop filter pair and one saturator; the per-engine
  *   numbers are blended from 0/1 flags in gd_prepare, so the sample loop has no branch on
  *   Type except the REVRS / TAPS / LOFI read and write paths.
@@ -352,10 +353,13 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     /* Fdbk: screen / 100 on every engine, 100 = 1:1 into the loop; the engine's filters
      * still take their share, so the engines keep their own decay. Above 100 the loop
      * grows into a drone that the saturator holds (ceiling at most 1.0 on every engine).
-     * Switched off with Tail ON the gain stays at 0.95 or below, so the tail fades. */
+     * Switched off with Tail ON the gain stays at 0.95 or below, so the tail fades.
+     * DUB above 100 (Luca 2026-10-07): its tight band's loss (about 1 + HP/LP coefficient)
+     * is made up step by step, fully at 120, so it drones at any Tone. */
     fbG = u[2] * 0.01f;
     if (!on && fbG > 0.95f) fbG = 0.95f;
     P->fb = fbG;
+    if (fbG > 1.0f) P->fb = fbG * (1.0f + eB * (fbG - 1.0f) * 5.0f * P->ch * gd_recip(P->cl));
     if (fbG > 1.0f && P->drive < 1.0f) P->drive = 1.0f;
     P->dinv = gd_recip(P->drive);
     P->mk = 1.0f + 1.5f * ch * eB;

@@ -27,7 +27,7 @@
       "name": "Fdbk",
       "max": 120,
       "default": 45,
-      "comment": "Feedback: gain into the loop = screen / 100 on every engine, 100 = 1:1. The loop filters still take their share, so each engine keeps its own decay; above 100 it grows into a drone the saturator holds (DUB with a dark Tone stays just under it). Switched off with Tail ON it is capped at 95 so the tail fades. Default 45."
+      "comment": "Feedback: gain into the loop = screen / 100 on every engine, 100 = 1:1. The loop filters still take their share, so each engine keeps its own decay; above 100 it grows into a drone the saturator holds (DUB makes up its tight band's loss above 100, so it drones at any Tone). Switched off with Tail ON it is capped at 95 so the tail fades. Default 45."
     },
     {
       "name": "Tone",

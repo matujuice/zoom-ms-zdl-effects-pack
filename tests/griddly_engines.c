@@ -2,7 +2,7 @@
  *   - labels (Type, Time, Tail)
  *   - DIGI: a click comes back at the set Time (free 500 ms and synced 1/4 at 120), Fdbk decays
  *   - every engine stays finite and under +-2.5 with noise in, Fdbk 120, Char 0 and 100
- *   - Fdbk 100 = 1:1: every engine fades at 100 and drones at 120 (DUB with dark Tone excepted);
+ *   - Fdbk 100 = 1:1: every engine fades at 100 and drones at 120 (DUB at any Tone);
  *     DIGI at Fdbk 45 dies away
  *   - REVRS plays something back (reversed chunks), TAPS has three echoes before the 1/4
  *   - Duck 100 lowers the repeats while the input plays
@@ -132,7 +132,7 @@ int main(void)
                 db[f][ty][tn] = 20.0f * log10f(b / a);
                 printf(" %s/%d %+.1f", types[ty], tn * 100, db[f][ty][tn]);
                 if (fd[f] <= 100) CHECK(db[f][ty][tn] < -2.0f, "%s Tone %d Fdbk %d does not die away", types[ty], tn * 100, fd[f]);
-                if (fd[f] == 120 && !(ty == 2 && tn == 0))
+                if (fd[f] == 120)
                     CHECK(db[f][ty][tn] > 0.0f && b < 2.5f, "%s Tone %d Fdbk 120 does not grow into a drone (rms %.3f)", types[ty], tn * 100, b);
             }
             puts("");
