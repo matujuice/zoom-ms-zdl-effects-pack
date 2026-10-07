@@ -15,6 +15,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
 | **SyncEQ** | EQ with low and high cut, three bands and a little drive, which also passes the iPhone bar sync on to the effects in later slots. In development, not in a release yet. |
 | **Breather** (new, not in a release yet) | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. |
+| **DIRTBOX** (new, not in a release yet) | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
@@ -29,7 +30,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 493 Breather, 494 SyncEQ). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 
@@ -41,7 +42,7 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `synceq`, `breather`.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `synceq`, `breather`, `dirtbox`.
 
 ## Repository layout
 

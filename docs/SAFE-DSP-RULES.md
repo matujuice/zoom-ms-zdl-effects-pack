@@ -80,6 +80,26 @@ experiment, not a port.
   `.rela.dyn` for your own emitted calls, and test at a nonzero text base —
   the emulator loads at zero, so it cannot see this class at all.
 
+## Size
+
+Keep the finished `.ZDL` well under 32 KB. DirtBox with its seven distortion
+models built cleanly at 36 KB (ELF 36,078 bytes) and the MS-60B then hung on
+the boot screen; removing that one file booted the pedal again (Luca,
+2026-10-06). The largest file known to boot is Choral at 30.9 KB (ELF 30,818).
+The cause has not been proven on hardware, but the boundary falls between those
+two, and the ZDL header's SIZE field is the ELF's size, which passes 32,767 for
+the first time with that build. Shrinking DirtBox to about 24 KB is the fix
+being tested.
+
+What makes a pedal file big is inlining, not the number of lines: every helper
+is forced inline, so a helper used in seven model branches is seven copies of
+its code. When an effect grows past about 25 KB, give the branches one shared
+copy instead: keep filter corners in Hz and convert them all at the end, hoist
+each `2^x` out of the branches, loop over bands or knobs instead of writing
+them out, and compute `1 / x` with its own Newton iteration rather than
+squaring an `rsqrt`. That is what took DirtBox's audio code down by 45 %
+without changing the sound (host A/B error under -69 dB).
+
 ## Known Freeze Patterns
 
 * Large Airwindows delay/reverb/chorus state arrays in `.fardata`.
