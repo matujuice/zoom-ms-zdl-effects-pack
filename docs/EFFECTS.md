@@ -126,3 +126,20 @@ The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, p
 | Drive | 0..100 | Soft saturation after the EQ. 0 = clean; the output is turned down as Drive goes up. |
 | Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
 | Level | -12..+12 dB | Output level. |
+
+### Sweep: phaser, flanger and filter in one
+In development: source and host tests only, not built or heard yet. One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for synths and drum machines.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Type | PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH | The engine. PH 4 / PH 8: phaser with 4 or 8 all-pass stages (2 or 4 notches). FL +: flanger. FL -: flanger with negative feedback, hollow and metallic. LP / BP / HP / NTCH: resonant low-pass, band-pass, high-pass, notch. |
+| Rate | 0.05..8 Hz, 1/4, 1/2, 3/4, 1BAR, 1.5B, 2BAR..8BAR | Free speed in Hz on the lower part of the knob. At the top, one full sweep (up and down) lasts a note value or a number of bars at the Tempo BPM. |
+| Depth | 0..100 | How far the sweep goes each way around Cntr. 0 = parked, 100 = 2.5 octaves each way. |
+| Cntr | 0..100 | Where it sweeps around. Phaser notch and filter cutoff 80 Hz to 10 kHz; flanger delay 8 ms down to 0.3 ms. Higher is brighter for all three. |
+| Reso | 0..100 | Feedback (phaser, flanger; the sign comes from Type) or filter resonance. |
+| Shape | TRI, SINE, RISE, FALL, SQR, RAND | LFO shape. TRI and SINE start at the centre and rise. RAND glides to a new random height twice per sweep. |
+| Tone | 0..100 | Phaser and flanger: how bright the feedback is. Filters: drive into the filter, with the level kept about the same. |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo. A jump to the second copy of the same BPM is a bar: a synced Rate lands where the sweep would be after that bar (a 4 bar sweep is not restarted every bar), a free Rate restarts at the centre. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style. The phaser and flanger sound already contains the dry (that is where the notches come from), so 100 is the whole effect. |
+
+Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.

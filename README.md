@@ -14,6 +14,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
 | **SyncEQ** | EQ with low and high cut, three bands and a little drive, which also passes the iPhone bar sync on to the effects in later slots. In development, not in a release yet. |
+| **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from 1/4 note up to 8 bars, locked to the bar. In development, not in a release yet. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
@@ -28,7 +29,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 494 SyncEQ). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 494 SyncEQ, 496 Sweep). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 

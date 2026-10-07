@@ -1,0 +1,33 @@
+{
+  "effect_name": "Sweep",
+  "comment": "Sweep - phaser, flanger and resonant filter in one effect, swept by a tempo-locked LFO that can run from 1/4 note to 8 bars, for synths and drum machines. Type picks the engine (PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH); Rate = free speed in Hz or a synced sweep length; Depth = how far it sweeps; Cntr = where it sweeps around; Reso = feedback or resonance; Shape = LFO shape; Tone = feedback brightness (phaser/flanger) or drive (filters); Tempo is the BPM (0..39 = FOLLW); Mix is dry/wet.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 496,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 Delay, 496 Sweep. Unique inside the repo.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {"name": "Type", "max": 7, "default": 0,
+     "comment": "Engine. 0 PH 4 (4-stage phaser), 1 PH 8 (8-stage), 2 FL + (flanger), 3 FL - (flanger, negative feedback), 4 LP, 5 BP, 6 HP, 7 NTCH (notch). Default PH 4."},
+    {"name": "Rate", "max": 112, "default": 104,
+     "comment": "0..100 free speed, about 0.05 Hz to 8 Hz, shown in Hz. 101..112 = one full sweep lasts 1/4 note, 1/2, 3/4, 1 bar, 1.5 bars, 2, 3, 4, 5, 6, 7, 8 bars at the Tempo BPM. Default 104 = 1 bar."},
+    {"name": "Depth", "max": 100, "default": 70,
+     "comment": "How far the sweep travels each way around Cntr: 0 = parked, 100 = +-2.5 octaves (phaser and filter frequency, flanger delay). Default 70."},
+    {"name": "Cntr", "max": 100, "default": 50,
+     "comment": "Centre of the sweep. Phaser notch / filter cutoff 80 Hz (0) to 10 kHz (100), log; flanger delay 8 ms (0) down to 0.3 ms (100). Default 50."},
+    {"name": "Reso", "max": 100, "default": 40,
+     "comment": "Phaser feedback 0..85 %, flanger feedback 0..90 % (negative on FL -), filter resonance (Q 0.7 to about 10). Default 40."},
+    {"name": "Shape", "max": 5, "default": 0,
+     "comment": "LFO shape: 0 TRI, 1 SINE (both start at the centre and rise), 2 RISE (saw up), 3 FALL (saw down), 4 SQR (jumps, with a short glide), 5 RAND (glides to a new random height twice per sweep). Default TRI."},
+    {"name": "Tone", "max": 100, "default": 50,
+     "comment": "Phaser and flanger: how bright the feedback is (0 dark, 100 open). Filters: drive into the filter (0 clean, 100 hot; the level is kept about the same). Default 50."},
+    {"name": "Tempo", "max": 441, "default": 120,
+     "comment": "Speed in BPM (40 to 240), shown on screen; 0..39 = FOLLW takes BPM and bars from a bar tag of an earlier slot. A flip to the twin copy of the same BPM (120 <-> 321) is a bar: a synced Rate jumps to where the sweep would be after that bar, a free Rate restarts at the centre. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120."},
+    {"name": "Mix", "max": 100, "default": 100,
+     "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. The phaser and flanger wet signal already contains the dry (that is where the notches come from), so 100 is the whole phaser or flanger sound. Default 100."}
+  ],
+  "audio_func_name": "Fx_DLY_Sweep",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+}
