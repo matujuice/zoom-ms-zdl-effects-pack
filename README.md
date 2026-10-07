@@ -2,7 +2,7 @@
 
 Free custom effects for Zoom MultiStomp pedals, with source code.
 
-![The seven covers as the pedal's screen shows them](release/covers.png)
+![The covers of the seven released effects as the pedal's screen shows them](release/covers.png)
 
 | Effect | What it is |
 |---|---|
@@ -13,15 +13,15 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
-| **GridDly** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. In development, not in a release yet. |
-| **SyncEQ** | EQ with low and high cut, three bands and a little drive, which also passes the iPhone bar sync on to the effects in later slots. In development, not in a release yet. |
-| **Breather** (new, not in a release yet) | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. |
-| **DIRTBOX** (new, not in a release yet) | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. |
-| **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from 1/4 note up to 8 bars, locked to the bar. In development, not in a release yet. |
+| **GridDly** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. New, not in a release yet. |
+| **SyncEQ** | EQ with low and high cut, three bands and a little drive, which also passes the iPhone bar sync on to the effects in later slots (4 to 6 too). New, not in a release yet. |
+| **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
+| **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
+| **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren, Scrub and Breather on every downbeat. Get the script on [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (or [tools/mozaic/](tools/mozaic/)); setup and the best knob settings for it (for example EuGate Reset SYNC, DubSiren Trig SHold or SPuls) are in [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
+**Sync to the bar:** the pedal ignores MIDI clock, but a Mozaic script on an iPhone can restart DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly and Sweep on every downbeat; with the new builds, effects in slots 4 to 6 follow too (Tempo on FOLLW). Get the script on [PatchStorage](https://patchstorage.com/zoom-ms-bar-sync-keep-custom-zoom-effects-on-the-beat/) (or [tools/mozaic/](tools/mozaic/)); setup and the best knob settings for it (for example EuGate Reset SYNC, DubSiren Trig SHold or SPuls) are in [docs/IPHONE-SYNC.md](docs/IPHONE-SYNC.md).
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -31,6 +31,8 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
+
+The effects marked new are on `main` but not in a release yet; build them from source (below) until the next release.
 
 Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
@@ -44,7 +46,7 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `synceq`, `breather`, `dirtbox`.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `synceq`, `breather`, `dirtbox`, `sweep`, `griddly`. Probes (`tempoprb`, `dryprb`) are built only when named.
 
 ## Repository layout
 

@@ -2,8 +2,8 @@
  * sweep.c - "Sweep": one bar-synced swept effect, three engines on one LFO, mono
  *
  * A phaser, a flanger and a resonant filter in one effect, picked by the Type knob. All
- * three are swept by the same tempo-locked LFO, so a slow sweep can cover 1/4 note up to
- * 8 bars and stay on the bar. For synths and drum machines (it was never meant for guitar).
+ * three are swept by the same tempo-locked LFO, so a sweep can last from a 1/32 note up
+ * to 8 bars and stay on the bar. For synths and drum machines (it was never meant for guitar).
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float division, no
  * libm, no switch, every helper forced inline, no calls. The two reciprocals each block
@@ -55,8 +55,8 @@
  *
  * BAR TAG (src/custom/common/drytag.h)
  *   Like the other tempo effects: Tempo on 0..39 = FOLLOW takes BPM and bars from the tag of an
- *   earlier slot, on any BPM the effect runs on its own. In slots 1-3, FOLLOW needs its Mozaic
- *   pad off.
+ *   earlier slot, on any BPM the effect runs on its own. In slots 1-3, FOLLOW needs Mozaic's
+ *   Send knob on another slot.
  *
  * State: 1024-sample ring for the flanger (4 KB), 8 all-pass states, the SVF, the LFO. It lives
  * in the arena, validated by a magic number (change it when the struct changes).

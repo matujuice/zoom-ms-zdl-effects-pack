@@ -28,9 +28,10 @@ passes through unchanged. Set SEND and READ to the same Where and Shape.
 
 Report for each step: found / not found, and for step 2 whether anything is audible.
 
-## Not tested yet
+## Status
 
-Nothing here has run on the pedal. The host test (`tests/dryprb_probe.c`) only checks the
-logic. The Dry buffer layout (8 left samples then 8 right) is assumed to match the Fx buffer.
-It may crash the pedal on load if the Dry pointer is not what we think; if it freezes, power
-cycle, remove it with Zoom Effect Manager and report at which step.
+Run on the MS-60B on 2026-10-06: the value written in slot 1 was found in slots 2, 3 and 5,
+also past a stock filter, and nothing of it reached the output. That result is the basis of
+the bar tag (`src/custom/common/drytag.h`, docs/TEMPO-SYNC.md section 10). The host test
+(`tests/dryprb_probe.c`) checks the logic. Probe ZDLs go in the loader folder only for a test
+round; remove them afterwards.

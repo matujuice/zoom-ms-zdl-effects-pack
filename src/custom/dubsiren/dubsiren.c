@@ -100,7 +100,8 @@
  *
  * Safe-DSP rules of this repo are kept: no static/const tables in the audio
  * path, no float divide, no integer / or %, no libm, no switch, no memset,
- * everything always-inline. NOT TESTED ON HARDWARE YET.
+ * everything always-inline. Runs on the MS-60B (released since v1.0; bar sync on FOLLW
+ * passed 2026-10-07). CPU never measured.
  *
  * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
  *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar

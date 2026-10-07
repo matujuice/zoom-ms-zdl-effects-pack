@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_, same category as TAPEECH3.",
   "fxid": 499,
-  "fxid_comment": "Probe id, kept away from the pack's 480..490 so it never takes the next effect's number.",
+  "fxid_comment": "Probe id, kept away from the pack's 480..496 so it never takes the next effect's number.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [

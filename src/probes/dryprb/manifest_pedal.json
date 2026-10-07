@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_, same as TempoPrb.",
   "fxid": 498,
-  "fxid_comment": "Probe id (TempoPrb is 499), kept away from the pack's 480..493.",
+  "fxid_comment": "Probe id (TempoPrb is 499), kept away from the pack's 480..496.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [

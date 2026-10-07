@@ -6,7 +6,7 @@
  *   4-6). An effect with a Tempo knob in slots 1-3 that Mozaic flips can pass the bar on to
  *   later slots through the Dry buffer (the bar tag, src/custom/common/drytag.h and
  *   docs/TEMPO-SYNC.md). SyncEQ is the sender for patches whose first three slots hold no
- *   tempo effect: put it in slot 1-3, turn that slot's pad on in Mozaic, and it marks every
+ *   tempo effect: put it in slot 1-3, point Mozaic's Send knob at that slot, and it marks every
  *   bar for the effects after it. The audio side is a plain EQ with a little drive, so the
  *   slot isn't wasted. The tempo effects of the pack send the same tag, so SyncEQ is only
  *   needed when none of them sits in slots 1-3.

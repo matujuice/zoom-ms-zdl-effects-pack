@@ -2,9 +2,9 @@
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo knobs hold every BPM twice.** On DualShft, Choral, EuGate, DubSiren and Scrub the Tempo knob runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy. Tempo is the 8th knob on all five, so the host sends the same knob number whatever the effect. While one of these effects is switched off its LFO or pattern keeps running in the background, so it comes back in time (DubSiren needs Trig SHold or SPuls for that, EuGate Reset OFF, NOTE or SYNC).
+**Tempo knobs hold every BPM twice.** On every effect with a Tempo knob (DualShft, Choral, EuGate, DubSiren, Scrub, GridDly, SyncEQ, Breather, Sweep) it runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy. Tempo is the 8th knob on all of them, so the host sends the same knob number whatever the effect. While one of these effects is switched off its LFO or pattern keeps running in the background, so it comes back in time (DubSiren needs Trig SHold or SPuls for that, EuGate Reset OFF, NOTE or SYNC).
 
-**Bar sync for slots 4 to 6 (in development, not in a release yet).** Mozaic can only edit the first three slots. A tempo effect there that Mozaic flips (or SyncEQ) passes each bar on, unheard, to the effects after it. A tempo effect with Tempo all the way down on **FOLLW** follows it: the same bars and BPM (120 until something upstream sends; if the sender goes away it keeps the last BPM). On a BPM it ignores it and runs on its own, so you can mix synced and free effects. Point Mozaic's Send knob at the one effect that sends and put the other synced effects on FOLLW (in slots 1 to 3 too). Effects without a Tempo knob let it through.
+**Bar sync for slots 4 to 6 (tested on the MS-60B, not in a release yet).** Mozaic can only edit the first three slots. A tempo effect there that Mozaic flips (or SyncEQ) passes each bar on, unheard, to the effects after it. A tempo effect with Tempo all the way down on **FOLLW** follows it: the same bars and BPM (120 until something upstream sends; if the sender goes away it keeps the last BPM). On a BPM it ignores it and runs on its own, so you can mix synced and free effects. Point Mozaic's Send knob at the one effect that sends and put the other synced effects on FOLLW (in slots 1 to 3 too). Effects without a Tempo knob let it through.
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
@@ -27,7 +27,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the LFO. Changing it only changes the LFO speed; the second copy of the same BPM restarts the LFO (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: vowel choir
@@ -42,7 +42,7 @@ Filters tuned to the vowels A E I O U turn the input into a small choir. Five vo
 | Div | 4 bars .. 1/64 | Length of one LFO cycle. |
 | Shape | Sine, Step, Rand, Solo, Some, Canon, Ripl, Fan, Walk, Swell, Spot | How the vowel moves between the voices. |
 | Depth | 0..100 | How far the LFO reaches from the Vowel setting. 0 = the shape does nothing. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the vowel LFO. The LFO restarts when you change it. The second copy restarts it on the same tempo (see above). |
+| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the vowel LFO. Changing it only changes the LFO speed; the second copy of the same BPM restarts the LFO (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
@@ -111,7 +111,7 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
 ### GridDly: one tempo-synced delay, six engines
-In development: built once (as BarDelay), not tested on the pedal yet.
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
 
 One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at Tempo), and Char changes what it means with each engine.
 
@@ -130,9 +130,9 @@ One mono delay with a 7.9 second memory. Type picks the engine, Time sets the ec
 Try: DUB at 1/8., Fdbk 85, Char 60, then sweep Tone for dub throws on a snare. REVRS at 1bar with bar sync on a pad. TAPS with Char 50 on hats for a triplet trail.
 
 ### SyncEQ: EQ that passes the bar sync on
-In development: source and host tests only, not built or heard yet.
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
 
-The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with Mozaic's Send knob pointing at it, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it, even in slots 4 to 6, can stay on the bar (they will learn to read it in a later update). Any tempo effect of the pack in slots 1 to 3 will send the same mark, so SyncEQ is only needed when none sits there. Like the tempo effects, it sends only while Mozaic is flipping its Tempo. Switched off, the sound passes untouched and the bar still goes through. The sound side is a clean EQ: with every knob at its default nothing changes.
+The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with Mozaic's Send knob pointing at it, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it on FOLLW, even in slots 4 to 6, stay on the bar. Any tempo effect of the pack in slots 1 to 3 sends the same mark, so SyncEQ is only needed when none sits there. Like the tempo effects, it sends only while Mozaic is flipping its Tempo. Switched off, the sound passes untouched and the bar still goes through. The sound side is a clean EQ: with every knob at its default nothing changes.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -146,7 +146,9 @@ The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, p
 | Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
 | Level | -12..+12 dB | Output level. |
 
-### Breather: tempo-synced pump with a reverb (new, not in a release yet)
+### Breather: tempo-synced pump with a reverb
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
 On every beat (or every Div) something moves: your sound, the built-in reverb, both, or what goes into the reverb. Targt picks what, Shape picks how. Made for pads, basses, percussion and drum machines around 160 BPM.
 
 | Knob | Range | What it does |
@@ -165,7 +167,9 @@ No Mix knob: Depth and Verb already set how much you hear. Out of the box it is 
 
 Try: DRY + DUCK on a pad (the classic pump); DRY + GATE (hard pump: silent on the kick, back after Curve); VERB + RISE (the reverb swells into every kick); SEND + GATE (the hits stay dry, the gaps wash out); DRY + GATE with Shift 50 and Curve 50 (open on the beat, cut on the offbeat: a chop).
 
-### DIRTBOX: a distortion box for an acid machine (new, not in a release yet)
+### DIRTBOX: a distortion box for an acid machine
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
 Made for a TB-303 / TD-3 (or a MeeBlip triode) going into the pedal: seven real distortion pedals on the Model knob, mildest first, a 3-band EQ voiced for acid, and an automatic noise reducer (ZNR). Same fxid 491 as the first 3-model DirtBox. Drive mostly adds dirt rather than volume: an input peaking around -14 dBFS comes out at about the same level at any Drive.
 
 Each model follows the real circuit stage by stage, from a published analysis or a circuit-level digital model (filters evaluated at 44.1 kHz, diode and transistor curves fitted to the model's):
@@ -197,7 +201,9 @@ Only RAT2 is nearly clean at Drive 0; the others still distort at 0, as the real
 Try: TD-3 into RAT2 at Drive 50, Tone 80, Mid +3 for a classic squelch; DS-1 for the TD-3's own distortion sound; SFUZZ with Tone 0 and Low +4 for fat, octave-up drones; Mix 50 to keep the clean line under the dirt.
 
 ### Sweep: phaser, flanger and filter in one
-In development: source and host tests only, not built or heard yet. One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for synths and drum machines.
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
+One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for synths and drum machines.
 
 | Knob | Range | What it does |
 |---|---|---|
