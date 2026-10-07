@@ -2,7 +2,7 @@
 """Build the effects into ./dist/.
 
     py build_all.py              # all of them
-    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl, scrub, synceq)
+    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl, scrub, synceq, bardelay)
     py build_all.py tempoprb     # a hardware probe (src/probes/); only built when named
 
 Needs the TI C6000 compiler (see README). formant is Choral, sgnl is S.GN_L (SGNL.ZDL).
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl", "scrub", "synceq"]
+EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl", "scrub", "synceq", "bardelay"]
 PROBES = ["tempoprb"]
 
 want = sys.argv[1:] or EFFECTS
