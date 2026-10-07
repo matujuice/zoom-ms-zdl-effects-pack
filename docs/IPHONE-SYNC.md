@@ -45,7 +45,7 @@ WaveFold and S.GN_L have no tempo, so nothing to set. Leave Tempo to the script 
 | Sync (pad 1) | Restarts on or off. |
 | Host tempo (pad 2) | On: the effects follow AUM's tempo. Off: they use the BPM knob. |
 | Sync now (pad 3) | Restarts now. |
-| ID (pad 4) | Pedal ID 58 (MS-50G firmware) or 5F (MS-60B). |
+| Pedal (pad 4) | MS-50G or MS-60B: the model the pedal reports. An MS-60B running MS-50G firmware (like the one this was tested on) is MS-50G. |
 
 ## Measuring Early
 
