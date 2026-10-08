@@ -345,9 +345,10 @@ static inline float sine_of(float ph)
     return t * (1.5706268f + t2 * (-0.6432292f + t2 * 0.0727102f));
 }
 
-/* Vowel table: formant n (0..2) of vowel v (0..4 = A E I O U, 5 = M hum, 6 = L), Hz */
-SR_ALWAYS_INLINE(vowel_hz)
-static inline float vowel_hz(int n, int v)
+/* Vowel table, v = 0..6 (A E I O U, 5 = M hum, 6 = L): n = 0..2 the formants' Hz,
+ * n = 3..5 their levels. One function, called from one place, so it is inlined once. */
+SR_ALWAYS_INLINE(vowel_par)
+static inline float vowel_par(int n, int v)
 {
     float r;
     if (n == 0)
@@ -356,22 +357,17 @@ static inline float vowel_hz(int n, int v)
     else if (n == 1)
         r = (v == 0) ? 1250.0f : (v == 1) ? 2000.0f : (v == 2) ? 2400.0f : (v == 3) ? 800.0f : (v == 4) ? 750.0f
           : (v == 5) ? 1000.0f : 1200.0f;
-    else
+    else if (n == 2)
         r = (v == 0) ? 2800.0f : (v == 1) ? 2750.0f : (v == 2) ? 3100.0f : (v == 3) ? 2600.0f : (v == 4) ? 2300.0f
           : (v == 5) ? 2200.0f : 2700.0f;
-    return r;
-}
-
-/* level of formant n for vowel v */
-SR_ALWAYS_INLINE(vowel_amp)
-static inline float vowel_amp(int n, int v)
-{
-    float r;
-    if (n == 0)      r = 1.0f;
-    else if (n == 1) r = (v == 0) ? 0.6f : (v == 1) ? 0.8f : (v == 2) ? 0.75f : (v == 3) ? 0.4f : (v == 4) ? 0.25f
-                       : (v == 5) ? 0.06f : 0.35f;
-    else             r = (v == 0) ? 0.3f : (v == 1) ? 0.3f : (v == 2) ? 0.3f : (v == 3) ? 0.2f : (v == 4) ? 0.1f
-                       : (v == 5) ? 0.03f : 0.15f;
+    else if (n == 3)
+        r = 1.0f;
+    else if (n == 4)
+        r = (v == 0) ? 0.6f : (v == 1) ? 0.8f : (v == 2) ? 0.75f : (v == 3) ? 0.4f : (v == 4) ? 0.25f
+          : (v == 5) ? 0.06f : 0.35f;
+    else
+        r = (v == 0) ? 0.3f : (v == 1) ? 0.3f : (v == 2) ? 0.3f : (v == 3) ? 0.2f : (v == 4) ? 0.1f
+          : (v == 5) ? 0.03f : 0.15f;
     return r;
 }
 
@@ -568,7 +564,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     float inc[CH_NS], iinc[CH_NS], sg[CH_NS], ka[CH_NS], sa[CH_NS];
     int   sec[CH_NS];
     float a1[12], a2[12], a3[12], gk[12];
-    float tl[4], ns[4], nc[4];
+    float tl[4], ns[4], nc[4], vt[12];
     int   act[4];
     unsigned int cw, tw;
     int   i, j, n, b, nsec, best, ln, va, vb, cd;
@@ -756,6 +752,13 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 
     /* ---- formants, once per block for the sections that sing ---- */
     SR_NOUNROLL
+    for (j = 0; j < 12; j++) {                         /* vowel va then vb: 3 Hz, 3 levels */
+        n = (j < 6) ? j : j - 6;
+        vt[j] = vowel_par(n, (j < 6) ? va : vb);
+    }
+    SR_NOUNROLL
+    for (j = 0; j < 6; j++) vt[j] += wv * (vt[j + 6] - vt[j]);
+    SR_NOUNROLL
     for (b = 0; b < 4; b++) {
         float th, wd, f0, lo;
         act[b] = 0; ns[b] = 0.0f;
@@ -770,19 +773,17 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         /* breath: follows the singers' own level (pitch scaling included), so it sits at the
          * same depth under the voice on every note; summed singers grow by sqrt(count) */
         ns[b] *= bm * P->breath * ch_rsqrt((float)act[b]) * ((b == 0) ? 0.6f : (b == 1) ? 0.8f : (b == 2) ? 1.0f : 1.1f);
-        nc[b] = 2.0f * 6.2831853f * CH_INC_HZ * ch_exp2(s->base + (float)(b - 1));   /* 2 x f0 */
+        f0 = ch_exp2(s->base + (float)(b - 1));          /* the section's fundamental */
+        nc[b] = 2.0f * 6.2831853f * CH_INC_HZ * f0;   /* noise low-pass at 2 x f0 */
         if (nc[b] > 0.9f) nc[b] = 0.9f;
         ns[b] *= ch_rsqrt(nc[b]);                    /* the low-pass takes ~sqrt(nc) of the power */
         th = (b == 0) ? 0.78f : (b == 1) ? 1.0f : (b == 2) ? 1.17f : 1.35f;
         wd = (b == 0) ? 0.8f : (b == 1) ? 1.0f : (b == 2) ? 1.15f : 1.3f;
         tl[b] = P->bright * ((b == 0) ? 0.3f : (b == 1) ? 0.4f : (b == 2) ? 0.5f : 0.55f);
-        f0 = ch_exp2(s->base + (float)(b - 1));          /* the section's fundamental */
         lo = 1.1f * f0;
         SR_NOUNROLL
         for (j = 0; j < 3; j++) {
-            float fa = vowel_hz(j, va), fb = vowel_hz(j, vb);
-            float ga = vowel_amp(j, va), gb = vowel_amp(j, vb);
-            float hz = (fa + wv * (fb - fa)) * th, kk, g, t2, aa;
+            float hz = vt[j] * th, kk, g, t2, aa;
             float bw = ((j == 0) ? 70.0f : (j == 1) ? 90.0f : 120.0f) * wd;
             /* a high voice lifts its formants above its note and opens them up, as a soprano
              * does: otherwise the bands fall between its few harmonics and the voice fades */
@@ -798,7 +799,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
             a1[b * 3 + j] = aa;
             a2[b * 3 + j] = g * aa;
             a3[b * 3 + j] = g * g * aa;
-            gk[b * 3 + j] = kk * (ga + wv * (gb - ga)) * hz * 0.002f * CH_LEVEL * nrm;
+            gk[b * 3 + j] = kk * vt[j + 3] * hz * 0.002f * CH_LEVEL * nrm;
         }
     }
 
@@ -953,19 +954,13 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
 {
     int n = (int)value;
     if (n > 24) n = 24;
+    if (n >= 1 && n <= 11) {                     /* +1 .. +11 semitones */
+        out[0] = '+';
+        if (n >= 10) { out[1] = '1'; out[2] = (char)('0' + n - 10); out[3] = 0; return 3; }
+        out[1] = (char)('0' + n); out[2] = 0; return 2;
+    }
     return ch_word_text(
           (n == 0) ? 0xCE9BB5u     /* UNIS  */
-        : (n == 1) ? 0x44Bu        /* +1 */
-        : (n == 2) ? 0x48Bu        /* +2 */
-        : (n == 3) ? 0x4CBu        /* +3 */
-        : (n == 4) ? 0x50Bu        /* +4 */
-        : (n == 5) ? 0x54Bu        /* +5 */
-        : (n == 6) ? 0x58Bu        /* +6 */
-        : (n == 7) ? 0x5CBu        /* +7 */
-        : (n == 8) ? 0x60Bu        /* +8 */
-        : (n == 9) ? 0x64Bu        /* +9 */
-        : (n == 10) ? 0x1044Bu     /* +10 */
-        : (n == 11) ? 0x1144Bu     /* +11 */
         : (n == 12) ? 0x348EFu     /* OCT   */
         : (n == 13) ? 0x2A86Du     /* MAJ   */
         : (n == 14) ? 0x2EA6Du     /* MIN   */
