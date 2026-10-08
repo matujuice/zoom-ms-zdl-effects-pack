@@ -103,19 +103,31 @@ int main(void){
     printf("legato octave up/down, 4 sources x 4 notes: new note after at most %.1f ms\n", worst);
     CHECK(worst < 100, "legato octave jumps"); }
 
+  /* 2c. held notes on detuned oscillators (2 saws 0.15..1.2 % apart, 3 saws): no octave or
+   *     harmonic slips while held, C2..A4 (the beating cancels the fundamental for a while) */
+  { int slips=0; double dets[][2]={{1.0015,0},{1.003,0},{1.006,0},{1.012,0},{1.002,0.9985},{1.006,0.9965}};
+    for (int d=0; d<6; d++) for (int m=36; m<=69; m+=3){ double f=440*pow(2,(m-69)/12.0), q[3]={0,0.3,0.7}; setup(); defaults();
+      for (int b=0;b<SR*6/8;b++){ for(int j=0;j<8;j++){ q[0]+=f/SR; q[1]+=f*dets[d][0]/SR; q[2]+=f*dets[d][1]/SR; for(int k=0;k<3;k++) q[k]-=floor(q[k]);
+          float x=(float)(0.25*((2*q[0]-1)+(2*q[1]-1)+(dets[d][1]>0?(2*q[2]-1):0))); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
+        Fx_DLY_Formant(ctx);
+        if (b>SR/8 && st->hold>0 && fabs(1200*(st->note-log2(f)))>300) { slips++; if (getenv("CHV")) printf("  slip d%d m%d t %.0f ms %.0f c\n", d, m, b*8000.0/SR, 1200*(st->note-log2(f))); } } }
+    printf("held detuned 2-3 oscillator notes C2..A4, 6 s each: %.1f ms on a wrong octave or harmonic\n", slips*8000.0/SR);
+    CHECK(slips==0, "held detuned notes slip"); }
+
   /* 2f. decay tails: a 0.3 s note, then a long release with the filter closing (plain and
-   *     resonant), over input noise and 50 Hz hum (-50 dB): the voice never moves to another
+   *     resonant, one saw or two detuned), over input noise and 50 Hz hum (-50 dB): the voice never moves to another
    *     octave or onto the hum while it can be heard */
   { int wrong=0, nb=0;
-    for (int pr=0;pr<4;pr++) for (int m=36;m<=72;m+=6){ double f=440*pow(2,(m-69)/12.0); setup(); knobs(4,2,0,0,4,40,20,120,100);
-      double sp=0,l1=0,l2=0,hp=0; unsigned r=1;
+    for (int pr=0;pr<8;pr++) for (int m=36;m<=72;m+=6){ double f=440*pow(2,(m-69)/12.0); setup(); knobs(4,2,0,0,4,40,20,120,100);
+      double sp=0,sp2=0.3,l1=0,l2=0,hp=0; unsigned r=1;
       for (int b=0;b<(int)(3.0*SR/8);b++){ for(int j=0;j<8;j++){ double t=(b*8+j)/(double)SR, a = t<0.3 ? 1 : exp(-(t-0.3)*3.5);
           double fc = (pr&1) ? 150+3000*exp(-t*3) : 2000*a+100, dmp = (pr&2) ? 0.08 : 0.6, g=2*sin(3.14159*fc/SR);
-          sp+=f/SR; sp-=floor(sp); l1+=g*((2*sp-1)-l1-dmp*l2); l2+=g*l1; r=r*1664525u+1013904223u; hp+=50.0/SR; if(hp>1) hp-=1;
+          sp+=f/SR; sp-=floor(sp); sp2+=f*1.004/SR; sp2-=floor(sp2);
+          l1+=g*(((pr&4) ? sp+sp2-1 : 2*sp-1)-l1-dmp*l2); l2+=g*l1; r=r*1664525u+1013904223u; hp+=50.0/SR; if(hp>1) hp-=1;
           float y=(float)(0.3*a*l2 + 0.003*((double)(r>>8)/16777216.0-0.5) + 0.003*sin(6.2831853*hp)); fx[j]=y; fx[j+8]=y; dry[j]=y; dry[j+8]=0; }
         Fx_DLY_Formant(ctx); nb++;
         if (b*8.0/SR>0.1 && st->vamp>1e-4 && fabs(1200*(st->note-log2(f)))>300) wrong++; } }
-    printf("decay tails over noise and hum, 4 synth sounds x 7 notes: %.1f ms sung on a wrong note\n", wrong*8000.0/SR);
+    printf("decay tails over noise and hum, 8 synth sounds (1 or 2 oscillators) x 7 notes: %.1f ms sung on a wrong note\n", wrong*8000.0/SR);
     CHECK(wrong==0, "decay tails"); }
 
   /* 2g. a soft note right after a loud one (-20 dB, re-attacked) is still found */

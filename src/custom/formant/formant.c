@@ -28,9 +28,11 @@
  *   period no longer fits the input at all, it counts as one. At Glide 0 the voice then
  *   hushes (~6 ms) and the new note comes in with its own attack, so fast arps never sing
  *   the old note over the new one; at any other Glide it keeps singing and slides (legato).
- *   Made for one oscillator per note (Luca, 2026-10-08): every new reading is taken as
- *   fast as any other, octave leaps included. Two detuned oscillators that beat cancel the
- *   fundamental for a while and can make it jump an octave or a fifth; not a use case.
+ *   Two detuned oscillators that beat cancel the fundamental for a while and look like an
+ *   octave or a fifth up. So a reading that the old note's period still fits as well (a
+ *   harmonic of it) waits 3 s with no attack (0.3 s above ~610 Hz); a real octave up is
+ *   still taken fast when the odd harmonics fell at once, which beating never does
+ *   (restored 2026-10-08: Luca found it better with them, even with one oscillator).
  *   No reading under -70 dB (e2 < 1e-7), so a fading tail never picks a stray pitch.
  *   Decay tail: once the input is 15 dB under its recent peak (the peak falls ~1.2 dB/s)
  *   with no new attack, no note change is taken, so the input's own noise, hum and the
@@ -155,7 +157,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define CH_MAGIC      0x43483038u          /* "CH08" */
+#define CH_MAGIC      0x43483041u          /* "CH0A" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -164,6 +166,12 @@
 #define CH_THR        0.15f                /* YIN threshold                           */
 #define CH_LOG2_FD    12.428491f           /* log2(5512.5)                            */
 #define CH_STABLE     24                   /* blocks a new note must hold (4 ms)      */
+#define CH_STABLE_HI  1650                 /* ... the same above ~610 Hz (0.3 s)      */
+#define CH_STABLE_OCT 16500                /* ... a harmonic of the note being sung, no attack (3 s) */
+#define CH_FITS       0.2f                 /* old note's dip under the new one's + this: it still fits */
+#define CH_YOUNG      1100                 /* blocks after an attack before an octave up can be fast (0.2 s) */
+#define CH_ODD_MIN    0.8f                 /* odd share (x mean difference) that was clearly there ... */
+                                           /* ... and fell under 0.35 x its ~60 ms peak: a real octave up */
 #define CH_TAIL       0.03f                /* power under this x its peak: a decay tail (-15 dB) */
 #define CH_GONE       0.6f                 /* sung note's dip above this x mean: no longer there */
 #define CH_ONSET      220                  /* blocks an attack counts as a new note (40 ms) */
@@ -183,6 +191,7 @@
 
 typedef struct {
     unsigned int magic;
+    /* ---- from hpx to gn: what ch_clear sets to zero (one loop) ---- */
     /* tracker */
     float hpx, hpy, l1, l2, m1, m2;        /* DC blocker, 2-pole low-pass (TDF-II)    */
     float e2, ef;                          /* input power followers, ~9 ms and ~0.5 ms */
@@ -190,33 +199,40 @@ typedef struct {
     int   wp;
     float ring[CH_RING];
     float dm[CH_MAXLAG + 2];               /* running mean of the squared difference per lag */
-    float cc[CH_MAXLAG + 2];               /* its coefficient, 1 / (2 lag)            */
     float cand;                            /* candidate note, octaves                 */
     int   stable, hold;                    /* blocks the candidate held; left to sing */
     float lref;                            /* input power at the last good reading    */
     float epk;                             /* input power's recent peak (~5 dB/s fall) */
     int   fresh;                           /* blocks left since a real attack          */
+    float rf, rs;                          /* odd-harmonic share of the sung note, ~3 ms; its recent peak */
+    int   odrop;                           /* blocks left since the odd share fell at once */
+    int   age;                             /* blocks since the last attack (capped)   */
     int   gone;                            /* the sung note no longer fits the input  */
-    float note;                            /* accepted note, octaves (log2 Hz)        */
-    float base;                            /* note after Glide                        */
+    int   kept;                            /* no attack or fade since the last note: it still counts */
     float vamp;                            /* voice level (after Feel)                */
     float vibon;                           /* vibrato fade-in after a note start, 0..1 */
-    float drone;                           /* first note of the phrase (Chord DRONE)  */
     int   syl;                             /* blocks since the last new note (syllables) */
     float env;                             /* Sing's voice envelope, smoothed         */
-    int   vw;                              /* VOWL: vowel being sung, 0..4            */
-    float lph;                             /* movement phase at the last block        */
-    float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block         */
-    int   cwp, cfill;                      /* write position; blocks written since clear */
-    /* singers */
-    float sph[CH_NS], vph[CH_NS], drift[CH_NS], amp[CH_NS];
-    unsigned int rng;
+    int   cwp, cfill;                      /* CANON write position; blocks written since clear */
+    float amp[CH_NS];                      /* singers' levels                         */
     /* sections: GIANT MEN WOMEN KIDS */
     float tilt[4];
     float nlp[4];                          /* breath noise low-pass per section       */
     float ic1[12], ic2[12];                /* 4 sections x 3 formants                 */
-    float wsm;                             /* smoothed vowel blend                    */
-    float pw, pa, gn;                      /* choir power, asked power, voice gain    */
+    float pw, pa;                          /* choir power, asked power                */
+    float wsm;                             /* smoothed vowel blend (-1 after a clear) */
+    float gn;                              /* voice gain (1 after a clear)            */
+    /* ---- kept by ch_clear ---- */
+    float cc[CH_MAXLAG + 2];               /* running mean's coefficient, 1 / (2 lag) */
+    float note;                            /* accepted note, octaves (log2 Hz)        */
+    float base;                            /* note after Glide                        */
+    float drone;                           /* first note of the phrase (Chord DRONE)  */
+    int   vw;                              /* VOWL: vowel being sung, 0..4            */
+    float lph;                             /* movement phase at the last block        */
+    float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block         */
+    /* singers */
+    float sph[CH_NS], vph[CH_NS], drift[CH_NS];
+    unsigned int rng;
     /* movement and sync */
     float lfo_ph, ref_ph;                  /* phase now; phase at the last downbeat   */
     unsigned int since;                    /* blocks since the last downbeat          */
@@ -445,21 +461,10 @@ static inline unsigned int chord_word(int c)
 SR_ALWAYS_INLINE(ch_clear)
 static inline void ch_clear(ChState *s)
 {
-    int i;
-    s->hpx = 0.0f; s->hpy = 0.0f; s->l1 = 0.0f; s->l2 = 0.0f; s->m1 = 0.0f; s->m2 = 0.0f;
-    s->e2 = 0.0f; s->ef = 0.0f; s->onset = 0; s->wp = 0; s->stable = 0; s->hold = 0; s->lref = 0.0f; s->epk = 0.0f; s->fresh = 0; s->gone = 0; s->cand = 0.0f; s->vamp = 0.0f;
-    s->syl = 0; s->env = 0.0f; s->cwp = 0; s->cfill = 0;
-    s->vibon = 0.0f; s->wsm = -1.0f; s->pw = 0.0f; s->pa = 0.0f; s->gn = 1.0f;
+    unsigned char *p = (unsigned char *)&s->hpx;
     SR_NOUNROLL
-    for (i = 0; i < CH_RING; i++) s->ring[i] = 0.0f;
-    SR_NOUNROLL
-    for (i = 0; i < CH_MAXLAG + 2; i++) s->dm[i] = 0.0f;
-    SR_NOUNROLL
-    for (i = 0; i < 12; i++) { s->ic1[i] = 0.0f; s->ic2[i] = 0.0f; }
-    SR_NOUNROLL
-    for (i = 0; i < 4; i++) { s->tilt[i] = 0.0f; s->nlp[i] = 0.0f; }
-    SR_NOUNROLL
-    for (i = 0; i < CH_NS; i++) s->amp[i] = 0.0f;
+    while (p < (unsigned char *)&s->wsm) *p++ = 0;
+    s->wsm = -1.0f; s->gn = 1.0f;
 }
 
 SR_ALWAYS_INLINE(ch_init)
@@ -568,8 +573,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     float tl[4], ns[4], nc[4], vt[12];
     int   act[4];
     unsigned int cw, tw;
-    int   i, j, n, b, nsec, best, ln, va, vb, cd, tail;
-    float v, h, y, cum, cn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa, uu, ve;
+    int   i, j, n, b, nsec, best, ln, lh, va, vb, cd, tail;
+    float v, h, y, cum, cn, qb, qn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa, uu, ve;
 
     /* ---- tracker: this block's input, low-passed and averaged to one sample ---- */
     v = 0.0f;
@@ -585,7 +590,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         s->e2 += 0.0025f * (in * in - s->e2);         /* ~9 ms power follower */
         s->ef += 0.05f * (in * in - s->ef);           /* ~0.5 ms */
     }
-    if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) { s->onset = CH_ONSET; s->fresh = CH_ONSET; s->syl = 0; }   /* a fast attack: a new note */
+    if (s->age < CH_YOUNG) s->age++;
+    if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) { s->onset = CH_ONSET; s->fresh = CH_ONSET; s->age = 0; s->kept = 0; s->syl = 0; }   /* a fast attack: a new note */
     else { if (s->onset > 0) s->onset--; if (s->fresh > 0) s->fresh--; }
     s->epk = (s->e2 > s->epk) ? s->e2 : s->epk * 0.99995f;
     /* a decay tail: 15 dB under the note's peak with no new attack. The input's own noise
@@ -597,7 +603,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     v *= 0.125f;
     s->wp = (s->wp + 1) & CH_RMASK;
     s->ring[s->wp] = v;
-    cum = 0.0f; best = 0; p1 = 1e30f; p2 = 1e30f; cn = 0.0f;
+    cum = 0.0f; best = 0; p1 = 1e30f; p2 = 1e30f; cn = 0.0f; qb = 1.0f;
     ln = (int)(ch_exp2(CH_LOG2_FD - s->note) + 0.5f);    /* lag of the note being sung */
     SR_NOUNROLL
     for (n = 1; n <= CH_MAXLAG; n++) {
@@ -608,7 +614,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         /* lag n-1 is a dip: is its bottom (by a parabola) under the threshold? */
         if (best == 0 && n > CH_MINLAG && p1 <= p2 && p1 <= d) {
             h = ch_dip(p2, p1, d);
-            if (h * (float)(n - 1) < CH_THR * cum) best = n - 1;
+            if (h * (float)(n - 1) < CH_THR * cum) { best = n - 1; qb = h * (float)best * ch_recip(cum); }
         }
         cum += d;
         if (n == ln) cn = cum;
@@ -619,12 +625,24 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
      * found instead of singing the old one over it (fast arps). */
     j = s->gone;
     s->gone = 0;
-    if (s->hold > 0 && !tail && ln >= 2 && ln < CH_MAXLAG && cn > 1e-20f
-        && ch_dip(s->dm[ln - 1], s->dm[ln], s->dm[ln + 1]) * (float)ln > CH_GONE * cn) {
+    /* how well the note being sung still fits: its dip x lag over the mean up to it */
+    qn = (ln >= 2 && ln < CH_MAXLAG && cn > 1e-20f)
+       ? ch_dip(s->dm[ln - 1], s->dm[ln], s->dm[ln + 1]) * (float)ln * ch_recip(cn) : -1.0f;
+    if (s->hold > 0 && !tail && qn > CH_GONE) {
         s->gone = 1;
         if (!j && s->e2 > 0.5f * s->lref) s->syl = 0;  /* a legato note: a new syllable too */
         if (s->onset < CH_STABLE) s->onset = CH_STABLE + CH_STABLE;
     }
+    /* odd harmonics of the note being sung: x(t) - x(t + T/2) keeps only them. A real jump
+     * an octave up removes them at once; two beating oscillators fade them out slowly */
+    lh = (ln + 1) >> 1;
+    if (lh >= 1 && lh <= CH_MAXLAG && cum > 1e-20f) {
+        h = s->dm[lh] * (float)CH_MAXLAG * ch_recip(cum);
+        s->rf += 0.06f * (h - s->rf);
+    }
+    s->rs = (s->rf > s->rs || s->onset > 0) ? s->rf : s->rs * 0.997f;   /* peak, falls over ~60 ms; */
+    if (s->age >= CH_YOUNG && s->rs > CH_ODD_MIN && s->rf < 0.35f * s->rs) s->odrop = CH_ONSET;   /* not the attack's */
+    else if (s->odrop > 0) s->odrop--;
     if (best > 0 && s->e2 > 1e-7f) {                 /* under -70 dB (a fading tail): no reading */
         float y0, y1, y2, den, off, x, z;
         y0 = s->dm[best - 1]; y1 = s->dm[best]; y2 = s->dm[best + 1];
@@ -644,12 +662,31 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         if (off < -0.5f) off = -0.5f;
         tgt = CH_LOG2_FD - ch_log2((float)best + off);  /* octaves (log2 Hz) */
         h = tgt - s->cand;
-        if (h < 0.0333f && h > -0.0333f) { if (s->stable < CH_STABLE) s->stable++; }
+        if (h < 0.0333f && h > -0.0333f) { if (s->stable < CH_STABLE_OCT) s->stable++; }
         else s->stable = 0;
         s->cand = tgt;
+        /* A change of note while singing, with no new attack in the input. When the input
+         * is a real new note, the old note's period no longer fits it. When it still fits as
+         * well as the new reading, the reading is a harmonic of the same note: detuned
+         * oscillators that beat or start out of phase cancel the fundamental for a while
+         * (an octave or a fifth up, or the octave below when the next dip wins). Those wait
+         * 3 s. An octave up is the one real jump the old period still fits; it is taken
+         * fast when the odd harmonics fell at once (odrop, not in the 0.2 s after an attack),
+         * which beating never does. Above ~610 Hz (lag under 9) the dips are too coarse to
+         * compare and beating is fast: a reading up there waits 0.3 s, and from a note up
+         * there an octave jump waits 0.3 s (up: unless odrop). In a decay tail no change. */
         h = tgt - s->note;
-        if (s->stable >= CH_STABLE && !(tail && (h > 0.0333f || h < -0.0333f))) {
-            if ((h > 0.0333f || h < -0.0333f) && s->syl > 440) s->syl = 0;   /* not found as gone */
+        b = (h > 0.0333f || h < -0.0333f);           /* a change of note */
+        n = CH_STABLE;
+        if ((s->hold > 0 || s->kept) && s->onset <= 0 && b) {
+            if (ln >= 9 && ln < CH_MAXLAG && qn < qb + CH_FITS)
+                n = (h > 0.95f && s->odrop > 0) ? CH_STABLE        /* octave, 2 octaves up */
+                  : (best < 9) ? CH_STABLE_HI : CH_STABLE_OCT;
+            else if (ln < 9 && h * h > 0.9025f && h * h < 1.1025f)               /* +-1 octave */
+                n = (h > 0.0f && s->odrop > 0) ? CH_STABLE : CH_STABLE_HI;   /* above ~610 Hz */
+        }
+        if (s->stable >= n && !(tail && b)) {
+            if (b && s->syl > 440) s->syl = 0;   /* not found as gone */
             if (s->hold <= 0 || s->vamp < 1e-5f) { s->note = tgt; s->base = tgt; s->drone = tgt; s->vibon = 0.0f; }
             else s->note = tgt;
             s->hold = CH_HOLD; s->lref = s->e2;
@@ -660,6 +697,10 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     /* no good reading: keep singing the note while the input stays loud (a moment without a
      * clear pitch, a resonant sweep); once it fades, 60 ms more */
     if (s->hold > 0 && s->e2 < 0.25f * s->lref) s->hold--;
+    /* a note that ran out while the input stayed loud (a deep beat null) still counts for
+     * the rule above: no new attack and no fade since */
+    if (s->hold > 0) s->kept = 1;
+    else if (s->e2 < 0.1f * s->lref) s->kept = 0;
 
     /* ---- voice level: the input's loudness while there is a note, with Feel's envelope ---- */
     lvl = (s->e2 > 1e-9f) ? s->e2 * ch_rsqrt(s->e2) : 0.0f;
