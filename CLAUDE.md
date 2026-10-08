@@ -36,11 +36,6 @@ The TI C6000 compiler is only on the owner's Windows PC; the cloud can't build `
 - Covers: see docs/COVERS.md. Owner decisions: see docs/DECISIONS.md (don't undo).
 - Change a knob or behaviour: update header comment, manifest, docs/EFFECTS.md, README, docs/IPHONE-SYNC.md table in step.
 
-## Agent tools (set up by .claude/settings.json + tools/agent/session-start.sh)
-- ponytail plugin is always on: smallest change that works; `/ponytail-review` before pushing.
-- graphify: for code questions run `graphify query "<question>"`, `graphify path "A" "B"` or `graphify explain "X"` before grep/Read. The graph (graphify-out/, gitignored) builds at session start and refreshes after each reply.
-- OmniRoute: Windows PC only, `tools\agent\omniroute.bat` starts Claude Code through it; not used in cloud sessions.
-
 ## Habits
 Back up before big edits; re-read files (owner edits between sessions). Short English replies; owner sometimes writes Italian.
 

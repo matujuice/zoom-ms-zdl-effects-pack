@@ -9,4 +9,3 @@ compiler.opt
 dist/*.ZDL
 release/*.zip
 tests/_gen/
-graphify-out/
