@@ -1,6 +1,6 @@
 {
   "effect_name": "GridDly",
-  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated, self-oscillating loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the Tempo knob; Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tempo (knob 8, twin copies, FOLLW), Tail (repeats ring out or stop when switched off). 7.9 s 16-bit ring.",
+  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the Tempo knob; Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tempo (knob 8, twin copies, FOLLW), Tail (repeats ring out or stop when switched off). 7.9 s 16-bit ring.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 495,
@@ -15,7 +15,7 @@
       "name": "Type",
       "max": 5,
       "default": 0,
-      "comment": "Engine: 0 DIGI clean, 1 TAPE wow/flutter/dark/gliding time, 2 DUB band-limited saturated loop that self-oscillates, 3 REVRS reversed chunks of Time starting on the beat, 4 TAPS three taps inside Time, 5 LOFI repeats lose bits and rate on every pass. Default DIGI."
+      "comment": "Engine: 0 DIGI clean, 1 TAPE wow/flutter/dark/gliding time, 2 DUB band-limited saturated loop, 3 REVRS reversed chunks of Time starting on the beat, 4 TAPS three taps inside Time, 5 LOFI repeats lose bits and rate on every pass. Default DIGI."
     },
     {
       "name": "Time",
@@ -25,9 +25,9 @@
     },
     {
       "name": "Fdbk",
-      "max": 100,
+      "max": 120,
       "default": 45,
-      "comment": "Feedback. Loop gain at 100: DIGI 0.95, TAPE 1.08, DUB 1.25, REVRS 0.9, TAPS 0.85, LOFI 1.0 (TAPE, DUB and LOFI can run on forever; the saturator holds them). Default 45."
+      "comment": "Feedback: gain into the loop = screen / 100 on every engine, 100 = 1:1. The loop filters still take their share, so each engine keeps its own decay; above 100 it grows into a drone the saturator holds (DUB makes up its tight band's loss above 100, so it drones at any Tone). Switched off with Tail ON it is capped at 95 so the tail fades. Default 45."
     },
     {
       "name": "Tone",

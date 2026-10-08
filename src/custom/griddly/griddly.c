@@ -21,9 +21,10 @@
  *            Tempo change glides the read head over about 0.2 s, so the pitch bends like tape.
  *            Char = wow and flutter depth (100 = seasick, about +-40 cents of wow).
  *   2 DUB    high-pass and low-pass in the loop (Tone moves both: 100..400 Hz and 0.5..4 kHz),
- *            harder saturation; Fdbk near 100 self-oscillates and the saturator holds it.
+ *            harder saturation, so the drone above Fdbk 100 is the dirtiest.
  *            Char = drive: the higher, the lower the loop's ceiling and the dirtier the
- *            repeats (a wet make-up gain keeps them about as loud).
+ *            repeats; no make-up gain, so a repeat is never louder than what went in
+ *            (Luca 2026-10-08: the first DUB repeat was louder than the played sound).
  *   3 REVRS  each chunk of Time is played backwards: the chunk that ended at a chunk start
  *            plays reversed until the next one. Chunks restart on a Tempo twin flip (or a bar
  *            from the bar tag on FOLLW), so with bar sync they start on the beat. A Time
@@ -36,8 +37,11 @@
  *              0..24 1/4 1/2 1   25..49 3/8 3/4 1   50..74 1/3 2/3 1   75..100 1/2 3/4 1
  *   5 LOFI   each pass is quantised and sample-held, so the repeats crumble more every time.
  *            Char = crush: 12 bits and full rate at 0, 4 bits and 1/8 rate at 100.
- *   Loop gain at Fdbk 100: DIGI 0.95, TAPE 1.08, DUB 1.25, REVRS 0.9, TAPS 0.85, LOFI 1.0
- *   (before the loop filters' losses), so only TAPE, DUB and LOFI can run on forever.
+ *   Fdbk 0..120 (Luca 2026-10-07): gain into the loop = screen / 100 on every engine, so
+ *   100 = 1:1. The loop filters still take their share, so each engine keeps its own decay:
+ *   at 100 they all fade (DUB fastest, its band is tight), above 100 they grow into a drone
+ *   the saturator holds; DUB makes up its tight band's loss above 100 (fully at 120), so it
+ *   drones at any Tone.
  *   All engines share one ring, one loop filter pair and one saturator; the per-engine
  *   numbers are blended from 0/1 flags in gd_prepare, so the sample loop has no branch on
  *   Type except the REVRS / TAPS / LOFI read and write paths.
@@ -55,8 +59,8 @@
  *   Tail OFF: the repeats stop at once; the ring keeps recording the dry input (no feedback),
  *   so switching back on starts echoing what you just played. The beat clock keeps running
  *   and follows twin flips while off. Tail ON needs the pedal to call a switched-off effect,
- *   which the synced effects already rely on for their clocks; the ring-out has not been heard
- *   on the pedal yet.
+ *   which the synced effects already rely on for their clocks; it passed on the pedal
+ *   (2026-10-07).
  *
  * DUCK
  *   A peak follower on the input (instant attack, about 0.23 s release) pulls the wet level
@@ -72,7 +76,7 @@
  * KNOBS (screen values; 9 = the maximum, 3 pages x 3)
  *   0 Type   0..5    DIGI TAPE DUB REVRS TAPS LOFI
  *   1 Time   0..113  12ms .. 1.00s, then 1/32 .. 1bar, 2bar (above)
- *   2 Fdbk   0..100  repeats; 100 = the engine's loop gain above
+ *   2 Fdbk   0..120  repeats; 100 = 1:1 into the loop, above 100 a drone
  *   3 Tone   0..100  dark to bright (LP 0.8..15.7 kHz; TAPE 0.6..7.8 kHz; DUB the band)
  *   4 Char   0..100  per engine (above); the label is a plain number: a label can't see Type
  *   5 Duck   0..100  how far the repeats dip while you play
@@ -80,7 +84,7 @@
  *   7 Tempo  0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 is a twin copy
  *                    (BPM = screen - 201). Flipping between a BPM and its twin restarts the
  *                    REVRS chunk without changing the tempo. A plain tempo change does not.
- *                    Read as raw x 100 (sc_tempo_ui), never through the 3.05 guess.
+ *                    Read as raw x 100 (gd_tempo_ui), never through the 3.05 guess.
  *   8 Tail   0..1    OFF / ON (above)
  *
  * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
@@ -92,8 +96,8 @@
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch or if-chains on Type in the audio path, no double / long long,
- * no float-to-unsigned casts, every helper forced inline. Not yet built, heard or measured
- * for CPU (host tests only).
+ * no float-to-unsigned casts, every helper forced inline. Built and passed on the MS-60B
+ * (2026-10-07, every engine and Tail); CPU never measured.
  */
 
 #include <stdint.h>
@@ -147,7 +151,7 @@ typedef struct {
     int   rev, taps, lofi, tape, on;
     float dT;              /* delay time the knobs ask for (samples)          */
     float L;               /* REVRS chunk length = dT                         */
-    float inG, fb, cl, ch, drive, dinv, mk;
+    float inG, fb, cl, ch, drive, dinv;
     float modA, modInc, fltA, fltInc;
     float f1, f2;          /* TAPS fractions of Time                          */
     float fadeInv;         /* REVRS: 1 / edge fade (fraction of a chunk)      */
@@ -324,7 +328,7 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     int type = (int)(u[0] + 0.5f), n = (int)(u[1] + 0.5f), z, bits;
     float eD = (float)(type == 0), eT = (float)(type == 1), eB = (float)(type == 2);
     float eR = (float)(type == 3), eP = (float)(type == 4), eL = (float)(type == 5);
-    float d, lim, tone = u[3] * 0.01f, ch = u[4] * 0.01f, m, fbMax, lpHz, hpHz, tail;
+    float d, lim, tone = u[3] * 0.01f, ch = u[4] * 0.01f, m, fbG, lpHz, hpHz, tail;
 
     P->rev = (type == 3); P->taps = (type == 4); P->lofi = (type == 5); P->tape = (type == 1);
     P->on = on;
@@ -341,16 +345,24 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     P->L = d;
 
     /* loop */
-    fbMax = 0.95f * eD + 1.08f * eT + 1.25f * eB + 0.9f * eR + 0.85f * eP + 1.0f * eL;
-    P->fb = u[2] * 0.01f * fbMax;
     lpHz = (eD + eR + eP + eL) * 800.0f * gd_exp2(4.3f * tone)
          + eT * 600.0f * gd_exp2(3.7f * tone) + eB * 500.0f * gd_exp2(3.0f * tone);
     hpHz = (eD + eR + eP + eL) * 25.0f + eT * 50.0f + eB * 100.0f * gd_exp2(2.0f * tone);
     P->cl = gd_coef(lpHz);
     P->ch = gd_coef(hpHz);
     P->drive = 0.5f * (eD + eR + eP) + 1.2f * eT + (1.0f + 3.0f * ch) * eB + 0.8f * eL;
+    /* Fdbk: screen / 100 on every engine, 100 = 1:1 into the loop; the engine's filters
+     * still take their share, so the engines keep their own decay. Above 100 the loop
+     * grows into a drone that the saturator holds (ceiling at most 1.0 on every engine).
+     * Switched off with Tail ON the gain stays at 0.95 or below, so the tail fades.
+     * DUB above 100 (Luca 2026-10-07): its tight band's loss (about 1 + HP/LP coefficient)
+     * is made up step by step, fully at 120, so it drones at any Tone. */
+    fbG = u[2] * 0.01f;
+    if (!on && fbG > 0.95f) fbG = 0.95f;
+    P->fb = fbG;
+    if (fbG > 1.0f) P->fb = fbG * (1.0f + eB * (fbG - 1.0f) * 5.0f * P->ch * gd_recip(P->cl));
+    if (fbG > 1.0f && P->drive < 1.0f) P->drive = 1.0f;
     P->dinv = gd_recip(P->drive);
-    P->mk = 1.0f + 1.5f * ch * eB;
 
     /* modulation: DIGI slow and slight, TAPE wow + flutter */
     P->modA = eD * 66.0f * ch + eT * (2.0f + 200.0f * ch);
@@ -377,7 +389,6 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     m = u[6] * 0.01f;
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
-    P->wetG *= P->mk;
     P->inG = 1.0f;
     if (!on) {                                   /* switched off: input passes untouched */
         tail = (u[8] >= 0.5f) ? 1.0f : 0.0f;
@@ -405,6 +416,7 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
     float dCur = s->dCur, xf = s->xf, wlT = P->wetG;
 
     if (L <= 0.0f) L = P->L;
+    if (P->rev && L > GD_MAXD * 0.5f) L = P->L;   /* chunk latched on another Type: too long to read backwards */
     if (dCur <= 0.0f) dCur = P->dT;
     if (P->tape) xf = 1.0f;
     else if (xf >= 1.0f && (P->dT - dCur > 0.5f || dCur - P->dT > 0.5f)) {
@@ -600,7 +612,7 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
 
     u[0] = gd_ui(params[GRIDDLY_TYPE_SLOT],  (float)GRIDDLY_TYPE_UI_DEFAULT,  5.0f);
     u[1] = gd_ui(params[GRIDDLY_TIME_SLOT],  (float)GRIDDLY_TIME_UI_DEFAULT,  113.0f);
-    u[2] = gd_ui(params[GRIDDLY_FDBK_SLOT],  (float)GRIDDLY_FDBK_UI_DEFAULT,  100.0f);
+    u[2] = gd_ui(params[GRIDDLY_FDBK_SLOT],  (float)GRIDDLY_FDBK_UI_DEFAULT,  120.0f);
     u[3] = gd_ui(params[GRIDDLY_TONE_SLOT],  (float)GRIDDLY_TONE_UI_DEFAULT,  100.0f);
     u[4] = gd_ui(params[GRIDDLY_CHAR_SLOT],  (float)GRIDDLY_CHAR_UI_DEFAULT,  100.0f);
     u[5] = gd_ui(params[GRIDDLY_DUCK_SLOT],  (float)GRIDDLY_DUCK_UI_DEFAULT,  100.0f);
