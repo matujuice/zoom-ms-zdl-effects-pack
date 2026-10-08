@@ -216,6 +216,9 @@ int main(void){
           Fx_DLY_Formant(ctx); if (st->syl < last && st->syl < 5 && last > 100) resets++; last=st->syl; } }
       printf("  sing %d, %s: %d syllables on 23 note changes\n", sg, gate ? "legato" : "50%% gate", resets); if (resets<worst) worst=resets; }
     CHECK(worst>=23, "a syllable on every note"); }
+  { double u[2]; for (int k=0;k<2;k++){ setup(); knobs(0,0,0,8,k?4:8,40,20,120,100); fconst=220; run(SR/4, 0, f_const, 0, 9); u[k]=st->wsm; }
+    printf("LA opens over one Pace: 0.25 s into a note, l -> ah %.2f with Pace 1/4 (0.5 s), %.2f with 1bar (2 s)\n", u[0], u[1]);
+    CHECK(u[0] > 0.35 && u[0] < 0.6 && u[1] > 0.05 && u[1] < 0.2, "LA opening time"); }
 
   /* 6f. level of the steady settings (vowels, OOAH, VOWL) on every Choir */
   { double lo=99, hi=-99; int sgs[8]={0,1,2,3,4,5,6,7}; int wl=0, wh=0;

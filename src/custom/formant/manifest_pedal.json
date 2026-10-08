@@ -30,7 +30,7 @@
       "name": "Sing",
       "max": 11,
       "default": 6,
-      "comment": "What they sing: 0 AAH, 1 EHH, 2 EEE, 3 OHH, 4 OOH, 5 MMM (hum), 6 OOAH (opens from oo to ah and closes again once per Pace cycle), 7 VOWL (A E I O U, one vowel per Pace cycle), 8 LA, 9 DOO (a syllable at the start of every new note: l or a short stop, then the vowel), 10 SWELL (the choir breathes in and out once per Pace cycle), 11 CANON (sections come in one after another, each singing what you played one Pace cycle later, up to 3 cycles and 1 s per step). Default OOAH."
+      "comment": "What they sing: 0 AAH, 1 EHH, 2 EEE, 3 OHH, 4 OOH, 5 MMM (hum), 6 OOAH (opens from oo to ah and closes again once per Pace cycle), 7 VOWL (A E I O U, one vowel per Pace cycle), 8 LA, 9 DOO (a syllable once on every new note: l opening to ah, or a short stop and eh closing to oo; Pace sets how long the vowel takes to open or close), 10 SWELL (the choir breathes in and out once per Pace cycle), 11 CANON (sections come in one after another, each singing what you played one Pace cycle later, up to 3 cycles and 1 s per step). Default OOAH."
     },
     {
       "name": "Pace",

@@ -68,8 +68,8 @@
  *   OOAH: oo -> ah -> oo per Pace cycle (Feel 100 snaps). VOWL: A E I O U, one vowel per
  *   cycle, moving at its start. LA, DOO: a syllable on every new note (an attack in the
  *   input, a legato note whose old period stops fitting, or an accepted note change):
- *   LA = "l" opening to ah in 40 ms; DOO = a 6 ms stop, eh closing to oo in 30 ms. Pace
- *   does not move them. SWELL: the choir
+ *   LA = "l" opening to ah; DOO = a 6 ms stop, then eh closing to oo; the vowel moves once
+ *   per note, over one Pace (1/64 at 120 = 31 ms .. 4bar = 8 s). SWELL: the choir
  *   breathes in and out per cycle (level 0.1 .. 1, oo -> ah). CANON: section r of the Choir
  *   (or singer r in a one-section choir, up to 3) sings the note and level of r Pace cycles
  *   ago, from a 3 s history (one cycle at most 1 s). The voice gain
@@ -669,7 +669,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     if (s->vamp < 1e-9f) s->vamp = 0.0f;
     s->base += P->glide_c * (s->note - s->base);
     s->vibon += 0.0007f * (1.0f - s->vibon);           /* vibrato fades in over ~0.3 s */
-    if (s->syl < 30000) s->syl++;
+    if (s->syl < 0x3FFFFFFF) s->syl++;
     s->cwp = (s->cwp + 1) & CH_CMASK;                  /* CANON: what is sung, per block */
     s->cnote[s->cwp] = s->base;
     s->clvl[s->cwp] = s->vamp;
@@ -693,11 +693,11 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     } else if (n == 7) {                               /* VOWL: A E I O U, one per cycle */
         vb = s->vw; va = vb - 1; if (va < 0) va = 4;
         uu = clamp01(s->lfo_ph * (5.0f + 20.0f * P->feel));
-    } else if (n == 8) {                               /* LA: l opening to ah, 40 ms */
-        va = 6; uu = clamp01(w * 0.0045454544f);
+    } else if (n == 8) {                               /* LA: l opening to ah over one Pace */
+        va = 6; uu = clamp01(w * P->lfo_inc);
     } else if (n == 9) {                               /* DOO: a stop, then eh closing to oo */
         va = 1; vb = 4;
-        uu = clamp01(w * 0.0060606063f);
+        uu = clamp01(w * P->lfo_inc);                  /* over one Pace */
         ve = clamp01(w * 0.030303031f);
     }
     if (s->wsm < 0.0f) s->wsm = uu;
