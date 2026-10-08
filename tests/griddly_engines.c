@@ -4,6 +4,7 @@
  *   - every engine stays finite and under +-2.5 with noise in, Fdbk 120, Char 0 and 100
  *   - Fdbk 100 = 1:1: every engine fades at 100 and drones at 120 (DUB at any Tone);
  *     DIGI at Fdbk 45 dies away
+ *   - DUB: the first repeat is never louder than the input
  *   - REVRS plays something back (reversed chunks), TAPS has three echoes before the 1/4
  *   - Duck 100 lowers the repeats while the input plays
  *   - switched off: Tail OFF = output equals input; Tail ON = input plus decaying repeats */
@@ -112,6 +113,20 @@ int main(void)
         run(44100 * 3, 2, 0.9f);
         p = peak(0, 44100 * 3);
         CHECK(p < 2.5f, "%s Char %d Tone %d: peak %.3f (or NaN)", types[ty], (i & 1) * 100, (i >> 1) * 100, p);
+    }
+
+    /* DUB: the first repeat is never louder than the input (Char 0, 30, 100) */
+    for (i = 0; i < 3; i++) {
+        static const int chv[3] = {0, 30, 100};
+        float pin, pw;
+        setup(); SET(TYPE, 2); SET(MIX, 100); SET(TIME, 70); SET(FDBK, 0); SET(TONE, 50); SET(CHAR, chv[i]); settle();
+        run(44100, 2, 0.0f);
+        { int b, j, k2 = 0;                      /* 1000 Hz-ish square burst, 0.3 peak, 50 ms */
+          for (b = 0; b < 44100 / 8; b++) { for (j = 0; j < 8; j++, k2++) { float x = (k2 < 2205) ? ((k2 / 22) & 1 ? 0.3f : -0.3f) : 0.0f; fx[j] = x; fx[j + 8] = x; }
+            Fx_DLY_GridDly(ctx); for (j = 0; j < 8; j++) out[b * 8 + j] = fx[j]; } }
+        pin = 0.3f; pw = peak(21000, 26000);
+        printf("DUB Char %d first repeat peak %.3f (input %.3f)\n", chv[i], pw, pin);
+        CHECK(pw <= pin * 1.02f, "DUB Char %d first repeat louder than the input", chv[i]);
     }
 
     /* Fdbk: 100 = 1:1 into the loop, the filters still take their share; 120 drones.

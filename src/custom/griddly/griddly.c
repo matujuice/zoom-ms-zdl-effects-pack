@@ -23,7 +23,8 @@
  *   2 DUB    high-pass and low-pass in the loop (Tone moves both: 100..400 Hz and 0.5..4 kHz),
  *            harder saturation, so the drone above Fdbk 100 is the dirtiest.
  *            Char = drive: the higher, the lower the loop's ceiling and the dirtier the
- *            repeats (a wet make-up gain keeps them about as loud).
+ *            repeats; no make-up gain, so a repeat is never louder than what went in
+ *            (Luca 2026-10-08: the first DUB repeat was louder than the played sound).
  *   3 REVRS  each chunk of Time is played backwards: the chunk that ended at a chunk start
  *            plays reversed until the next one. Chunks restart on a Tempo twin flip (or a bar
  *            from the bar tag on FOLLW), so with bar sync they start on the beat. A Time
@@ -150,7 +151,7 @@ typedef struct {
     int   rev, taps, lofi, tape, on;
     float dT;              /* delay time the knobs ask for (samples)          */
     float L;               /* REVRS chunk length = dT                         */
-    float inG, fb, cl, ch, drive, dinv, mk;
+    float inG, fb, cl, ch, drive, dinv;
     float modA, modInc, fltA, fltInc;
     float f1, f2;          /* TAPS fractions of Time                          */
     float fadeInv;         /* REVRS: 1 / edge fade (fraction of a chunk)      */
@@ -362,7 +363,6 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     if (fbG > 1.0f) P->fb = fbG * (1.0f + eB * (fbG - 1.0f) * 5.0f * P->ch * gd_recip(P->cl));
     if (fbG > 1.0f && P->drive < 1.0f) P->drive = 1.0f;
     P->dinv = gd_recip(P->drive);
-    P->mk = 1.0f + 1.5f * ch * eB;
 
     /* modulation: DIGI slow and slight, TAPE wow + flutter */
     P->modA = eD * 66.0f * ch + eT * (2.0f + 200.0f * ch);
@@ -389,7 +389,6 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     m = u[6] * 0.01f;
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
-    P->wetG *= P->mk;
     P->inG = 1.0f;
     if (!on) {                                   /* switched off: input passes untouched */
         tail = (u[8] >= 0.5f) ? 1.0f : 0.0f;
