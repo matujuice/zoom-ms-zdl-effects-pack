@@ -371,27 +371,18 @@ static inline float vowel_par(int n, int v)
     return r;
 }
 
-/* Pace index 0..16 -> cycles per beat (bar = 4 beats) */
+/* Pace index 0..16 -> cycles per beat (bar = 4 beats): the even ones are 1/16 .. 16 in
+ * octaves (2^(idx/2 - 4), from the exponent bits), the odd ones dotted (x4/3, up to 1bar)
+ * or triplet (x1.5, from 1/8T) */
 SR_ALWAYS_INLINE(subdiv_mult)
 static inline float subdiv_mult(int idx)
 {
-    if (idx <= 0) return 0.0625f;
-    if (idx == 1) return 0.08333334f;
-    if (idx == 2) return 0.125f;
-    if (idx == 3) return 0.16666667f;
-    if (idx == 4) return 0.25f;
-    if (idx == 5) return 0.33333334f;
-    if (idx == 6) return 0.5f;
-    if (idx == 7) return 0.6666667f;
-    if (idx == 8) return 1.0f;
-    if (idx == 9) return 1.3333334f;
-    if (idx == 10) return 2.0f;
-    if (idx == 11) return 3.0f;
-    if (idx == 12) return 4.0f;
-    if (idx == 13) return 6.0f;
-    if (idx == 14) return 8.0f;
-    if (idx == 15) return 12.0f;
-    return 16.0f;
+    union { float f; unsigned int u; } c;
+    if (idx < 0) idx = 0;
+    if (idx > 16) idx = 16;
+    c.u = (unsigned int)((idx >> 1) + 123) << 23;
+    if (idx & 1) c.f *= (idx < 10) ? 1.3333334f : 1.5f;
+    return c.f;
 }
 
 SR_ALWAYS_INLINE(rnd01)
@@ -508,8 +499,15 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     P->feel  = f;
     /* Feel: attack 60 .. 2 ms, release 300 .. 30 ms (per-block coefficients), vibrato 28 .. 6
      * cents, breath 1.4 .. 0.6, brightness of the source 0.55 .. 1 */
-    P->att    = 0.0030f * ch_exp2(4.9f * f);          /* 0.003 .. 0.09 per block */
-    P->rel    = 0.0006f * ch_exp2(3.3f * f);          /* 0.0006 .. 0.006 per block */
+    {                                                  /* one 2^x for all three */
+        float e[3];
+        int   i;
+        SR_NOUNROLL
+        for (i = 0; i < 3; i++) e[i] = ch_exp2((i == 0) ? 4.9f * f : (i == 1) ? 3.3f * f : -7.6f * k[6]);
+        P->att     = 0.0030f * e[0];                  /* 0.003 .. 0.09 per block */
+        P->rel     = 0.0006f * e[1];                  /* 0.0006 .. 0.006 per block */
+        P->glide_c = 0.06f * e[2];                    /* ~3 ms .. ~0.6 s */
+    }
     P->vibc   = (28.0f - 22.0f * f) * 0.00083333f;    /* cents -> octaves */
     P->breath = CH_BREATH * (1.4f - 0.8f * f);
     P->bright = 0.55f + 0.45f * f;
@@ -518,7 +516,6 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     } else if (P->choir == 16) {                      /* GOSPL: wide vibrato, bright, breathy */
         P->vibc *= 1.8f; P->bright *= 1.3f; P->breath *= 1.5f;
     }
-    P->glide_c = 0.06f * ch_exp2(-7.6f * k[6]);       /* ~3 ms .. ~0.6 s */
     P->legato  = (k[6] > 0.005f);                     /* Glide 0: every note starts fresh */
     P->dryG = 2.0f - 2.0f * k[8];
     if (P->dryG > 1.0f) P->dryG = 1.0f;
@@ -858,7 +855,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         h = s->amp[i] * ((P->sing == CH_SING_WHSPR) ? 1.0f : s->env);
         pa += h * h;
     }
-    pa *= 8.0f * ch_recip((float)P->size);
+    pa *= 8.0f * nrm * nrm;                             /* nrm = 1 / sqrt(size) */
     if (pa > 1e-10f) {
         s->pw += 0.0036f * (pw - s->pw);
         s->pa += 0.0036f * (pa - s->pa);
@@ -1047,6 +1044,9 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 #ifndef FORMANT_HOST_TEST
 
 #include "formant_params.h"
+#if FORMANT_MIX_SLOT != FORMANT_CHOIR_SLOT + 8
+#error "Choral reads its knobs as consecutive slots"
+#endif
 
 #ifndef FORMANT_AUDIO_FUNC
 #define FORMANT_AUDIO_FUNC Fx_DLY_Formant
@@ -1088,14 +1088,17 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 
     s = (ChState *)stateBase;
 
-    k[0] = sr_knob(params[FORMANT_CHOIR_SLOT], (float)FORMANT_CHOIR_UI_DEFAULT, 0.0625f);
-    k[1] = sr_knob(params[FORMANT_SIZE_SLOT],  (float)FORMANT_SIZE_UI_DEFAULT,  0.2f);
-    k[2] = sr_knob(params[FORMANT_CHORD_SLOT], (float)FORMANT_CHORD_UI_DEFAULT, 0.041666668f);
-    k[3] = sr_knob(params[FORMANT_SING_SLOT],  (float)FORMANT_SING_UI_DEFAULT,  0.07692308f);
-    k[4] = sr_knob(params[FORMANT_PACE_SLOT],  (float)FORMANT_PACE_UI_DEFAULT,  0.0625f);
-    k[5] = sr_knob(params[FORMANT_FEEL_SLOT],  (float)FORMANT_FEEL_UI_DEFAULT,  0.01f);
-    k[6] = sr_knob(params[FORMANT_GLIDE_SLOT], (float)FORMANT_GLIDE_UI_DEFAULT, 0.01f);
-    k[8] = sr_knob(params[FORMANT_MIX_SLOT],   (float)FORMANT_MIX_UI_DEFAULT,   0.01f);
+    SR_NOUNROLL
+    for (i = 0; i < 9; i++) {                    /* knobs in a row, Tempo (7) apart */
+        if (i == 7) continue;
+        k[i] = sr_knob(params[FORMANT_CHOIR_SLOT + i],
+                       (float)((i == 0) ? FORMANT_CHOIR_UI_DEFAULT : (i == 1) ? FORMANT_SIZE_UI_DEFAULT
+                             : (i == 2) ? FORMANT_CHORD_UI_DEFAULT : (i == 3) ? FORMANT_SING_UI_DEFAULT
+                             : (i == 4) ? FORMANT_PACE_UI_DEFAULT : (i == 5) ? FORMANT_FEEL_UI_DEFAULT
+                             : (i == 6) ? FORMANT_GLIDE_UI_DEFAULT : FORMANT_MIX_UI_DEFAULT),
+                       (i == 0 || i == 4) ? 0.0625f : (i == 1) ? 0.2f : (i == 2) ? 0.041666668f
+                       : (i == 3) ? 0.07692308f : 0.01f);   /* 1 / each knob's max */
+    }
 
     if (s->magic != CH_MAGIC) ch_init(s);
     /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
