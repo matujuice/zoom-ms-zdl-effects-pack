@@ -32,7 +32,7 @@
  *
  *   out = in + siren + echo * 0.6 (Fdbk 0 = echo off). The echo only ever sees the siren.
  *
- * CONTROLS (9 knobs)
+ * CONTROLS (8 knobs)
  *   0 Trig   the FOOT PEDAL (the effect's on/off footswitch) is the trigger;
  *            this knob picks how it behaves:
  *              Hold   siren sounds while the effect is ON (footswitch latched
@@ -41,9 +41,9 @@
  *                     long the effect stays on
  *              SHold  Hold on the beat: the siren starts and stops on the next beat
  *              SPuls  Pulse on the beat: a press fires the burst on the next beat
- *            The synced two (S = sync) wait for a beat of the Tempo knob's clock, which
- *            restarts at each twin flip (see TEMPO SYNC), and the press does not
- *            restart the LFO, so the siren comes in where the bar puts it.
+ *            The synced two (S = sync) wait for a beat of the pedal's tempo (on the
+ *            MIDI clock while the transport runs, see TEMPO AND MIDI TRANSPORT), and the
+ *            press does not restart the LFO, so the siren comes in where the bar puts it.
  *            The effect only sees the on/off state. The footswitch latches
  *            (each press toggles), so "held down" is not visible; Hold means
  *            "while switched on".
@@ -65,27 +65,27 @@
  *            (15 semitones), 100 = up to 5x the base pitch. All modes.
  *   5 Vol    siren level
  *   6 Time   echo time, ms = 50 + 0.095*screen^2 (50 ms .. 1 s), shown on screen
- *   7 Tempo  BPM, 40..240 (the pedal's own number). Used when Rate is set to a note value,
- *            and for the beat that Trig SHold / SPuls wait for.
- *            Screen 0..441: 241..441 is a twin copy of the same BPMs (see TEMPO SYNC),
- *            shown as the BPM. The 8th knob, as on every twin-Tempo effect of the pack.
- *   8 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
+ *   7 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
  *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
+ *   Rate carries the tap flag (manifest flags 40) so the pedal shows its tap button.
  *
- * TEMPO SYNC (no clock comes from the pedal, so it follows the BPM you dial in Tempo):
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it.
  *   Rate 101..112 = one whole LFO cycle lasts a note value: 4bar 2bar 1bar 1/2. 1/2 1/4.
  *            1/4 1/8. 1/8 1/8T 1/16 1/32 (Fast = 2x, Slow = 0.5x, as in free mode).
  *   Rate 1..100 is the free (Hz) range, as before. The echo Time is never synced.
- *   SYNC RESET: the Tempo knob holds every BPM twice (0..240 = the BPM, 241..441 = a
- *            twin copy, BPM = screen - 201, so past 240 the screen shows 40 again).
- *            Flipping between a BPM and its twin (120 <-> 321) restarts the LFO without
- *            changing the tempo, so a host can send one knob edit on each downbeat.
- *            A plain tempo change does not restart it.
- *   Trig SHold / SPuls: the effect keeps a beat clock at the Tempo BPM that restarts at
- *            each twin flip. A press waits for its next beat (at most one beat), and the
- *            LFO keeps running instead of restarting, so with a host flipping the twin
- *            each bar the siren comes in on the beat and its tones stay with the bar.
- *            Needs the pedal to keep calling the effect while it is switched off.
+ *   While the MIDI transport runs, a synced LFO is placed on the clock count (beats since
+ *            Start x cycles per beat), so it stays on the grid and a trigger press does not
+ *            restart it (even with Hold / Pulse); a free-Hz LFO runs as before. MIDI Start
+ *            restarts the LFO (any Rate) and the beat clock on the downbeat. After Stop
+ *            both run on at the last tempo.
+ *   Trig SHold / SPuls: the effect keeps a beat clock at the pedal's tempo, on the MIDI
+ *            clock's beats while the transport runs. A press waits for its next beat (at
+ *            most one beat), and the LFO keeps running instead of restarting, so the siren
+ *            comes in on the beat and its tones stay with the bar.
+ *            Needs the pedal to keep calling the effect while it is switched off; while
+ *            it does, LFO and beat clock keep following the clock.
  *   Fdbk 0 = echo off; the echo level is fixed (it used to be the Echo knob).
  *
  * DEFAULTS = A CLASSIC DANCEHALL TWO-TONE SIREN: Trig Pulse (one short
@@ -100,19 +100,12 @@
  *
  * Safe-DSP rules of this repo are kept: no static/const tables in the audio
  * path, no float divide, no integer / or %, no libm, no switch, no memset,
- * everything always-inline. Runs on the MS-60B (released since v1.0; bar sync on FOLLW
- * passed 2026-10-07). CPU never measured.
- *
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
- *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
- *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
- *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
- *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
+ * everything always-inline. Runs on the MS-60B (released since v1.0). The MIDI transport
+ * version is not tested on hardware yet. CPU never measured.
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -126,7 +119,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523130u         /* "SR10"                        */
+#define SR_MAGIC         0x53523131u         /* "SR11"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
@@ -142,8 +135,6 @@
 #define FLUT_DEPTH       1.3f                /* samples                       */
 
 #define SYNC_INC_PER_BPM 3.7793e-7f          /* 1 / (44100 * 60): beats per sample per BPM */
-#define TEMPO_MAX_F      441.0f              /* Tempo screen 0..441: the BPMs twice */
-#define TEMPO_TWIN       201                 /* twin copy = BPM + 201                */
 
 typedef struct {
     unsigned int magic;
@@ -162,19 +153,18 @@ typedef struct {
     float dly;             /* smoothed echo time in samples, <0 = not set     */
     float hpl;             /* echo high-pass state                            */
     float lp1, lp2;        /* echo low-pass poles                             */
-    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     int   armed;           /* SPuls: pressed, waiting for the next beat       */
     int   latch;           /* SHold: footswitch state taken at the last beat  */
-    float beat_ph;         /* beat clock, 0..1 per beat; 0 at each twin flip  */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
+    float beat_ph;         /* beat clock, 0..1 per beat; 0 at MIDI Start      */
+    ZtSync zt;             /* MIDI transport (zmt.h)                          */
     float ring[RING_SIZE]; /* siren-only echo line                            */
 } SirenState;
 
 typedef struct {
     int   gate;            /* siren sounding                                  */
     int   retrig;          /* Off->ON edge (or Trig-mode change)              */
-    int   resync;          /* Tempo flipped to its twin copy: LFO phase -> 0  */
-    int   synced;          /* Trig SHold / SPuls: the press never resets the LFO */
+    int   resync;          /* MIDI Start: LFO phase -> 0                      */
+    int   synced;          /* Trig SHold / SPuls or LFO on the clock: the press never resets the LFO */
     int   mode;            /* 0 Wail, 1 Fast, 2 Slow, 3 Laser                 */
     int   manual;          /* Rate knob at 0 (Man)                            */
     int   mdir;            /* manual envelope: -1 drop (Pulse), +1 rise       */
@@ -206,31 +196,6 @@ static inline float sr_knob(float raw, float def_ui, float inv_max)
     else ui = raw;
     ui = (float)(int)(ui + 0.5f);
     return clamp01(ui * inv_max);
-}
-
-/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to
- * 4.415 (sr_knob's 3.0 guess would take 4.41 for an on-screen 4). Returns the
- * screen number. */
-SR_ALWAYS_INLINE(sr_tempo_ui)
-static inline float sr_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > TEMPO_MAX_F) ui = TEMPO_MAX_F;
-    return ui;
-}
-
-/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
- * (screen - 201), so both copies give 40..240. */
-SR_ALWAYS_INLINE(sr_tempo_bpm)
-static inline int sr_tempo_bpm(int ui)
-{
-    if (ui > 240) ui -= TEMPO_TWIN;
-    if (ui < 40) ui = 40;
-    return ui;
 }
 
 /* 2^(semis/12), 5th-order Taylor, +-12 st, ~0.3 cent. No libm, no divide. */
@@ -301,9 +266,8 @@ static inline void sr_init(SirenState *s)
     s->osc_ph = 0.0f; s->lfo_ph = 0.0f; s->env = 0.0f; s->menv = 0.0f;
     s->y1 = 0.0f; s->y2 = 0.0f; s->wow_ph = 0.0f; s->flut_ph = 0.37f;
     s->dly = -1.0f; s->hpl = 0.0f; s->lp1 = 0.0f; s->lp2 = 0.0f;
-    s->twin = -1;
     s->armed = 0; s->latch = 0; s->beat_ph = 0.0f;
-    dt_sync_init(&s->sync);
+    zt_init(&s->zt);
     s->magic = SR_MAGIC;
 }
 
@@ -311,11 +275,13 @@ static inline void sr_init(SirenState *s)
  * k[] are 0..1 (by each knob's own max). foot = 1 while the footswitch has the
  * effect ON. Trigger state tracking: Hold follows the footswitch, Pulse arms a 0.6 s counter on each OFF -> ON press (ON -> OFF does nothing). A gate
  * rising edge (or a change of Trig mode) sets retrig.
- * SHold / SPuls do the same on the beat: a beat clock runs at the Tempo BPM and restarts
- * at each twin flip, so its beats sit on the host's grid. SHold takes the footswitch
- * state at each beat; SPuls remembers a press and fires the burst at the next beat. */
+ * SHold / SPuls do the same on the beat: a beat clock runs at the pedal's BPM (k[8], not
+ * 0..1) and restarts at MIDI Start; while the transport runs (run, beats, start from
+ * zt_update) it sits on the clock's beats. SHold takes the footswitch state at each beat;
+ * SPuls remembers a press and fires the burst at the next beat. */
 SR_ALWAYS_INLINE(sr_prepare)
-static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int foot)
+static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int foot,
+                              int run, float beats, int start)
 {
     int   fm   = (int)(k[0] * 3.0f + 0.5f);          /* 0 Hold, 1 Pulse, 2 SHold, 3 SPuls */
     int   sync = (fm >= 2);                         /* start on the beat     */
@@ -324,19 +290,21 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
     int   nr   = (int)(k[3] * 112.0f + 0.5f);        /* rate: 0 Man, 1..100 Hz, 101..112 synced */
     int   nt   = (int)(k[6] * 100.0f + 0.5f);
     int   nf   = (int)(k[7] * 125.0f + 0.5f);
-    int   ntp  = (int)(k[8] * TEMPO_MAX_F + 0.5f);   /* Tempo screen 0..441    */
-    int   tw   = (ntp > 240);                       /* on the twin copy       */
     int   beat;                                     /* a beat starts in this block */
-    float lfo_hz, bpm;
+    float lfo_hz, bpm = k[8], ph;
 
-    /* beat clock: restarts at each twin flip, otherwise one beat per 60/BPM s */
-    bpm = (float)sr_tempo_bpm(ntp);                  /* Tempo knob = the BPM (40..240) on both copies */
-    P->resync = (s->twin >= 0 && tw != s->twin);     /* sync reset: flipped to the other copy */
-    s->twin = tw;
-    s->beat_ph += bpm * SYNC_INC_PER_BPM * 8.0f;
-    beat = (s->beat_ph >= 1.0f) || P->resync;
-    if (s->beat_ph >= 1.0f) s->beat_ph -= 1.0f;
-    if (P->resync) s->beat_ph = 0.0f;
+    /* beat clock: on the clock's beats while the transport runs, else one beat per 60/BPM s */
+    P->resync = start;                               /* MIDI Start: the downbeat */
+    if (run) {
+        ph = beats - (float)(int)beats;
+        beat = (ph < s->beat_ph - 0.5f);             /* wrapped: a new beat */
+        s->beat_ph = ph;
+    } else {
+        s->beat_ph += bpm * SYNC_INC_PER_BPM * 8.0f;
+        beat = (s->beat_ph >= 1.0f);
+        if (s->beat_ph >= 1.0f) s->beat_ph -= 1.0f;
+    }
+    if (start) { s->beat_ph = 0.0f; beat = 1; }
 
     if (fp && foot && !s->prev_foot) {               /* OFF -> ON press        */
         if (sync) s->armed = 1;                      /* SPuls: wait for the beat */
@@ -369,6 +337,13 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
         if (P->mode == 1) lfo_hz += lfo_hz;
         else if (P->mode == 2) lfo_hz *= 0.5f;
         P->lfo_inc = lfo_hz;
+        if (run) {                                   /* on the clock: phase = beats x cycles per beat */
+            ph = beats * rate_cpb(nr - 101);         /* 96 beats hold whole cycles of every value */
+            if (P->mode == 1) ph += ph;
+            else if (P->mode == 2) ph *= 0.5f;
+            s->lfo_ph = ph - (float)(int)ph;
+            P->synced = 1;                           /* a press must not pull it off the clock */
+        }
     } else {
         lfo_hz = 0.15f * exp2_oct((float)nr * 0.0664f);
         if (P->mode == 1) lfo_hz += lfo_hz;
@@ -589,7 +564,7 @@ int ZDL_GetLabel_6(unsigned int value, char *out)
 }
 
 /* 7 Fdbk: "Off" at 0 (no echo at all), then the percent 1..125 */
-int ZDL_GetLabel_8(unsigned int value, char *out)
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n, h = 0, t = 0, len = 0;
     if (value == 0u) { out[0] = 'O'; out[1] = 'f'; out[2] = 'f'; out[3] = 0; return 3; }
@@ -599,23 +574,6 @@ int ZDL_GetLabel_8(unsigned int value, char *out)
     while (n >= 10)  { n -= 10;  t++; }
     if (h > 0) { out[len] = (char)('0' + h); len++; }
     if (h > 0 || t > 0) { out[len] = (char)('0' + t); len++; }
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
-}
-
-/* 8 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
- * same numbers again */
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = sr_tempo_bpm((int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
     out[len] = (char)('0' + n); len++;
     out[len] = 0;
     return len;
@@ -636,7 +594,6 @@ SR_CODE_SECTION(DUBSIREN_AUDIO_FUNC)
 void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -646,8 +603,8 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     SirenState *s;
     SirenParams P;
-    float k[9];
-    int i, foot;
+    float k[9], beats;
+    int i, foot, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -677,11 +634,8 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     k[6] = sr_knob(params[DUBSIREN_TIME_SLOT],   (float)DUBSIREN_TIME_UI_DEFAULT,   0.01f);
     k[7] = sr_knob(params[DUBSIREN_FDBK_SLOT],   (float)DUBSIREN_FDBK_UI_DEFAULT,   0.008f);
     if (s->magic != SR_MAGIC) sr_init(s);        /* prev_* must be valid       */
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    k[8] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0,
-                    sr_tempo_ui(params[DUBSIREN_TEMPO_SLOT], (float)DUBSIREN_TEMPO_UI_DEFAULT),
-                    dt_id(stateBase)) * 0.0022675737f;   /* 1/441 */
-    sr_prepare(s, &P, k, foot);
+    k[8] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
+    sr_prepare(s, &P, k, foot, run, beats, start);
     sr_process(s, &P, fxBuf, 8);
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];

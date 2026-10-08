@@ -9,7 +9,7 @@
 
 static ScState S;          /* 529 KB: keep it off the stack */
 
-/* the pedal entry's logic, minus the ctx plumbing; u = Pos Grain Rec Glide Dir Spray Mix Tempo */
+/* the pedal entry's logic, minus the ctx plumbing; u = Pos Grain Rec Glide Dir Spray Mix BPM */
 static void block(const float *u, int on, float *b)
 {
     ScParams P;
@@ -289,7 +289,7 @@ int main(void)
         u[1] = 105; u[7] = 90; sc_prepare(&P, u);                  /* 1/8T at 90: 9800 */
         printf(", 1/8T at 90 = %.1f (9800)", P.len);
         CHECK(fabsf(P.len - 9800.0f) < 1.0f, "1/8T at 90");
-        u[1] = 112; u[7] = 20; u[0] = 0; u[5] = 100; sc_prepare(&P, u);   /* 1/2 at "20" = 40 */
+        u[1] = 112; u[7] = 40; u[0] = 0; u[5] = 100; sc_prepare(&P, u);   /* 1/2 at 40 */
         printf(", 1/2 at 40 = %.0f, head %.2f s back\n", P.len, P.Dt / 44100.0f);
         CHECK(fabsf(P.len - 132300.0f) < 2.0f, "1/2 at 40");
         CHECK(1.25f * P.len + P.Dt + P.spray < SC_AGE_MAX, "long grain does not fit");

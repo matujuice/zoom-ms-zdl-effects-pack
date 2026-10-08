@@ -20,7 +20,7 @@
  * by adding Notes and taking Steps away on overflow.
  *
  * TIMING (no division needed)
- *   The tempo knob is the BPM, as in Hydra / Spiral (the pedal's own number).
+ *   The tempo is the pedal's (see TEMPO AND MIDI TRANSPORT).
  *   Steps run in PAIRS of 16ths: (1st, 2nd) and (3rd, 4th) of every beat. A phase pp
  *   runs 0..2 and advances by inc = BPM * 4 / (44100 * 60) per sample (a step is a
  *   16th note), so the first step of a pair is pp < 1 + swing and the second is the
@@ -36,45 +36,41 @@
  *   of a step, a smooth tremolo-like swell).
  *
  * RESET (what restarts the pattern at step 1)
- *   OFF: nothing, the pattern free-runs.
+ *   OFF: nothing, the pattern free-runs (and follows the MIDI transport, below).
  *   NOTE: a note that starts after a moment of silence, so every phrase you play
  *   begins on the downbeat of the pattern.
  *   PEDAL: the footswitch being turned on, so the pattern starts exactly when you step
  *   on the pedal. (While the effect is off the pedal still calls the effect; the input
- *   is untouched, but the pattern clock keeps running and follows Tempo flips, so with
- *   OFF, NOTE or SYNC the pattern comes back in time with the bar.)
- *   SYNC: the setting for bar sync from a host. It does the same as OFF (only the
- *   Tempo twin flips below restart the pattern); the name just says what to pick.
- *   Whatever Reset says, a SYNC RESET restarts it too: the Tempo knob runs 0..441 and
- *   holds every BPM twice (0..240 = the BPM, 241..441 = a twin copy, BPM = screen - 201,
- *   so past 240 the screen shows 40 again). Flipping between a BPM and its twin
- *   (120 <-> 321) restarts the pattern at step 1 without changing the tempo, so a host
- *   (iPhone, MIDI box) can send one knob edit on each downbeat. A plain tempo change
- *   does not restart the pattern.
+ *   is untouched, but the pattern clock keeps running, so with OFF or NOTE the pattern
+ *   comes back in time.)
+ *   While the MIDI transport runs, the clock decides where the pattern is and NOTE / PEDAL
+ *   do nothing.
  *
  * KNOBS (screen values; the names are kept short and plain on purpose)
  *   0 Notes 0..63   shown 1..64: how many notes play (at or above the step count = every step)
  *   1 Steps 0..63   shown 1..64: how many 16th-note steps the pattern has before it repeats
  *   2 Shift 0..63   starts the pattern later by this many steps
  *   3 Swing 0..100  shuffle: delays only the weak 16ths (see TIMING)
- *   4 Reset 0..3    shown OFF / NOTE / PEDAL / SYNC: what restarts the pattern (see RESET)
+ *   4 Reset 0..2    shown OFF / NOTE / PEDAL: what restarts the pattern (see RESET)
  *   5 Gap   0..50   small silence at the end of a note that is followed by another note,
  *                   in percent of a step (0 = touching notes join, as before)
  *   6 Soft  0..100  how soft the edges of each note are
- *   7 Tempo 0..441  BPM, 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 = the same BPMs again
- *                   (twin copy for the sync reset, see RESET), shown as the BPM
- *   8 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
+ *   7 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  *
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
- *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
- *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
- *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
- *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   There is no Tempo knob: the tempo is the pedal's (MIDI clock, tap tempo or the patch
+ *   TEMPO), read from the MOD firmware's transport block. While the MIDI transport runs the
+ *   pattern steps on the clock count: step = (clocks - 1) / 6 (a 16th is 6 clocks) inside
+ *   the pattern, so MIDI Start restarts it at step 1, an EuGate loaded mid-song lands on the
+ *   right step, and it can't drift. Between two clocks the phase moves on at the tempo but
+ *   never past the next clock. After Stop (or no clock for 0.5 s) it runs free at the tempo
+ *   from where it was. Without the MOD firmware it runs at 120 BPM.
+ *   The Steps knob carries pedal_flags 0x28 (the flag every stock tempo effect has on a knob),
+ *   for the pedal's tap tempo button.
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define CH_DO_PRAGMA(x) _Pragma(#x)
@@ -86,15 +82,12 @@
 #define CH_CODE_SECTION(fn)
 #endif
 
-#define CH_MAGIC        0x43483036u          /* "CH06" */
-#define CH_BPM_MIN      40.0f
-#define CH_BPM_MAX      240.0f
-#define CH_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
-#define CH_TEMPO_TWIN   201.0f               /* twin copy = BPM + 201           */
+#define CH_MAGIC        0x43483038u          /* "CH08" */
 #define CH_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define CH_QUIET_LEN    2000                 /* samples of silence before a new note counts */
 #define CH_QUIET_LVL    0.002f               /* below this the input counts as silent */
 #define CH_NOTE_LVL     0.01f                /* above this a new note has started */
+#define CH_FREE_MAX     4.0f                 /* pp limit when not on the clock: none    */
 
 typedef struct {
     unsigned int magic;
@@ -103,14 +96,15 @@ typedef struct {
     float g;               /* smoothed gate level                    */
     unsigned int quiet;    /* consecutive quiet samples              */
     unsigned int was_off;  /* set while the footswitch is off (for Reset = PEDAL) */
-    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h) */
+    unsigned int clk;      /* transport clocks seen last block */
+    ZtSync zt;             /* MIDI transport (zmt.h)          */
 } ChState;
 
 typedef struct {
     float inc;             /* phase increment per sample (steps per sample)  */
     float swing;           /* 0..0.5                                          */
-    float gap, c;          /* gap before a touching note, in steps; slew coefficient */
+    float gap, c, e;       /* gap before a touching note, in steps; slew coefficient, slew rate */
+    float ppmax;           /* pp never passes this (the next clock); CH_FREE_MAX = free */
     float dryG, wetG;
     unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (steps - Shift, already < steps) */
     unsigned int lo, hi;           /* the pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
@@ -131,47 +125,11 @@ static inline float ch_ui(float raw, float def_ui, float max_ui)
     return ui;
 }
 
-/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to 4.415
- * (ch_ui's 3.05 guess would take 4.41 for an on-screen 4). Returns the screen number. */
-CH_ALWAYS_INLINE(ch_tempo_ui)
-static inline float ch_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > CH_TEMPO_MAX) ui = CH_TEMPO_MAX;
-    return ui;
-}
-
-/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
- * (screen - 201), so both copies give 40..240. */
-CH_ALWAYS_INLINE(ch_tempo_bpm)
-static inline float ch_tempo_bpm(float ui)
-{
-    if (ui > CH_BPM_MAX) ui -= CH_TEMPO_TWIN;
-    if (ui < CH_BPM_MIN) ui = CH_BPM_MIN;
-    if (ui > CH_BPM_MAX) ui = CH_BPM_MAX;
-    return ui;
-}
-
-/* Sync reset: 1 when Tempo moved over to the other copy since the last block (the
- * first block after loading only takes note of the copy). */
-CH_ALWAYS_INLINE(ch_twin_flip)
-static inline int ch_twin_flip(ChState *s, float tempo_ui)
-{
-    int tw = (tempo_ui > CH_BPM_MAX) ? 1 : 0;
-    int flip = (s->twin >= 0 && tw != s->twin);
-    s->twin = tw;
-    return flip;
-}
-
 CH_ALWAYS_INLINE(ch_init)
 static inline void ch_init(ChState *s)
 {
-    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->twin = -1;
-    dt_sync_init(&s->sync);
+    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->clk = 0u;
+    zt_init(&s->zt);
     s->magic = CH_MAGIC;
 }
 
@@ -196,19 +154,53 @@ static inline void ch_prepare(ChParams *P, const float *u)
         if (m >= steps) m -= steps;
     }
     P->steps = steps; P->shift = shift; P->lo = lo; P->hi = hi;
-    bpm = ch_tempo_bpm(u[7]);                            /* both copies: 40..240 */
+    bpm = u[7];                                          /* the tempo (zmt.h)      */
     P->inc   = bpm * 4.0f * CH_INC_PER_BPM;
     P->swing = u[3] * 0.005f;                            /* 0..0.5 */
     P->gap   = u[5] * 0.01f;                             /* Gap 0..50 % of a step */
     k = 1.0f - u[6] * 0.01f;                             /* 1 = hard, 0 = soft */
     e = 3.0f + 600.0f * k * k * k;                       /* slew rate in 1/steps */
+    P->e = e;
+    P->ppmax = CH_FREE_MAX;
     P->c = P->inc * e;
     if (P->c > 0.5f) P->c = 0.5f;
-    P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL, 3 SYNC (= OFF) */
+    P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL */
     P->dryG = 2.0f - 2.0f * (u[8] * 0.01f);            /* Mix: dry full up to 50, then fades out */
     if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * (u[8] * 0.01f);                    /* wet fades in up to 50, then full       */
     if (P->wetG > 1.0f) P->wetG = 1.0f;
+}
+
+/* While the transport runs: put the pattern where the clock count says. 12 clocks = one
+ * pair of 16ths. pos and the clock inside the pair come from (clocks - 1) mod (12 * steps)
+ * by subtracting shifted copies (no division), so any count works, also mid-song. pp jumps
+ * to the clock's place only when a new clock (or Start) arrived; between clocks it moves on
+ * at the tempo up to just before the next clock. */
+CH_ALWAYS_INLINE(ch_clock_apply)
+static inline void ch_clock_apply(ChState *s, ChParams *P, unsigned int clocks, int start)
+{
+    unsigned int r, m, mk, p = 0u, b, pos;
+    P->sync = 0u;                                    /* the clock decides where the pattern is */
+    if (clocks == 0u) {                              /* Start seen, first clock not yet: wait on step 1 */
+        s->pos = 0u; s->pp = 0.0f; P->ppmax = 0.0f; s->clk = 0u;
+        return;
+    }
+    r = clocks - 1u;
+    m = 12u * P->steps;
+    for (b = 28u; b-- > 0u; ) {
+        mk = m << b;
+        if ((mk >> b) == m && r >= mk) r -= mk;      /* r = (clocks - 1) mod (12 * steps) */
+    }
+    for (b = 7u; b-- > 0u; ) {
+        if (r >= (12u << b)) { r -= 12u << b; p += 1u << b; }   /* p = pairs, r = clock 0..11 */
+    }
+    pos = p + p;
+    while (pos >= P->steps) pos -= P->steps;
+    s->pos = pos;
+    if (clocks != s->clk || start) s->pp = (float)(int)r * 0.16666667f;
+    P->ppmax = (float)(int)r * 0.16666667f + 0.1666f;
+    if (s->pp > P->ppmax) s->pp = P->ppmax;
+    s->clk = clocks;
 }
 
 CH_ALWAYS_INLINE(ch_process)
@@ -229,8 +221,9 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf, int n)
             if (quiet >= (unsigned int)CH_QUIET_LEN && a > CH_NOTE_LVL && P->sync == 1u) { pp = 0.0f; pos = 0u; }
             if (a > CH_NOTE_LVL) quiet = 0u;
         }
-        /* advance the pair phase */
+        /* advance the pair phase (on the clock: never past the next clock) */
         pp += P->inc;
+        if (pp > P->ppmax) pp = P->ppmax;
         if (pp >= 2.0f) {                            /* next pair: two steps further in the pattern */
             pp -= 2.0f; pos += 2u;
             while (pos >= P->steps) pos -= P->steps;
@@ -264,6 +257,7 @@ CH_ALWAYS_INLINE(ch_idle)
 static inline void ch_idle(ChState *s, const ChParams *P, int n)
 {
     s->pp += P->inc * (float)n;
+    if (s->pp > P->ppmax) s->pp = P->ppmax;
     if (s->pp >= 2.0f) {
         s->pp -= 2.0f; s->pos += 2u;
         while (s->pos >= P->steps) s->pos -= P->steps;
@@ -290,37 +284,16 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return ZDL_GetLabel_0(value, out);
 }
 
-/* knob 4 Reset: 0 "OFF", 1 "NOTE", 2 "PEDAL", 3 "SYNC" */
+/* knob 4 Reset: 0 "OFF", 1 "NOTE", 2 "PEDAL" */
 int ZDL_GetLabel_4(unsigned int value, char *out)
 {
-    if (value >= 3u) {
-        out[0] = 'S'; out[1] = 'Y'; out[2] = 'N'; out[3] = 'C'; out[4] = 0;
-        return 4;
-    }
-    if (value == 2u) {
+    if (value >= 2u) {
         out[0] = 'P'; out[1] = 'E'; out[2] = 'D'; out[3] = 'A'; out[4] = 'L'; out[5] = 0;
         return 5;
     }
     if (value == 1u) { out[0] = 'N'; out[1] = 'O'; out[2] = 'T'; out[3] = 'E'; out[4] = 0; return 4; }
     out[0] = 'O'; out[1] = 'F'; out[2] = 'F'; out[3] = 0;
     return 3;
-}
-
-/* knob 7 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
- * the same numbers again */
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = (int)ch_tempo_bpm((float)(int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
 }
 
 /* ---- pedal entry point ---------------------------------------------------- */
@@ -338,7 +311,6 @@ CH_CODE_SECTION(EUGATE_AUDIO_FUNC)
 void EUGATE_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -348,8 +320,8 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ChState *s;
     ChParams P;
-    float u[9];
-    int i;
+    float u[9], beats;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -372,19 +344,17 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[1] = ch_ui(params[EUGATE_STEPS_SLOT], (float)EUGATE_STEPS_UI_DEFAULT, 63.0f);
     u[2] = ch_ui(params[EUGATE_SHIFT_SLOT], (float)EUGATE_SHIFT_UI_DEFAULT, 63.0f);
     u[3] = ch_ui(params[EUGATE_SWING_SLOT], (float)EUGATE_SWING_UI_DEFAULT, 100.0f);
-    u[4] = ch_ui(params[EUGATE_RESET_SLOT],  (float)EUGATE_RESET_UI_DEFAULT,  3.0f);
+    u[4] = ch_ui(params[EUGATE_RESET_SLOT],  (float)EUGATE_RESET_UI_DEFAULT,  2.0f);
     u[5] = ch_ui(params[EUGATE_GAP_SLOT], (float)EUGATE_GAP_UI_DEFAULT, 50.0f);
     u[6] = ch_ui(params[EUGATE_SOFT_SLOT],  (float)EUGATE_SOFT_UI_DEFAULT,  100.0f);
-    u[7] = ch_tempo_ui(params[EUGATE_TEMPO_SLOT], (float)EUGATE_TEMPO_UI_DEFAULT);
     u[8] = ch_ui(params[EUGATE_MIX_SLOT],   (float)EUGATE_MIX_UI_DEFAULT,   100.0f);
 
     if (s->magic != CH_MAGIC) ch_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
+    u[7] = zt_update(&s->zt, &run, &beats, &start);  /* the pedal's tempo, MIDI transport */
     ch_prepare(&P, u);
+    if (run) ch_clock_apply(s, &P, s->zt.clk, start);
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
-        if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* still follows the bar */
         ch_idle(s, &P, 8);                       /* and the pattern clock keeps running */
         return;
     }
@@ -392,7 +362,6 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;
     }
-    if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* sync reset: step 1 now */
     ch_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

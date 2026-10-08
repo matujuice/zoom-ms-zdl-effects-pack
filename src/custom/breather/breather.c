@@ -47,15 +47,16 @@
  *   after the effect is switched on again (the reverb is silent for those 56 samples),
  *   so an old tail never comes back.
  *
- * SYNC (iPhone / Mozaic bar sync, docs/IPHONE-SYNC.md, docs/TEMPO-SYNC.md)
- *   The Tempo knob runs 0..441 and holds every BPM twice (0..240 = the BPM, 241..441 = a
- *   twin copy, BPM = screen - 201, so past 240 the screen shows 40 again). Flipping
- *   between a BPM and its twin (160 <-> 361) restarts the pump on beat 1 without
- *   changing the tempo; the Mozaic script sends that on each downbeat. A plain tempo
- *   change does not restart it. Switched off, the input passes untouched but the clock
- *   keeps running and follows flips, so the pump comes back on the bar. Switching the
- *   effect on restarts it on beat 1 only when no twin flip has arrived for ~8 s (no host
- *   running), so you can stomp on the one by hand without knocking a synced pump off.
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it. While the MIDI transport runs the
+ *   bar clock is placed on the clock count (bp = beats since Start, mod 4), so MIDI Start
+ *   restarts the pump on beat 1 and it stays on the grid; after Stop it runs on at the
+ *   last tempo. Switched off, the input passes untouched but the bar clock keeps
+ *   following the clock, so the pump comes back on the bar. Switching the effect on
+ *   restarts it on beat 1 only while the transport is stopped, so you can stomp on the
+ *   one by hand without knocking a clocked pump off. Div carries the tap flag (manifest
+ *   flags 40) so the pedal shows its tap button.
  *
  * KNOBS (screen values)
  *   0 Targt 0..3    shown DRY / VERB / BOTH / SEND
@@ -66,22 +67,15 @@
  *                   +1/4 at 100, the number elsewhere
  *   5 Curve 0..100  length of the move, 5 %..100 % of the Div
  *   6 Verb  0..100  reverb level
- *   7 Tempo 0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 = the twin copy
- *   8 Size  0..100  reverb length, short room to long wash (bigger = darker)
+ *   7 Size  0..100  reverb length, short room to long wash (bigger = darker)
+ *   (inside the code u[7] is the pedal's BPM and u[8] Size)
  *
  * TESTED: host tests (tests/breather_*.c); DUCK and GATE passed on the MS-60B (2026-10-07).
  * CPU never measured.
- *
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
- *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
- *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
- *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
- *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define PU_DO_PRAGMA(x) _Pragma(#x)
@@ -93,15 +87,10 @@
 #define PU_CODE_SECTION(fn)
 #endif
 
-#define PU_MAGIC        0x50553033u          /* "PU03" */
-#define PU_BPM_MIN      40.0f
-#define PU_BPM_MAX      240.0f
-#define PU_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
-#define PU_TEMPO_TWIN   201.0f               /* twin copy = BPM + 201           */
+#define PU_MAGIC        0x50553034u          /* "PU04" */
 #define PU_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define PU_BAR          4.0f                 /* beats per bar                    */
 #define PU_SLEW         0.0113f              /* gain slew per sample, ~2 ms      */
-#define PU_HOST_BLOCKS  44100u               /* ~8 s of 8-sample blocks          */
 #define PU_REV_IN       0.932f               /* reverb input gain x (1 - feedback): Verb 100
                                              * gives ~2x the input level (rms), any Size */
 #define PU_REV_OUT      0.6f                 /* reverb output gain at Verb 100   */
@@ -131,10 +120,8 @@ typedef struct {
     int   i0, i1, i2, i3;  /* comb read/write positions                      */
     int   j0, j1;          /* allpass positions                              */
     int   clear_pos;       /* lazy clear progress, PU_REV_LEN when done      */
-    unsigned int since_flip; /* blocks since the last twin flip (saturates)  */
     unsigned int was_off;  /* set while the footswitch is off                */
-    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h)     */
+    ZtSync zt;             /* MIDI transport (zmt.h)                         */
     float rev[PU_REV_LEN]; /* reverb delay lines                             */
 } PuState;
 
@@ -166,41 +153,6 @@ static inline float pu_ui(float raw, float def_ui, float max_ui)
     return ui;
 }
 
-/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to 4.415
- * (pu_ui's 3.05 guess would take 4.41 for an on-screen 4). Returns the screen number. */
-PU_ALWAYS_INLINE(pu_tempo_ui)
-static inline float pu_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > PU_TEMPO_MAX) ui = PU_TEMPO_MAX;
-    return ui;
-}
-
-/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy. */
-PU_ALWAYS_INLINE(pu_tempo_bpm)
-static inline float pu_tempo_bpm(float ui)
-{
-    if (ui > PU_BPM_MAX) ui -= PU_TEMPO_TWIN;
-    if (ui < PU_BPM_MIN) ui = PU_BPM_MIN;
-    if (ui > PU_BPM_MAX) ui = PU_BPM_MAX;
-    return ui;
-}
-
-/* Sync reset: 1 when Tempo moved over to the other copy since the last block (the
- * first block after loading only takes note of the copy). */
-PU_ALWAYS_INLINE(pu_twin_flip)
-static inline int pu_twin_flip(PuState *s, float tempo_ui)
-{
-    int tw = (tempo_ui > PU_BPM_MAX) ? 1 : 0;
-    int flip = (s->twin >= 0 && tw != s->twin);
-    s->twin = tw;
-    return flip;
-}
-
 /* 1/x for x in 0.05..1 without a division: bit-trick guess and three Newton steps. */
 PU_ALWAYS_INLINE(pu_rcp)
 static inline float pu_rcp(float x)
@@ -223,9 +175,8 @@ static inline void pu_init(PuState *s)
     s->f0 = 0.0f; s->f1 = 0.0f; s->f2 = 0.0f; s->f3 = 0.0f;
     s->i0 = 0; s->i1 = 0; s->i2 = 0; s->i3 = 0; s->j0 = 0; s->j1 = 0;
     s->clear_pos = 0;
-    s->since_flip = PU_HOST_BLOCKS;          /* no host seen yet */
-    s->was_off = 0u; s->twin = -1;
-    dt_sync_init(&s->sync);
+    s->was_off = 0u;
+    zt_init(&s->zt);
     s->magic = PU_MAGIC;
 }
 
@@ -244,7 +195,7 @@ static inline void pu_clear_step(PuState *s)
     }
 }
 
-/* u[] = screen values in manifest order */
+/* u[] = screen values in manifest order, except u[7] = the pedal's BPM and u[8] = Size */
 PU_ALWAYS_INLINE(pu_prepare)
 static inline void pu_prepare(PuParams *P, const float *u)
 {
@@ -252,7 +203,7 @@ static inline void pu_prepare(PuParams *P, const float *u)
     float size = u[8] * 0.01f;
     if (div < 0) div = 0;
     if (div > 4) div = 4;
-    P->inc    = pu_tempo_bpm(u[7]) * PU_INC_PER_BPM;
+    P->inc    = u[7] * PU_INC_PER_BPM;          /* u[7] = BPM, 30..300 from zt_update */
     P->invDiv = (float)(16 >> div) * 0.25f;          /* 1/16 -> 4 .. BAR -> 0.25 Divs per beat */
     P->shift  = u[4] * 0.01f;                        /* 0..1 beat */
     P->L      = 0.05f + 0.95f * (u[5] * 0.01f);
@@ -391,23 +342,6 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
     return len;
 }
 
-/* knob 7 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows
- * the same numbers again */
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = (int)pu_tempo_bpm((float)(int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
-}
-
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef BREATHER_HOST_TEST
 
@@ -423,7 +357,6 @@ PU_CODE_SECTION(BREATHER_AUDIO_FUNC)
 void BREATHER_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -434,7 +367,8 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     PuState *s;
     PuParams P;
     float u[9];
-    int i, flip;
+    float beats, t;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -460,27 +394,29 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     u[4] = pu_ui(params[BREATHER_SHIFT_SLOT], (float)BREATHER_SHIFT_UI_DEFAULT, 100.0f);
     u[5] = pu_ui(params[BREATHER_CURVE_SLOT], (float)BREATHER_CURVE_UI_DEFAULT, 100.0f);
     u[6] = pu_ui(params[BREATHER_VERB_SLOT],  (float)BREATHER_VERB_UI_DEFAULT,  100.0f);
-    u[7] = pu_tempo_ui(params[BREATHER_TEMPO_SLOT], (float)BREATHER_TEMPO_UI_DEFAULT);
     u[8] = pu_ui(params[BREATHER_SIZE_SLOT],  (float)BREATHER_SIZE_UI_DEFAULT,  100.0f);
 
     if (s->magic != PU_MAGIC) pu_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
+    u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     pu_prepare(&P, u);
-    flip = pu_twin_flip(s, u[7]);
-    if (flip) { s->bp = 0.0f; s->since_flip = 0u; }  /* sync reset: beat 1 now */
-    else if (s->since_flip < PU_HOST_BLOCKS) s->since_flip++;
+    if (start) s->bp = 0.0f;                     /* MIDI Start: beat 1 now */
+    if (run) {                                   /* on the clock: bp = beats since Start, mod 4 */
+        t = beats * 0.25f;                       /* 96 beats hold whole bars */
+        s->bp = (t - (float)(int)t) * PU_BAR;
+    }
 
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         if (!s->was_off) s->clear_pos = 0;       /* the reverb starts clean when back on */
         s->was_off = 1u;
         pu_clear_step(s);
-        s->bp += P.inc * 8.0f;                   /* the clock keeps running */
-        if (s->bp >= PU_BAR) s->bp -= PU_BAR;
+        if (!run) {                              /* the clock keeps running */
+            s->bp += P.inc * 8.0f;
+            if (s->bp >= PU_BAR) s->bp -= PU_BAR;
+        }
         return;
     }
     if (s->was_off) {                            /* the pedal was just turned on */
-        if (s->since_flip >= PU_HOST_BLOCKS) s->bp = 0.0f;   /* no host: stomp on the one */
+        if (!run) s->bp = 0.0f;                  /* no clock: stomp on the one */
         s->was_off = 0u;
     }
     pu_clear_step(s);

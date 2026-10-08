@@ -18,8 +18,7 @@ static int fails = 0;
 
 static void defaults(void)
 {
-    D(TYPE); D(RATE); D(DEPTH); D(CNTR); D(RESO); D(SHAPE); D(TONE); D(TEMPO); D(MIX);
-    params[SWEEP_TEMPO_SLOT] = SWEEP_TEMPO_UI_DEFAULT / 100.0f;
+    D(TYPE); D(RATE); D(DEPTH); D(CNTR); D(RESO); D(SHAPE); D(TONE); D(MIX);
 }
 
 static void setup(void)

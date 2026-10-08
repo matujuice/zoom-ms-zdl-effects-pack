@@ -32,6 +32,6 @@ Report for each step: found / not found, and for step 2 whether anything is audi
 
 Run on the MS-60B on 2026-10-06: the value written in slot 1 was found in slots 2, 3 and 5,
 also past a stock filter, and nothing of it reached the output. That result is the basis of
-the bar tag (`src/custom/common/drytag.h`, docs/TEMPO-SYNC.md section 10). The host test
+the bar tag (`src/custom/common/drytag.h`, in release v1.5; removed 2026-10-08 for the MOD firmware transport). The host test
 (`tests/dryprb_probe.c`) checks the logic. Probe ZDLs go in the loader folder only for a test
 round; remove them afterwards.

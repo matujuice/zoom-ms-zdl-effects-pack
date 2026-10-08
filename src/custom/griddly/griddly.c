@@ -3,8 +3,8 @@
  *
  * Shown on the pedal as GridDly (Luca picked the name 2026-10-07; first built as BarDelay).
  * Scoped with Luca 2026-10-06/07 (/mnt/project-files/ideas/delay-scope.md): six engines,
- * Time as note values like DualShft, Tempo on knob 8 with FOLLW, Tail toggle (decay or no
- * decay when switched off, like the factory delays), no Hold.
+ * Time as note values like DualShft, Tail toggle (decay or no decay when switched off, like
+ * the factory delays), no Hold. The Tempo knob is gone: the tempo is the pedal's (below).
  *
  * SIGNAL
  *   in -> ring (16-bit, 7.9 s) -> read at the delay time -> wet out
@@ -18,7 +18,7 @@
  *   0 DIGI   clean repeats. Tone = low-pass on the loop. Char = slow modulation of the read
  *            point (0.5 Hz, up to 1.5 ms: a slight chorus on the repeats; 0 = none).
  *   1 TAPE   darker loop, wow (0.6 Hz) and flutter (6.5 Hz), mild saturation; a Time or
- *            Tempo change glides the read head over about 0.2 s, so the pitch bends like tape.
+ *            tempo change glides the read head over about 0.2 s, so the pitch bends like tape.
  *            Char = wow and flutter depth (100 = seasick, about +-40 cents of wow).
  *   2 DUB    high-pass and low-pass in the loop (Tone moves both: 100..400 Hz and 0.5..4 kHz),
  *            harder saturation, so the drone above Fdbk 100 is the dirtiest.
@@ -26,8 +26,8 @@
  *            repeats; no make-up gain, so a repeat is never louder than what went in
  *            (Luca 2026-10-08: the first DUB repeat was louder than the played sound).
  *   3 REVRS  each chunk of Time is played backwards: the chunk that ended at a chunk start
- *            plays reversed until the next one. Chunks restart on a Tempo twin flip (or a bar
- *            from the bar tag on FOLLW), so with bar sync they start on the beat. A Time
+ *            plays reversed until the next one. With a synced Time the chunks sit on the MIDI
+ *            clock (see TEMPO AND MIDI TRANSPORT), so they start on the beat. A Time
  *            change moves the clock at once, but the read keeps the running chunk's length
  *            until the next chunk (that chunk plays a little slower or faster, no click). Char = the fade at each chunk's edges, 1 % of
  *            the chunk (choppy) to 25 % (smooth). Reads reach back 2 x Time, so synced times
@@ -48,17 +48,17 @@
  *
  * TIME
  *   Screen 0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms .. 1 s, as DualShft).
- *   101..113 synced to Tempo: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar.
+ *   101..113 synced to the pedal's tempo: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar.
  *   A synced time longer than the ring is halved until it fits (2bar below about 61 BPM;
  *   for REVRS see above). Away from TAPE a Time change crossfades from the old read point
  *   to the new one over 23 ms (no pitch bend, no click).
  *
- * TAIL (knob 9) and switching off
+ * TAIL (knob 8) and switching off
  *   Off, the input always passes untouched. Tail ON: the input stops entering the ring and
  *   the repeats ring out and decay with the feedback, as the factory delays do with Tail on.
  *   Tail OFF: the repeats stop at once; the ring keeps recording the dry input (no feedback),
  *   so switching back on starts echoing what you just played. The beat clock keeps running
- *   and follows twin flips while off. Tail ON needs the pedal to call a switched-off effect,
+ *   and follows the MIDI clock while off. Tail ON needs the pedal to call a switched-off effect,
  *   which the synced effects already rely on for their clocks; it passed on the pedal
  *   (2026-10-07).
  *
@@ -73,7 +73,7 @@
  *   dry meanwhile), so stale arena data is never played. The longest read is 346000 samples
  *   plus the TAPE modulation (under 450 samples).
  *
- * KNOBS (screen values; 9 = the maximum, 3 pages x 3)
+ * KNOBS (screen values; 8, 3 pages; Time carries the tap flag, manifest flags 40)
  *   0 Type   0..5    DIGI TAPE DUB REVRS TAPS LOFI
  *   1 Time   0..113  12ms .. 1.00s, then 1/32 .. 1bar, 2bar (above)
  *   2 Fdbk   0..120  repeats; 100 = 1:1 into the loop, above 100 a drone
@@ -81,18 +81,17 @@
  *   4 Char   0..100  per engine (above); the label is a plain number: a label can't see Type
  *   5 Duck   0..100  how far the repeats dip while you play
  *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50
- *   7 Tempo  0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 is a twin copy
- *                    (BPM = screen - 201). Flipping between a BPM and its twin restarts the
- *                    REVRS chunk without changing the tempo. A plain tempo change does not.
- *                    Read as raw x 100 (gd_tempo_ui), never through the 3.05 guess.
- *   8 Tail   0..1    OFF / ON (above)
+ *   7 Tail   0..1    OFF / ON (above)
+ *   Inside the code u[7] is the pedal's BPM and u[8] Tail.
  *
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
- *   While Mozaic flips this effect's Tempo, it writes a bar tag into the Dry buffer's right
- *   half for the slots after it. With Tempo on 0..39 = FOLLOW (shown FOLLW) it follows a tag
- *   from earlier slots: their BPM (120 until one is heard, kept if the sender goes away),
- *   and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it. It sets the synced Time (held until
+ *   it moves by 0.3 BPM). The beat clock (the REVRS chunk phase) runs on every engine: with a
+ *   synced Time, while the MIDI transport runs, it is placed on the clock count (beats since
+ *   Start / the note's beats), so chunks start on the beat and never drift; a free Time runs
+ *   free. MIDI Start restarts the chunk. After Stop it runs on at
+ *   the last tempo. Switched off it keeps following the clock.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch or if-chains on Type in the audio path, no double / long long,
@@ -101,7 +100,7 @@
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define GD_DO_PRAGMA(x) _Pragma(#x)
@@ -113,11 +112,9 @@
 #define GD_CODE_SECTION(fn)
 #endif
 
-#define GD_MAGIC      0x47444C31u        /* "GDL1": change whenever GdState changes      */
+#define GD_MAGIC      0x47444C32u        /* "GDL2": change whenever GdState changes      */
 #define GD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
 #define GD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
-#define GD_TEMPO_MAX  441.0f
-#define GD_TEMPO_TWIN 201.0f
 #define GD_CLEAR_BLK  2048
 #define GD_TO16       16384.0f
 #define GD_FROM16     6.1035156e-5f      /* 1 / 16384 */
@@ -133,7 +130,6 @@ typedef struct {
     unsigned int magic;
     int   clr;             /* samples of the ring cleared so far              */
     int   wp;              /* next write index; age a = buf[wp - a]           */
-    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     float dCur, dOld;      /* read delay now and before a Time change (samples) */
     float xf;              /* Time crossfade 0..1 (1 = done)                  */
     float ph;              /* chunk phase 0..1 (REVRS chunks, runs on every engine) */
@@ -143,7 +139,7 @@ typedef struct {
     float env, dg;         /* duck follower and duck gain                     */
     float wl;              /* wet level: ramps in on switch-on                */
     float hold, hacc;      /* LOFI sample-hold value and its clock            */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h)      */
+    ZtSync zt;             /* MIDI transport (zmt.h)                          */
     short buf[GD_N];
 } GdState;
 
@@ -151,6 +147,7 @@ typedef struct {
     int   rev, taps, lofi, tape, on;
     float dT;              /* delay time the knobs ask for (samples)          */
     float L;               /* REVRS chunk length = dT                         */
+    float mult;            /* chunks per beat with a synced Time, 0 = free    */
     float inG, fb, cl, ch, drive, dinv;
     float modA, modInc, fltA, fltInc;
     float f1, f2;          /* TAPS fractions of Time                          */
@@ -169,27 +166,6 @@ static inline float gd_ui(float raw, float def_ui, float max_ui)
     ui = (float)(int)(ui + 0.5f);
     if (ui > max_ui) ui = max_ui;
     if (ui < 0.0f) ui = 0.0f;
-    return ui;
-}
-
-GD_ALWAYS_INLINE(gd_tempo_ui)
-static inline float gd_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > GD_TEMPO_MAX) ui = GD_TEMPO_MAX;
-    return ui;
-}
-
-GD_ALWAYS_INLINE(gd_tempo_bpm)
-static inline float gd_tempo_bpm(float ui)
-{
-    if (ui > 240.0f) ui -= GD_TEMPO_TWIN;
-    if (ui < 40.0f) ui = 40.0f;
-    if (ui > 240.0f) ui = 240.0f;
     return ui;
 }
 
@@ -301,12 +277,12 @@ static inline void gd_write(GdState *s, float v)
 GD_ALWAYS_INLINE(gd_init)
 static inline void gd_init(GdState *s)
 {
-    s->clr = 0; s->wp = 0; s->twin = -1;
+    s->clr = 0; s->wp = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->ph = 0.0f; s->L = 0.0f;
     s->lp = 0.0f; s->hs = 0.0f; s->wow = 0.0f; s->flt = 0.25f;
     s->env = 0.0f; s->dg = 1.0f; s->wl = 0.0f; s->hold = 0.0f; s->hacc = 0.0f;
-    dt_sync_init(&s->sync);
+    zt_init(&s->zt);
     s->magic = GD_MAGIC;
 }
 
@@ -326,6 +302,7 @@ GD_ALWAYS_INLINE(gd_prepare)
 static inline void gd_prepare(GdParams *P, const float *u, int on)
 {
     int type = (int)(u[0] + 0.5f), n = (int)(u[1] + 0.5f), z, bits;
+    float nb;
     float eD = (float)(type == 0), eT = (float)(type == 1), eB = (float)(type == 2);
     float eR = (float)(type == 3), eP = (float)(type == 4), eL = (float)(type == 5);
     float d, lim, tone = u[3] * 0.01f, ch = u[4] * 0.01f, m, fbG, lpHz, hpHz, tail;
@@ -335,9 +312,12 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
 
     /* Time */
     lim = P->rev ? GD_MAXD * 0.5f : GD_MAXD;
+    P->mult = 0.0f;
     if (n > 100) {
-        d = gd_note_beats(n - 101) * 2646000.0f * gd_recip(gd_tempo_bpm(u[7]));
-        while (d > lim) d *= 0.5f;
+        nb = gd_note_beats(n - 101);
+        d = nb * 2646000.0f * gd_recip(u[7]);    /* u[7] = BPM from zt_update */
+        while (d > lim) { d *= 0.5f; nb *= 0.5f; }
+        P->mult = gd_recip(nb);                  /* 96 beats hold whole chunks of every note */
     } else {
         d = (float)(int)(12.0f + 0.0988f * (float)(n * n) + 0.5f) * GD_MS;
     }
@@ -544,23 +524,7 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return len;
 }
 
-/* Tempo: FOLLW on 0..39, else the BPM on both copies */
 int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = (int)gd_tempo_bpm((float)(int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
-}
-
-int ZDL_GetLabel_8(unsigned int value, char *out)
 {
     if (value >= 1u) { out[0] = 'O'; out[1] = 'N'; out[2] = 0; return 2; }
     return gd_put4(out, 'O', 'F', 'F', 0, 0);
@@ -580,7 +544,6 @@ GD_CODE_SECTION(GRIDDLY_AUDIO_FUNC)
 void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -590,8 +553,8 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     GdState *s;
     GdParams P;
-    float u[9];
-    int i, tw;
+    float u[9], beats, t;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -617,18 +580,19 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     u[4] = gd_ui(params[GRIDDLY_CHAR_SLOT],  (float)GRIDDLY_CHAR_UI_DEFAULT,  100.0f);
     u[5] = gd_ui(params[GRIDDLY_DUCK_SLOT],  (float)GRIDDLY_DUCK_UI_DEFAULT,  100.0f);
     u[6] = gd_ui(params[GRIDDLY_MIX_SLOT],   (float)GRIDDLY_MIX_UI_DEFAULT,   100.0f);
-    u[7] = gd_tempo_ui(params[GRIDDLY_TEMPO_SLOT], (float)GRIDDLY_TEMPO_UI_DEFAULT);
     u[8] = gd_ui(params[GRIDDLY_TAIL_SLOT],  (float)GRIDDLY_TAIL_UI_DEFAULT,  1.0f);
 
     if (s->magic != GD_MAGIC) gd_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
-    if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
-
+    u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     gd_prepare(&P, u, params[0] >= 0.5f);
-    tw = (u[7] > 240.0f) ? 1 : 0;                /* sync reset, followed while off too */
-    if (s->twin >= 0 && tw != s->twin) gd_restart(s, &P);
-    s->twin = tw;
+    if (start) gd_restart(s, &P);                /* MIDI Start: chunk back to the downbeat */
+    if (run && P.mult > 0.0f) {                  /* synced Time on the clock: chunk phase */
+        t = beats * P.mult;                      /* = beats since Start / the note's beats */
+        t -= (float)(int)t;
+        if (t < s->ph - 0.5f) s->L = P.L;        /* wrapped: new chunk, latch its length */
+        s->ph = t;
+    }
+    if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
     gd_process(s, &P, fxBuf, 8);                 /* mono: left half in place */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R */

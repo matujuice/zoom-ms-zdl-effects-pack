@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 485,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -12,7 +12,7 @@
       "name": "Trig",
       "max": 3,
       "default": 1,
-      "comment": "Trigger: how the FOOT PEDAL (the effect's on/off footswitch) triggers the siren. 0 Hold (sounds while the effect is on, releases when off, echo rings out), 1 Pulse (each OFF -> ON press = one ~0.6 s burst, the ON -> OFF press does nothing), 2 SHold and 3 SPuls = the same two on the beat: the siren starts (and SHold stops) on the next beat of the Tempo knob's clock, which restarts at each twin flip, and the press does not restart the LFO. The footswitch latches, so only on/off is visible, not 'held down'."
+      "comment": "Trigger: how the FOOT PEDAL (the effect's on/off footswitch) triggers the siren. 0 Hold (sounds while the effect is on, releases when off, echo rings out), 1 Pulse (each OFF -> ON press = one ~0.6 s burst, the ON -> OFF press does nothing), 2 SHold and 3 SPuls = the same two on the beat: the siren starts (and SHold stops) on the next beat of the pedal's tempo (on the MIDI clock while the transport runs, restarted by MIDI Start), and the press does not restart the LFO. The footswitch latches, so only on/off is visible, not 'held down'."
     },
     {
       "name": "Mode",
@@ -30,7 +30,8 @@
       "name": "Rate",
       "max": 112,
       "default": 67,
-      "comment": "LFO speed. 0 = Man: the LFO stops and the trigger fires a pitch envelope (Pulse drops, Hold climbs). 1..100 = free speed, 0.15 Hz..15 Hz exponential (default 67 = about 3.4 Hz, the classic two-tone wobble). 101..112 = synced to the Tempo knob: the time of one whole LFO cycle as a note value: 4bar, 2bar, 1bar, 1/2. (dotted), 1/2, 1/4., 1/4, 1/8., 1/8, 1/8T (triplet), 1/16, 1/32. Fast still runs twice as fast as the note value and Slow half as fast, as in the free range."
+      "comment": "LFO speed. 0 = Man: the LFO stops and the trigger fires a pitch envelope (Pulse drops, Hold climbs). 1..100 = free speed, 0.15 Hz..15 Hz exponential (default 67 = about 3.4 Hz, the classic two-tone wobble). 101..112 = synced to the pedal's tempo (locked to the MIDI clock while the transport runs): the time of one whole LFO cycle as a note value: 4bar, 2bar, 1bar, 1/2. (dotted), 1/2, 1/4., 1/4, 1/8., 1/8, 1/8T (triplet), 1/16, 1/32. Fast still runs twice as fast as the note value and Slow half as fast, as in the free range.",
+      "flags": 40
     },
     {
       "name": "Depth",
@@ -48,13 +49,7 @@
       "name": "Time",
       "max": 100,
       "default": 40,
-      "comment": "Echo time, ms = 50 + 0.095*screen^2 (50ms..1.00s), shown on screen. Default 40 = 202 ms, one LFO cycle at the default Rate. Changes glide like tape. Never synced to Tempo."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "Speed in BPM (40 to 240), shown on screen. It sets the LFO speed when Rate is set to a note value (the top of its range, 101..112) and the beat that Trig SHold / SPuls wait for. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the LFO without changing the tempo: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs Mozaic's Send knob on another slot."
+      "comment": "Echo time, ms = 50 + 0.095*screen^2 (50ms..1.00s), shown on screen. Default 40 = 202 ms, one LFO cycle at the default Rate. Changes glide like tape. Never synced to the tempo."
     },
     {
       "name": "Fdbk",

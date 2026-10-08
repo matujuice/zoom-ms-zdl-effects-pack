@@ -35,7 +35,7 @@ static void setup(void)
     desc[0] = (unsigned)(uintptr_t)arena; desc[1] = (unsigned)(uintptr_t)(arena + ARENA_BYTES);
     desc[2] = ARENA_BYTES;
     params[0] = 1.0f;
-    D(TYPE); D(TIME); D(FDBK); D(TONE); D(CHAR); D(DUCK); D(MIX); D(TEMPO); D(TAIL);
+    D(TYPE); D(TIME); D(FDBK); D(TONE); D(CHAR); D(DUCK); D(MIX); D(TAIL);
 }
 
 #define MAXS (44100 * 6)
@@ -76,8 +76,8 @@ int main(void)
     ZDL_GetLabel_1(108, t); CHECK(strcmp(t, "1/8.") == 0, "Time 108 label %s", t);
     ZDL_GetLabel_1(102, t); CHECK(strcmp(t, "1/16T") == 0, "Time 102 label %s", t);
     ZDL_GetLabel_1(113, t); CHECK(strcmp(t, "2bar") == 0, "Time 113 label %s", t);
-    ZDL_GetLabel_8(0, t);   CHECK(strcmp(t, "OFF") == 0, "Tail 0 label %s", t);
-    ZDL_GetLabel_8(1, t);   CHECK(strcmp(t, "ON") == 0, "Tail 1 label %s", t);
+    ZDL_GetLabel_7(0, t);   CHECK(strcmp(t, "OFF") == 0, "Tail 0 label %s", t);
+    ZDL_GetLabel_7(1, t);   CHECK(strcmp(t, "ON") == 0, "Tail 1 label %s", t);
 
     /* DIGI click: free 70 = 496 ms = 21873.6 samples; Mix 100 = wet only */
     setup(); SET(MIX, 100); SET(TIME, 70); SET(CHAR, 0); SET(FDBK, 50); SET(TONE, 100); settle();
@@ -207,7 +207,7 @@ int main(void)
      * backward read must stay inside the 348000-sample ring (it read up to 352800 before) */
     {
         GdState *st;
-        setup(); SET(TYPE, 0); SET(TIME, 113); SET(TEMPO, 120); settle();
+        setup(); SET(TYPE, 0); SET(TIME, 113); settle();   /* no transport block: 120 BPM */
         run(44100 * 2, 2, 0.3f);
         SET(TYPE, 3); run(8, 2, 0.3f);
         st = (GdState *)(((uintptr_t)arena + 3u) & ~(uintptr_t)3u);

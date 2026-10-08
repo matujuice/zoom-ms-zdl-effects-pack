@@ -1,10 +1,10 @@
 {
   "effect_name": "Scrub",
-  "comment": "Scrub - records the last 7.9 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 6 s, 10 ms per step, 0 = 6 s ago, 600 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop, or a note value synced to Tempo); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV, PING (ping-pong) or RAND (random direction) grains; Spray = random offset per grain (+- ms), a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade; Tempo = BPM for the synced Grain values.",
+  "comment": "Scrub - records the last 7.9 seconds and lets you move through them with a knob; where you stop, a grain of sound keeps looping (a freeze). Pos = where the read head is in the last 6 s, 10 ms per step, 0 = 6 s ago, 600 = now; turning it slides through the audio at the original pitch, stopping freezes the grain there. Grain = length of the looping grain (10 ms buzz to 1 s loop, or a note value synced to the pedal's tempo: MIDI clock, tap or patch TEMPO; tap button on Grain); Rec = LIVE (keeps recording: a delay you can sweep), HOLD (stops recording: scrub and freeze the last 6 s), STOMP (records while the effect is off, freezes when you switch it on; untested); Glide = how slowly the head follows Pos; Dir = FWD, REV, PING (ping-pong) or RAND (random direction) grains; Spray = random offset per grain (+- ms), a cloud instead of a loop; Mix is a DJ-style dry/wet crossfade. No Tempo knob: a synced Grain follows the pedal's tempo and, while MIDI transport runs, locks to the clock; MIDI Start starts a new grain on the downbeat.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 490,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -18,7 +18,8 @@
       "name": "Grain",
       "max": 112,
       "default": 50,
-      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the Tempo knob, shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time. Long grains pull the head in so they still fit in the buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
+      "flags": 40,
+      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the pedal's tempo (MIDI clock, tap or patch TEMPO; 120 BPM on stock firmware), shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time; while MIDI transport runs the loop locks to the clock and MIDI Start restarts it on the downbeat. Long grains pull the head in so they still fit in the buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
     },
     {
       "name": "Rec",
@@ -49,12 +50,6 @@
       "max": 100,
       "default": 50,
       "comment": "Dry/wet crossfade, DJ style: dry full from 0 to 50, wet full from 50 to 100, both full at 50. Default 50: you play over the frozen sound."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "Speed in BPM (40 to 240), shown on screen. Only used when Grain is set to a note value (the top of its range, 101..112). The pedal gives custom effects no clock, so dial in the song's tempo. Flipping to the twin copy of the same BPM (120 <-> 321) starts a new grain at once without changing the tempo: a host can send that on each downbeat to keep a synced freeze on the bar. A plain tempo change does not. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs Mozaic's Send knob on another slot."
     }
   ],
   "audio_func_name": "Fx_DLY_Scrub",

@@ -1,5 +1,5 @@
 /* Choral (rewrite 2026-10-07): pitch tracking, level, consistency across sources, clicks,
- * bar-aware sync, switch-on, silence, labels. Runs the real pedal entry on host signals.
+ * Pace on the MIDI clock, switch-on, silence, labels. Runs the real pedal entry on host signals.
  * Not a listening test: it can't say whether the choir sounds good. */
 #include <stdio.h>
 #include <string.h>
@@ -27,7 +27,7 @@ static void setup(void){
 static void knobs(int choir,int size,int chord,int sing,int pace,int feel,int glide,int tempo,int mix){
   params[FORMANT_CHOIR_SLOT]=choir/100.f; params[FORMANT_SIZE_SLOT]=size/100.f; params[FORMANT_CHORD_SLOT]=chord/100.f;
   params[FORMANT_SING_SLOT]=sing/100.f; params[FORMANT_PACE_SLOT]=pace/100.f; params[FORMANT_FEEL_SLOT]=feel/100.f;
-  params[FORMANT_GLIDE_SLOT]=glide/100.f; params[FORMANT_TEMPO_SLOT]=tempo/100.f; params[FORMANT_MIX_SLOT]=mix/100.f; }
+  params[FORMANT_GLIDE_SLOT]=glide/100.f; (void)tempo; params[FORMANT_MIX_SLOT]=mix/100.f; }   /* tempo: the pedal's, 120 on the host */
 static void defaults(void){ knobs(4,2,0,6,4,40,20,120,70); }
 
 #define NMAX (SR*4)
@@ -182,18 +182,21 @@ int main(void){
     double tail = rms(out, SR+SR/2, SR/2);
     printf("silence after a note: choir rms %.2g (%.0f dB)\n", tail, db(tail)); CHECK(tail < 1e-4, "choir keeps sounding in silence"); }
 
-  /* 6. clicks: largest step between output samples vs a steady note, with Pace 2bar and a
-   *    Tempo flip every bar (bar-aware: the cycle must go 0, 0.5, 0, 0.5 ...) */
-  { setup(); knobs(4,2,0,6,2,40,20,120,100); fconst=220; double worst_ph=0; int flips=0;
+  /* 6. Pace 2bar on a running MIDI clock at 120 (zmt.h host block): the cycle is 0, 0.5, 0,
+   *    0.5 ... on the bars, no vowel jump at a bar, and VOWL steps exactly once per cycle
+   *    (no extra step from the clock lock) */
+  { setup(); knobs(4,2,0,6,2,40,20,120,100); fconst=220; double worst_ph=0; int steps=0, vw=0;
     int bar = (int)(4*60.0*SR/120/8);  /* blocks per bar at 120 */
+    zt_host[0]=ZT_MAGIC; zt_host[2]=1u; zt_host[3]++; zt_host[5]=12000u;
     ph1=0; double maxd=0, maxd_ref=0;
     for (int b=0;b<bar*9;b++){
-      if (b>0 && b%bar==0){ params[FORMANT_TEMPO_SLOT] = ((b/bar)&1) ? 3.21f : 1.20f; flips++; }
+      zt_host[1]+=2u; zt_host[4]=(unsigned)(b*8/918.75)+1u;   /* 918.75 samples per clock at 120 */
       for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
-      float before = st->wsm; Fx_DLY_Formant(ctx);
-      double dw=fabs(st->wsm-before); if (b%bar==0 && b>bar) { double want = (((b/bar)-1)&1) ? 0.5 : 0.0; double e=fabs(st->lfo_ph-want); if (e>0.5) e=1-e; if (e>worst_ph) worst_ph=e; if (dw>maxd) maxd=dw; } else if (b>0 && dw>maxd_ref) maxd_ref=dw; }
-    printf("bar flips, Pace 2bar: cycle off the bar by at most %.4f, vowel step at a flip %.4f (elsewhere %.4f)\n", worst_ph, maxd, maxd_ref);
-    CHECK(worst_ph < 0.01 && maxd <= maxd_ref*1.5+1e-4, "bar-aware restart"); }
+      float before = st->wsm; vw = st->vw; Fx_DLY_Formant(ctx); if (b>0 && st->vw!=vw) steps++;
+      double dw=fabs(st->wsm-before); if (b%bar==0 && b>bar) { double want = ((b/bar)&1) ? 0.5 : 0.0; double e=fabs(st->lfo_ph-want); if (e>0.5) e=1-e; if (e>worst_ph) worst_ph=e; if (dw>maxd) maxd=dw; } else if (b>0 && dw>maxd_ref) maxd_ref=dw; }
+    zt_host[0]=0u;
+    printf("MIDI clock, Pace 2bar: cycle off the bar by at most %.4f, vowel step at a bar %.4f (elsewhere %.4f), %d cycle steps in 9 bars\n", worst_ph, maxd, maxd_ref, steps);
+    CHECK(worst_ph < 0.01 && maxd <= maxd_ref*1.5+1e-4 && steps==4, "Pace on the clock"); }
 
   /* 6b. Chord: every singer on its interval (Choir MEN, SEXT, 110 Hz): singer pitch read from
    *     its phase step per block, to the nearest semitone (detune and vibrato are < 50 cents) */

@@ -15,7 +15,7 @@ static void knobs(float *k, int dly, int bpm)
 {
     k[0] = 33.0f / 66.0f; k[1] = 33.0f / 66.0f;
     k[2] = (float)dly / 112.0f; k[3] = (float)dly / 112.0f;
-    k[4] = (float)bpm / 441.0f; k[5] = 0.5f; k[6] = 0.0f; k[7] = 0.0f; k[8] = 1.0f;
+    k[4] = (float)bpm; k[5] = 0.5f; k[6] = 0.0f; k[7] = 0.0f; k[8] = 1.0f;
 }
 
 /* impulse response: sample index of the loudest output after the impulse */

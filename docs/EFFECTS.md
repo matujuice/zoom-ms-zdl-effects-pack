@@ -2,9 +2,7 @@
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo knobs hold every BPM twice.** On every effect with a Tempo knob (DualShft, Choral, EuGate, DubSiren, Scrub, GridDly, SyncEQ, Breather, Sweep) it runs 40..240 BPM and then, past 240, shows 40..240 again (a twin copy). Both copies play the same tempo. Jumping from a BPM to its twin (120 to the second 120) restarts the LFO, pattern or grain right away without changing the tempo. That is meant for a MIDI host (an iPhone script or a small box) that sends this one knob edit on every downbeat to keep the effect on the bar. By hand, just stay on one copy. Tempo is the 8th knob on all of them, so the host sends the same knob number whatever the effect. While one of these effects is switched off its LFO or pattern keeps running in the background, so it comes back in time (DubSiren needs Trig SHold or SPuls for that, EuGate Reset OFF, NOTE or SYNC).
-
-**Bar sync for slots 4 to 6 (tested on the MS-60B, not in a release yet).** Mozaic can only edit the first three slots. A tempo effect there that Mozaic flips (or SyncEQ) passes each bar on, unheard, to the effects after it. A tempo effect with Tempo all the way down on **FOLLW** follows it: the same bars and BPM (120 until something upstream sends; if the sender goes away it keeps the last BPM). On a BPM it ignores it and runs on its own, so you can mix synced and free effects. Point Mozaic's Send knob at the one effect that sends and put the other synced effects on FOLLW (in slots 1 to 3 too). Effects without a Tempo knob let it through.
+**Tempo comes from the pedal (on `main`, not in a release yet).** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they play at 120 BPM. Release v1.5 has the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
@@ -23,11 +21,10 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Knob | Range | What it does |
 |---|---|---|
 | Ptch1 / Ptch2 | -24..+24 semitones | Pitch of each voice, with tenths of a semitone around 0. |
-| Dly1 / Dly2 | 12 ms..1 s, note values | Echo time of each voice. The top of the knob syncs to Tempo as note values (1/32 .. 1 bar). A synced time too long for the 3.9 s buffer is halved (1 bar below about 62 BPM). |
+| Dly1 / Dly2 | 12 ms..1 s, note values | Echo time of each voice. The top of the knob syncs to the pedal's tempo as note values (1/32 .. 1 bar). A synced time too long for the 3.9 s buffer is halved (1 bar below about 62 BPM). |
 | Div | 4 bars .. 1/64 | Length of one LFO cycle (dotted and triplet values included). |
 | Depth | 0..12 semitones | How far the LFO bends the pitch. 0 = no LFO. |
 | Shape | Tri, Sqr, Rand, Step, Sine, Rise, Fall | LFO shape. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo for the LFO. Changing it only changes the LFO speed; the second copy of the same BPM restarts the LFO (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: choir
@@ -42,7 +39,6 @@ Listens to the note your synth plays and sings it with its own choir, so every s
 | Pace | 4bar .. 1/64 | Length of one cycle of the movement. |
 | Feel | 0..100 | 0 = soft and legato (slow attack, wide vibrato, breathy, dark) .. 100 = punchy and staccato (fast attack and release, bright, OOAH snaps). |
 | Glide | 0..100 | 0 = every note starts fresh, even when you play legato (best for fast arps). 1..100 = legato: the voice keeps singing and slides to the new note, ~3 ms .. ~0.6 s. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo for Pace. Changing it only changes the speed; the second copy of the same BPM marks a downbeat (see above), and the movement lands where it should be after that many bars, so a 2-bar or dotted Pace is never cut. |
 | Mix | 0..100 | Dry synth / choir crossfade, DJ style: the dry sound stays full up to 50, the choir is full from 50, so at 50 both play at full level. |
 
 ### EuGate: Euclidean rhythm gate
@@ -54,10 +50,9 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 | Steps | 1..64 | Pattern length. Anything other than 16, 32 or 64 runs against the bar: polymeters. |
 | Shift | 0..63 | Starts the pattern later by this many steps. |
 | Swing | 0..100 | Delays only the weak 16ths. |
-| Reset | OFF, NOTE, PEDAL, SYNC | What restarts the pattern: nothing, every new note after silence, or turning the effect on. SYNC is the setting for bar sync from a host: the same as OFF, only the host's restarts count. |
+| Reset | OFF, NOTE, PEDAL | What else restarts the pattern (MIDI Start always does): nothing, every new note after silence, or turning the effect on. |
 | Gap | 0..50 % of a step | Small silence at the end of a note that is followed by another note. |
 | Soft | 0..100 | Softness of the note edges. 0 = hard chop. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pattern at step 1 (see above). |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. The gaps are silent in the wet sound. |
 
 Try 5 notes in 16 steps (the default), then 7 in 12 or 5 in 12 for a different feel.
@@ -67,14 +62,13 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 
 | Knob | Range | What it does |
 |---|---|---|
-| Trig | Hold / Pulse / SHold / SPuls | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. SHold and SPuls do the same on the beat: the siren waits for the next beat of the Tempo clock (re-aligned by each twin flip from a host) and the siren tones stay in step with the bar. |
+| Trig | Hold / Pulse / SHold / SPuls | Hold = sounds while the effect is on. Pulse = one short burst each time you turn it on. SHold and SPuls do the same on the beat: the siren waits for the next beat of the pedal's tempo (on the MIDI clock's beats while it runs) and the siren tones stay in step with the bar. |
 | Mode | Wail, Fast, Slow, Laser | LFO shape. Fast is twice the Rate, Slow is half. |
 | Pitch | 110 Hz..1760 Hz | Base pitch. |
-| Rate | Man, 0.15..15 Hz, note values | LFO speed. The top of the knob syncs to Tempo as note values (4 bars .. 1/32). |
+| Rate | Man, 0.15..15 Hz, note values | LFO speed. The top of the knob syncs to the pedal's tempo as note values (4 bars .. 1/32). |
 | Depth | 0..100 | How far the LFO sweeps the pitch. |
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
-| Tempo | FOLLW, 40..240 BPM, twice | Used when Rate is set to a note value and by SHold / SPuls. Jumping to the second copy of the same BPM restarts the LFO (see above). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
 
 ### S.GN_L: broken digital line
@@ -100,51 +94,32 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Knob | Range | What it does |
 |---|---|---|
 | Pos | 6.00 s..0 ms back | Where the head is in the last 6 seconds, in 10 ms steps (600 steps). The screen shows how far back it is; 0ms is the present (in HOLD, the moment you froze). |
-| Grain | 10 ms..1 s, then 1/64..1/2 | Length of the loop. Short = a buzzing tone made of the sound, long = a whole hit or chord repeating. Past 1 s come note values synced to Tempo (1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2), so the freeze loops in time with the song. Long grains pull the head in so the whole grain still fits in the buffer: a synced grain over about 1 s, or with Dir REV, PING or RAND in LIVE any grain over about 0.6 s (a backward grain in LIVE reads further back, because the recording moves on under it). A synced grain too long to fit even at 0ms (1/2 below about 55 BPM, backward in LIVE) is shortened. |
+| Grain | 10 ms..1 s, then 1/64..1/2 | Length of the loop. Short = a buzzing tone made of the sound, long = a whole hit or chord repeating. Past 1 s come note values synced to the pedal's tempo (1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2), so the freeze loops in time with the song. Long grains pull the head in so the whole grain still fits in the buffer: a synced grain over about 1 s, or with Dir REV, PING or RAND in LIVE any grain over about 0.6 s (a backward grain in LIVE reads further back, because the recording moves on under it). A synced grain too long to fit even at 0ms (1/2 below about 55 BPM, backward in LIVE) is shortened. |
 | Rec | LIVE, HOLD, STOMP | LIVE keeps recording, so Pos is how far back you listen: a delay you can sweep. HOLD stops recording and Pos scrubs the last 6 of the 7.9 seconds kept. STOMP records while the effect is switched off and freezes the moment you switch it on (needs the pedal to pass the sound through a switched-off effect; if ON gives silence, use LIVE and HOLD). |
 | Glide | 0..100 | How slowly the head follows Pos. 0 = it jumps, 40 = about 0.1 s, 100 = about 3 s, a slow glide. It also hides the knob's steps. |
 | Dir | FWD, REV, PING, RAND | Which way the grain plays: forward, backward, ping-pong (forward then backward in turns) or random (each grain flips a coin). PING turns round on itself, so the loop has no jump and sounds smoother and more tonal. |
 | Spray | OFF, +-1..+-250 | Random offset for each new grain, either side of the head, shown in ms (+-250 = up to 250 ms before or after; never ahead of now): a moving cloud instead of a steady loop. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
-| Tempo | FOLLW, 40..240 BPM, twice | Only for the synced Grain values. The pedal gives custom effects no clock, so dial in your song's tempo, as on DubSiren. Jumping to the second copy of the same BPM starts a new grain at once (see above). |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
 ### GridDly: one tempo-synced delay, six engines
 New, not in a release yet: built and tested on the MS-60B (2026-10-07).
 
-One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at Tempo), and Char changes what it means with each engine.
+One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at the pedal's tempo), and Char changes what it means with each engine.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Type | DIGI, TAPE, DUB, REVRS, TAPS, LOFI | DIGI: clean repeats. TAPE: wobbly, darker, slightly saturated, and a Time or Tempo change glides the pitch like tape. DUB: band-limited, saturated repeats, the dirtiest drone above Fdbk 100. REVRS: each chunk of Time plays backwards; chunks start on the bar with bar sync. TAPS: three echoes inside Time, each quieter. LOFI: every repeat loses bits and sample rate, so it crumbles more each time. |
-| Time | 12 ms..1.00 s, then 1/32..1bar, 2bar | Free time on the first 100 steps (as DualShft), then note values at Tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. A time too long for the memory is halved (2bar below about 61 BPM; REVRS needs twice the time, so 1bar below about 61 BPM). Away from TAPE, a Time change crossfades with no pitch bend. |
+| Type | DIGI, TAPE, DUB, REVRS, TAPS, LOFI | DIGI: clean repeats. TAPE: wobbly, darker, slightly saturated, and a Time or tempo change glides the pitch like tape. DUB: band-limited, saturated repeats, the dirtiest drone above Fdbk 100. REVRS: each chunk of Time plays backwards; with a note-value Time, chunks follow the MIDI clock's grid. TAPS: three echoes inside Time, each quieter. LOFI: every repeat loses bits and sample rate, so it crumbles more each time. |
+| Time | 12 ms..1.00 s, then 1/32..1bar, 2bar | Free time on the first 100 steps (as DualShft), then note values at the pedal's tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. A time too long for the memory is halved (2bar below about 61 BPM; REVRS needs twice the time, so 1bar below about 61 BPM). Away from TAPE, a Time change crossfades with no pitch bend. |
 | Fdbk | 0..120 | How many repeats. 100 = 1:1 into the loop: the repeats only fade by what the engine's filters take (DUB fastest). Above 100 they grow into a drone, DUB too at any Tone. |
 | Tone | 0..100 | Dark to bright repeats. On DUB it moves the whole band up (thin and nasal at 100). |
 | Char | 0..100 | DIGI: slight chorus on the repeats. TAPE: wow and flutter depth. DUB: drive. REVRS: the fade at each chunk's edges, choppy at 0, smooth at 100. TAPS: the pattern (0..24: 1/4, 1/2, 1 of Time; 25..49: 3/8, 3/4, 1; 50..74: 1/3, 2/3, 1; 75..100: 1/2, 3/4, 1). LOFI: crush, from 12 bits to 4 bits and 1/8 of the sample rate. |
 | Duck | 0..100 | The repeats dip while you play and swell back in the gaps. 0 = off. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
-| Tempo | FOLLW, 40..240 BPM, twice | BPM for the synced Time values. Jumping to the second copy of the same BPM restarts the REVRS chunk on the bar (used by the iPhone bar sync). |
 | Tail | OFF, ON | When you switch the effect off: ON lets the repeats ring out and fade, like the stock delays; OFF stops them at once. The dry sound passes untouched either way. |
 
-Try: DUB at 1/8., Fdbk 85, Char 60, then sweep Tone for dub throws on a snare. REVRS at 1bar with bar sync on a pad. TAPS with Char 50 on hats for a triplet trail.
-
-### SyncEQ: EQ that passes the bar sync on
-New, not in a release yet: built and tested on the MS-60B (2026-10-07).
-
-The iPhone bar sync (docs/IPHONE-SYNC.md) can only reach slots 1 to 3. SyncEQ, placed in one of those slots with Mozaic's Send knob pointing at it, marks every bar in a part of the pedal's signal path that the output ignores, so the synced effects after it on FOLLW, even in slots 4 to 6, stay on the bar. Any tempo effect of the pack in slots 1 to 3 sends the same mark, so SyncEQ is only needed when none sits there. Like the tempo effects, it sends only while Mozaic is flipping its Tempo. Switched off, the sound passes untouched and the bar still goes through. The sound side is a clean EQ: with every knob at its default nothing changes.
-
-| Knob | Range | What it does |
-|---|---|---|
-| LoCut | OFF, 20..500 Hz | High-pass filter, 12 dB per octave. |
-| Low | -12..+12 dB | Bass shelf at 100 Hz. |
-| Mid | -12..+12 dB | Bell at MidF. |
-| MidF | 200..5.0k Hz | Frequency of the Mid bell. |
-| High | -12..+12 dB | Treble shelf at 8 kHz. |
-| HiCut | 1.0k..20k Hz, OFF | Low-pass filter, 12 dB per octave. |
-| Drive | 0..100 | Soft saturation after the EQ. 0 = clean; the output is turned down as Drive goes up. |
-| Tempo | 40..240 BPM, twice | The BPM passed on with each bar. Mozaic flips it between a BPM and its twin copy on each downbeat; each flip marks a new bar. |
-| Level | -12..+12 dB | Output level. |
+Try: DUB at 1/8., Fdbk 85, Char 60, then sweep Tone for dub throws on a snare. REVRS at 1bar on a pad with a MIDI clock running. TAPS with Char 50 on hats for a triplet trail.
 
 ### Breather: tempo-synced pump with a reverb
 New, not in a release yet: built and tested on the MS-60B (2026-10-07).
@@ -160,10 +135,9 @@ On every beat (or every Div) something moves: your sound, the built-in reverb, b
 | Shift | 0..100 % of a beat | Moves the whole pump later: +1/16 at 25, +1/8 (the offbeat) at 50, +3/16 at 75, +1/4 at 100. Small values nudge it onto the body of the kick. At 50 the sound is loudest on the kick and dips in between. |
 | Curve | 0..100 | How long each move lasts, 5 % to 100 % of the Div: the recovery for DUCK, how long GATE stays cut, how long RISE grows. |
 | Verb | 0..100 | Reverb level. 0 = no reverb, a pure pump. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo. Jumping to the second copy of the same BPM restarts the pump on beat 1. FOLLW (the bottom of the knob) follows the bar sync sent by an effect in an earlier slot: its BPM (120 until one is heard, the last one kept if the sender goes away) and its bars, each restarting the pump on beat 1. On a BPM it ignores that and runs on its own. In slots 1-3, FOLLW needs that slot's Mozaic pad off. |
 | Size | 0..100 | Reverb length, from a short room to a long wash. Bigger is also darker. |
 
-No Mix knob: Depth and Verb already set how much you hear. Out of the box it is a sidechain pump on your sound and the reverb together (BOTH + DUCK, Depth 80, 1/4, Verb 35). Switched off, the input passes untouched but the beat clock keeps running, so the pump comes back on the bar. Switching it on restarts it on the one, unless the iPhone bar sync has sent a restart in the last 8 seconds.
+No Mix knob: Depth and Verb already set how much you hear. Out of the box it is a sidechain pump on your sound and the reverb together (BOTH + DUCK, Depth 80, 1/4, Verb 35). Switched off, the input passes untouched but the beat clock keeps following the MIDI clock, so the pump comes back on the bar. Switching it on restarts it on the one, unless a MIDI clock is running (then it stays on the clock).
 
 Try: DRY + DUCK on a pad (the classic pump); DRY + GATE (hard pump: silent on the kick, back after Curve); VERB + RISE (the reverb swells into every kick); SEND + GATE (the hits stay dry, the gaps wash out); DRY + GATE with Shift 50 and Curve 50 (open on the beat, cut on the offbeat: a chop).
 
@@ -208,13 +182,12 @@ One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for sy
 | Knob | Range | What it does |
 |---|---|---|
 | Type | PH 4, PH 8, FL +, FL -, LP, BP, HP, NTCH | The engine. PH 4 / PH 8: phaser with 4 or 8 all-pass stages (2 or 4 notches). FL +: flanger. FL -: flanger with negative feedback, hollow and metallic. LP / BP / HP / NTCH: resonant low-pass, band-pass, high-pass, notch. |
-| Rate | 0.05..8 Hz, then 8BAR, 7BAR .. 2BAR, 1.5B, 1BAR, 3/4, 1/2, 1/4, 1/8, 1/16, 1/32 | The knob goes faster all the way up. Free speed in Hz on the lower part; at the top, one full sweep (up and down) lasts a number of bars or a note value at the Tempo BPM, slowest (8 bars) first, fastest (1/32 note) last. |
+| Rate | 0.05..8 Hz, then 8BAR, 7BAR .. 2BAR, 1.5B, 1BAR, 3/4, 1/2, 1/4, 1/8, 1/16, 1/32 | The knob goes faster all the way up. Free speed in Hz on the lower part; at the top, one full sweep (up and down) lasts a number of bars or a note value at the pedal's tempo, slowest (8 bars) first, fastest (1/32 note) last. |
 | Depth | 0..100 | How far the sweep goes each way around Cntr. 0 = parked, 100 = 2.5 octaves each way. |
 | Cntr | 0..100 | Where it sweeps around. Phaser notch and filter cutoff 80 Hz to 10 kHz; flanger delay 8 ms down to 0.3 ms. Higher is brighter for all three. |
 | Reso | 0..100 | Feedback (phaser, flanger; the sign comes from Type) or filter resonance. |
 | Shape | TRI, SINE, RISE, FALL, SQR, RAND | LFO shape. TRI and SINE start at the centre and rise. RAND glides to a new random height twice per sweep. |
 | Tone | 0..100 | Phaser and flanger: how bright the feedback is. Filters: drive into the filter, with the level kept about the same. |
-| Tempo | FOLLW, 40..240 BPM, twice | Tempo. A jump to the second copy of the same BPM is a bar: a synced Rate lands where the sweep would be after that bar (a 4 bar sweep is not restarted every bar), a free Rate restarts at the centre. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. The phaser and flanger sound already contains the dry (that is where the notches come from), so 100 is the whole effect. |
 
 Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.

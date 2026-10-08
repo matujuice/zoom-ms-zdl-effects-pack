@@ -1,10 +1,10 @@
 {
   "effect_name": "Breather",
-  "comment": "Breather - tempo-synced pump with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (cut on the beat, then opens) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Tempo is the BPM (twin copies for bar sync); Size = reverb length.",
+  "comment": "Breather - tempo-synced pump (the pedal's tempo: MIDI clock, tap or patch TEMPO) with a small built-in reverb, for synths, percussion and drum machines. Targt = what moves on the beat: DRY (your sound), VERB (only the reverb), BOTH, or SEND (what goes into the reverb, so the tail rings freely); Shape = how it moves: DUCK (drops on the beat and comes back), GATE (cut on the beat, then opens) or RISE (grows into the next beat and drops on it); Depth = how far it moves; Div = how often (1/16 to a bar); Shift = later by up to a beat (50 = the offbeat); Curve = how long each move lasts; Verb = reverb level (0 = pure pump); Size = reverb length.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 493,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -30,7 +30,8 @@
       "name": "Div",
       "max": 4,
       "default": 2,
-      "comment": "How often the pump fires: 1/16, 1/8, 1/4, 1/2 or BAR. Default 1/4 (every beat)."
+      "flags": 40,
+      "comment": "How often the pump fires: 1/16, 1/8, 1/4, 1/2 or BAR. Default 1/4 (every beat). Carries the tap flag (flags 40) so the pedal shows its tap button; the tempo is the pedal's (MIDI clock, tap or patch TEMPO), and MIDI Start restarts the pump on beat 1."
     },
     {
       "name": "Shift",
@@ -49,12 +50,6 @@
       "max": 100,
       "default": 35,
       "comment": "Reverb level. 0 = no reverb (a pure pump). Default 35."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 160,
-      "comment": "Speed in BPM (40 to 240), shown on screen. Flipping to the twin copy of the same BPM (160 <-> 361) restarts the pump on beat 1 without changing the tempo: the iPhone bar-sync script sends that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 160. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs that slot's Mozaic pad off."
     },
     {
       "name": "Size",

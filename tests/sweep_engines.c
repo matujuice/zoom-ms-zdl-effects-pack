@@ -1,5 +1,6 @@
 /* Sweep: what each engine does to a sine at set frequencies (Depth 0 = parked), Mix, level,
- * stability at the extremes with noise, and that a sweep really moves. Host test only. */
+ * stability at the extremes with noise, that a sweep really moves, the labels, the synced Rate
+ * speeds, and the clock lock of 5 and 7 bar sweeps past zmt's 96-beat wrap. Host test only. */
 #include "sweep_common.h"
 
 static float gain_at(float hz, float amp)
@@ -128,6 +129,57 @@ int main(void)
         }
         printf("LP swept past a 1 kHz tone: gain %.2f .. %.2f\n", lo, hi);
         CHECK(hi > 0.8f && lo < 0.3f, "the sweep does not move (%.2f .. %.2f)", lo, hi);
+    }
+
+    /* labels */
+    {
+        char b[8]; int i;
+        unsigned rv[16] = {0, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 114, 115};
+        const char *rw[16] = {".05Hz", "8.0Hz", "8BAR", "7BAR", "6BAR", "5BAR", "4BAR", "3BAR", "2BAR", "1.5B", "1BAR", "3/4", "1/2", "1/4", "1/16", "1/32"};
+        const char *yw[8] = {"PH 4", "PH 8", "FL +", "FL -", "LP", "BP", "HP", "NTCH"};
+        const char *sw[6] = {"TRI", "SINE", "RISE", "FALL", "SQR", "RAND"};
+        for (i = 0; i < 16; i++) { ZDL_GetLabel_1(rv[i], b); CHECK(strcmp(b, rw[i]) == 0, "rate label %u: %s want %s", rv[i], b, rw[i]); }
+        for (i = 0; i < 8; i++) { ZDL_GetLabel_0((unsigned)i, b); CHECK(strcmp(b, yw[i]) == 0, "type label %d: %s want %s", i, b, yw[i]); }
+        for (i = 0; i < 6; i++) { ZDL_GetLabel_5((unsigned)i, b); CHECK(strcmp(b, sw[i]) == 0, "shape label %d: %s want %s", i, b, sw[i]); }
+        for (i = 0; i <= 115; i++) { ZDL_GetLabel_1((unsigned)i, b); CHECK(strlen(b) <= 5 && b[0], "rate label %d: '%s'", i, b); }
+    }
+
+    /* synced Rates (120 BPM without the transport block) go faster with every step up */
+    {
+        float prev = 0.0f, d, a; int r, i;
+        for (r = 101; r <= 115; r++) {
+            setup(); SET(RATE, r);
+            for (i = 0; i < 50; i++) Fx_DLY_Sweep(ctx);
+            a = st->ph; Fx_DLY_Sweep(ctx); d = st->ph - a; if (d < 0.0f) d += 1.0f;
+            CHECK(d > prev, "Rate %d is not faster than %d (%g <= %g)", r, r - 1, d, prev);
+            prev = d;
+        }
+        printf("1/32 sweeps %.1f Hz at 120 BPM\n", prev * 44100.0f / 8.0f);
+        CHECK(prev * 44100.0f / 8.0f > 15.9f && prev * 44100.0f / 8.0f < 16.1f, "1/32 at 120 BPM is not 16 Hz");
+    }
+
+    /* 5 and 7 bar sweeps stay on the clock count past 96 beats (2304 clocks), which is not
+     * a whole number of them; a free Rate restarts on MIDI Start */
+    {
+        unsigned int len[2] = {160u, 224u}, rate[2] = {104u, 102u}, c = 2304u * 3u + 5u;
+        int i; double want, got;
+        for (i = 0; i < 2; i++) {
+            setup(); SET(RATE, rate[i]);
+            zt_host[0] = ZT_MAGIC; zt_host[1] = 0u; zt_host[2] = 1u; zt_host[3] = 7u; zt_host[4] = c; zt_host[5] = 12000u;
+            Fx_DLY_Sweep(ctx);
+            want = (double)((c - 1u) % (3u * len[i])) / (3.0 * len[i]);
+            got = st->ph - 120.0 * SW_INC_PER_BPM * 8.0 * 32.0 / len[i];   /* minus one block's advance */
+            printf("%u bar sweep at clock %u: phase %.5f (want %.5f)\n", len[i] / 32u, c, got, want);
+            CHECK(fabs(got - want) < 1e-4, "%u bar sweep off the clock: %.5f want %.5f", len[i] / 32u, got, want);
+        }
+        setup(); SET(RATE, 60);
+        zt_host[2] = 0u;
+        for (i = 0; i < 3000; i++) Fx_DLY_Sweep(ctx);
+        CHECK(st->ph > 0.01f, "free rate did not move");
+        zt_host[1] += 2u; zt_host[2] = 1u; zt_host[3]++; zt_host[4] = 0u;
+        Fx_DLY_Sweep(ctx);
+        CHECK(st->ph < 0.001f, "free rate: MIDI Start did not restart the sweep (%.4f)", st->ph);
+        memset(zt_host, 0, sizeof zt_host);
     }
 
     printf("%d failed checks\n", fails);

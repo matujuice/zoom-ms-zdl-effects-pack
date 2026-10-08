@@ -81,9 +81,11 @@
  *                    Read as raw x 100 always (the pedal passes screen / 100, so 4.00 here
  *                    means 400; the 3.05 guess in sc_ui would read it as 4)
  *   1 Grain  0..112  0..100 = grain length, 10 ms .. 1 s (log), shown in ms / s;
- *                    101..112 = a note value at Tempo (Luca, 2026-10-03): 1/64 1/32 1/16T
- *                    1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2, so the freeze loops in time.
- *                    A synced grain can reach 3 s (1/2 at 40 BPM); then the head cannot go
+ *                    101..112 = a note value at the pedal's tempo (Luca, 2026-10-03): 1/64
+ *                    1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2, so the freeze loops
+ *                    in time. Grain carries the tap flag (manifest flags 40) so the pedal
+ *                    shows its tap button.
+ *                    A synced grain can reach 4 s (1/2 at 30 BPM); then the head cannot go
  *                    as far back as Pos asks (it stops where the grain still fits),
  *                    and a backward one in LIVE may be shortened (see MEMORY)
  *   2 Rec    0..2    LIVE / HOLD / STOMP (see REC)
@@ -94,30 +96,25 @@
  *                    (squared curve); shown as "OFF", "+-1" .. "+-250" (ms; 5 characters)
  *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
- *   7 Tempo  40..240 BPM (the pedal's own number; 0..39 = FOLLOW, see BAR TAG); only used when
- *                    Grain is a note value. The pedal gives effects no clock, so it is
- *                    dialled in, as on DubSiren and DualShft.
- *                    Screen 0..441: 241..441 is a twin copy of the same BPMs (BPM =
- *                    screen - 201, so past 240 the screen shows 40 again). SYNC RESET:
- *                    flipping between a BPM and its twin (120 <-> 321) starts a new
- *                    grain at once (crossfaded like any seam) without changing the
- *                    tempo, so a host can send one knob edit on each downbeat to keep
- *                    a synced freeze on the bar. A plain tempo change does not.
+ *
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it. Only a synced Grain uses it. While
+ *   the MIDI transport runs, a synced grain's phase p is placed on the clock count (beats
+ *   since Start / the note value), and a wrap of p starts a new grain as at the end of any
+ *   cycle, so the loop stays on the grid; MIDI Start starts a new grain at once (crossfaded
+ *   like any seam) on the downbeat. After Stop it runs on at the last tempo. Free grains
+ *   ignore the clock. While the effect is switched off the grains do not run (they start
+ *   afresh when it is switched on, then land on the clock). A synced grain shortened to fit
+ *   the buffer (see MEMORY) runs free.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
  * helper forced inline, no calls. 2^x is built from a polynomial and the float exponent.
- *
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
- *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
- *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
- *   (shown FOLLW) it follows a tag from earlier slots: their BPM (120 until one is heard,
- *   kept if the sender goes away), and each new bar restarts it as a twin flip of its own knob would. On any BPM it ignores
- *   the tag and runs on its own. In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SC_DO_PRAGMA(x) _Pragma(#x)
@@ -129,12 +126,10 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435236u        /* "SCR6": change whenever ScState changes */
+#define SC_MAGIC      0x53435237u        /* "SCR7": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
 #define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
-#define SC_TEMPO_MAX  441.0f             /* Tempo screen 0..441: the BPMs twice          */
-#define SC_TEMPO_TWIN 201.0f             /* twin copy = BPM + 201                        */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
 #define SC_TO16       16384.0f
 #define SC_FROM16     6.1035156e-5f      /* 1 / 16384 */
@@ -162,13 +157,13 @@ typedef struct {
     float aC, aO;          /* ages read by the current and the old voice      */
     int   bC, bO;          /* 1 = that voice plays backward                   */
     float fin;             /* wet fade-in 0..1                                */
-    int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h) */
+    ZtSync zt;             /* MIDI transport (zmt.h)                          */
     short buf[SC_N];
 } ScState;
 
 typedef struct {
     float inc;             /* grain phase increment per sample (1 / length)   */
+    float mult;            /* synced grain: cycles per beat; 0 = free (no clock lock) */
     float len;             /* grain length, samples                           */
     float Dt;              /* head distance target, samples                   */
     float Dmax;            /* furthest the head may be so every read fits     */
@@ -304,54 +299,18 @@ static inline float sc_ui_pos(float raw, float def_ui)
     return ui;
 }
 
-/* Tempo knob (screen 0..441): the pedal passes up to 4.41, so read raw x 100 up to 4.415
- * (sc_ui's 3.05 guess would take 4.41 for an on-screen 4). Returns the screen number. */
-SC_ALWAYS_INLINE(sc_tempo_ui)
-static inline float sc_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > SC_TEMPO_MAX) ui = SC_TEMPO_MAX;
-    return ui;
-}
-
-/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy
- * (screen - 201), so both copies give 40..240. */
-SC_ALWAYS_INLINE(sc_tempo_bpm)
-static inline float sc_tempo_bpm(float ui)
-{
-    if (ui > 240.0f) ui -= SC_TEMPO_TWIN;
-    if (ui < 40.0f) ui = 40.0f;
-    if (ui > 240.0f) ui = 240.0f;
-    return ui;
-}
-
-/* Sync reset: 1 when Tempo moved over to the other copy since the last block (the
- * first block after loading only takes note of the copy). */
-SC_ALWAYS_INLINE(sc_twin_flip)
-static inline int sc_twin_flip(ScState *s, float tempo_ui)
-{
-    int tw = (tempo_ui > 240.0f) ? 1 : 0;
-    int flip = (s->twin >= 0 && tw != s->twin);
-    s->twin = tw;
-    return flip;
-}
-
 SC_ALWAYS_INLINE(sc_init)
 static inline void sc_init(ScState *s)
 {
     s->rng = 0x5C2B1A37u;
     s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0;
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
-    s->bC = 0; s->bO = 0; s->twin = -1;
-    dt_sync_init(&s->sync);
+    s->bC = 0; s->bO = 0;
+    zt_init(&s->zt);
     s->magic = SC_MAGIC;
 }
 
-/* u[] = screen values in manifest order */
+/* u[] = screen values in manifest order, u[7] = the pedal's BPM (zt_update) */
 SC_ALWAYS_INLINE(sc_prepare)
 static inline void sc_prepare(ScParams *P, const float *u)
 {
@@ -359,10 +318,12 @@ static inline void sc_prepare(ScParams *P, const float *u)
     int g = (int)(u[1] + 0.5f);
     P->mode = (int)(u[2] + 0.5f);
     P->dir = (int)(u[4] + 0.5f);
-    if (g > 100) {                               /* synced: the grain is a note at Tempo */
-        bpm = sc_tempo_bpm(u[7]);                /* both copies: 40..240 */
+    P->mult = 0.0f;
+    if (g > 100) {                               /* synced: the grain is a note at the BPM */
+        bpm = u[7];                              /* 30..300 from zt_update */
         P->len = sc_note_beats(g - 101) * 2646000.0f * sc_recip(bpm);   /* 60 x 44100 */
         P->inc = sc_recip(P->len);
+        P->mult = sc_recip(sc_note_beats(g - 101));
     } else {
         P->len = sc_grain_len(u[1]);
         P->inc = 0.0022675737f * sc_exp2(-u[1] * 0.06643856f);  /* 1 / len */
@@ -381,7 +342,7 @@ static inline void sc_prepare(ScParams *P, const float *u)
         else { reach = 1.5f; rinv = 0.6666667f; }
     }
     lim = SC_AGE_MAX - 4.0f - P->spray;
-    if (reach * P->len > lim) { P->len = lim * rinv; P->inc = sc_recip(P->len); }
+    if (reach * P->len > lim) { P->len = lim * rinv; P->inc = sc_recip(P->len); P->mult = 0.0f; }
     lim -= reach * P->len;
     if (lim < 0.0f) lim = 0.0f;
     P->Dmax = lim;
@@ -481,7 +442,7 @@ static inline void sc_switched_on(ScState *s, const ScParams *P)
     s->fin = 0.0f;
 }
 
-/* sync reset: start a new grain now, exactly as at the end of a cycle (the old voice
+/* MIDI Start: start a new grain now, exactly as at the end of a cycle (the old voice
  * fades out over the seam), so the loop restarts on the downbeat */
 SC_ALWAYS_INLINE(sc_restart)
 static inline void sc_restart(ScState *s, const ScParams *P)
@@ -489,6 +450,19 @@ static inline void sc_restart(ScState *s, const ScParams *P)
     s->p = 0.0f;
     s->aO = s->aC; s->bO = s->bC;
     s->aC = sc_new_voice(s, P);
+}
+
+/* transport running: a synced grain's phase = frac(beats x cycles per beat) (96 beats hold
+ * whole cycles of every note value); a wrap starts a new voice as at the end of a cycle */
+SC_ALWAYS_INLINE(sc_lock)
+static inline void sc_lock(ScState *s, const ScParams *P, float beats)
+{
+    float t;
+    if (P->mult <= 0.0f) return;                 /* free grain: runs free */
+    t = beats * P->mult;
+    t -= (float)(int)t;
+    if (t < s->p - 0.5f && s->started) { s->aO = s->aC; s->bO = s->bC; s->aC = sc_new_voice(s, P); }
+    s->p = t;
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -533,7 +507,7 @@ static inline int sc_note_text(char *out, int c2, int c3, int c4)
 }
 
 /* knob 1 Grain: screen 0..100 -> "10ms".."1.0s", then 101..112 = note values synced to
- * Tempo: 1/64 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 */
+ * the pedal's tempo: 1/64 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 */
 int ZDL_GetLabel_1(unsigned int value, char *out)
 {
     int n;
@@ -612,18 +586,6 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
     return ms;
 }
 
-/* knob 7 Tempo: screen 0..441 -> the BPM "40" .. "240"; the twin copy 241..441 shows the
- * same numbers again */
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int len;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    len = sc_put_int((int)sc_tempo_bpm((float)(int)value), out);
-    out[len] = 0;
-    return len;
-}
-
 /* ---- pedal entry point ---------------------------------------------------- */
 #ifndef SCRUB_HOST_TEST
 
@@ -639,7 +601,6 @@ SC_CODE_SECTION(SCRUB_AUDIO_FUNC)
 void SCRUB_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -649,8 +610,8 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ScState *s;
     ScParams P;
-    float u[8];
-    int i, flip;
+    float u[8], beats;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -676,22 +637,22 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    3.0f);
     u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
     u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
-    u[7] = sc_tempo_ui(params[SCRUB_TEMPO_SLOT], (float)SCRUB_TEMPO_UI_DEFAULT);
 
     if (s->magic != SC_MAGIC) sc_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
-    if (sc_clearing(s)) return;                  /* first ~12 ms after loading: dry */
-
+    u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     sc_prepare(&P, u);
-    flip = sc_twin_flip(s, u[7]);                /* followed while off too */
+    if (sc_clearing(s)) {                        /* first ~31 ms after loading: dry */
+        if (run) sc_lock(s, &P, beats);          /* but a mid-song load lands on the clock */
+        return;
+    }
     if (params[0] < 0.5f) {                      /* effect switched off */
         s->was_off = 1;
         sc_bypassed(s, P.mode, fxBuf, 8);
         return;
     }
     if (s->was_off) { sc_switched_on(s, &P); s->was_off = 0; }
-    else if (flip && s->started) sc_restart(s, &P);   /* sync reset: new grain now */
+    else if (start && s->started) sc_restart(s, &P);  /* MIDI Start: new grain now */
+    if (run) sc_lock(s, &P, beats);              /* on the clock (synced grain only) */
     sc_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
