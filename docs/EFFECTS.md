@@ -35,10 +35,10 @@ Listens to the note your synth plays and sings it with its own choir, so every s
 
 | Knob | Range | What it does |
 |---|---|---|
-| Choir | MEN, WOMEN, KIDS, GIANT, M+W, M+KID, W+KID, G+M, ALL | Who sings. MEN on your note, WOMEN an octave up, KIDS two up, GIANT one down; each section has its own throat, breath and vibrato. |
+| Choir | MEN, WOMEN, KIDS, GIANT, M+W, M+KID, W+KID, G+M, G+W, G+KID, M+W+K, G+M+W, G+M+K, G+W+K, ALL | Who sings: every combination of the four sections. MEN on your note, WOMEN an octave up, KIDS two up, GIANT one down; each section has its own throat, breath and vibrato. |
 | Size | SOLO, DUO, TRIO, QUART, QUINT, SEXT | How many singers (1..6). A bigger choir is looser in timing and tuning. |
-| Chord | UNIS, OCT | How they sing together: all on the note, or every second singer an octave up. More to come. |
-| Sing | AAH, OOH, OOAH | What they sing. OOAH opens from "oo" to "ah" and back once per Pace cycle. More to come. |
+| Chord | UNIS, MI2 .. MA7, OCT, MAJ, MIN, SUS2, SUS4, DIM, AUG, MAJ7, MIN7, DOM7, ADD9, OPEN, DRONE | How they sing together. UNIS: all on your note. MI2 up to OCT: every second singer that many steps up (minor 2nd, major 2nd ... tritone (TRI) ... major 7th, octave), from rubbing to open. Chords: the singers take the chord's tones in order, so DUO sings root and 3rd, TRIO the triad, more singers add the octave and more. OPEN is root, 5th and 10th. DRONE: every second singer holds the first note of the phrase while the others follow you. The same shape on every note (no key). |
+| Sing | AAH, EHH, EEE, OHH, OOH, MMM, OOAH, VOWL, LA, DOO, HA, SWELL, CANON, WHSPR | What they sing. The first six are one vowel (MMM is a hum). OOAH opens from "oo" to "ah" and back once per Pace cycle; VOWL steps A E I O U, one per Pace cycle. LA, DOO and HA sing a syllable on every note; HA is a short shout, and Feel sets how short. SWELL: the choir breathes in and out once per Pace cycle. CANON: each section comes in one Pace cycle after the one before and sings what you played that much earlier (a round; one cycle can be at most 1 s). WHSPR: a whispered choir. |
 | Pace | 4bar .. 1/64 | Length of one cycle of the movement. |
 | Feel | 0..100 | 0 = soft and legato (slow attack, wide vibrato, breathy, dark) .. 100 = punchy and staccato (fast attack and release, bright, OOAH snaps). |
 | Glide | 0..100 | 0 = every note starts fresh, even when you play legato (best for fast arps). 1..100 = legato: the voice keeps singing and slides to the new note, ~3 ms .. ~0.6 s. |

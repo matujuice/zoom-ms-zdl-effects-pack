@@ -41,8 +41,10 @@
  *   40 ms); a 160 BPM 16th arp at 50% gate misses no note (each found within 20 ms).
  *
  * VOICES
- *   Every singer is a band-limited saw (PolyBLEP) at 2^(note + section octave + Chord octave
- *   + detune + vibrato). Its level follows the input's loudness (a ~10 ms RMS follower, then
+ *   Every singer is a band-limited saw (PolyBLEP) at 2^(note + section octave + its Chord
+ *   interval + detune + vibrato). Chord gives each singer a fixed number of semitones above
+ *   the note (chord_word, 5 bits per singer), so a small choir sings the first tones of a
+ *   chord; DRONE has every second singer hold the first note of the phrase. Its level follows the input's loudness (a ~10 ms RMS follower, then
  *   Feel's attack and release), so the synth's own envelope still shapes the phrasing, and is
  *   scaled by (220 Hz / its pitch)^0.75 so high and low notes come out about as loud through
  *   the formants. The voice glides to a new note at the Glide speed (in octaves, so every
@@ -57,6 +59,18 @@
  *   level (pitch scaling included), so it stays ~24..34 dB under the voice on every note and
  *   section (more at Feel 0, less at 100). It used to follow the input instead, which made
  *   high notes and the higher sections hiss.
+ *
+ * SING (per block: a vowel pair va -> vb blended by uu, a voice envelope, a breath factor)
+ *   AAH EHH EEE OHH OOH MMM: one vowel (MMM = a hum: F1 270 Hz, the rest nearly closed).
+ *   OOAH: oo -> ah -> oo per Pace cycle (Feel 100 snaps). VOWL: A E I O U, one vowel per
+ *   cycle, moving at its start. LA, DOO, HA: a syllable on every new note (an attack in the
+ *   input, a legato note whose old period stops fitting, or an accepted note change):
+ *   LA = "l" opening to ah in 40 ms; DOO = a 6 ms stop, eh closing to oo in 30 ms; HA = a
+ *   burst of breath, then ah for 350 .. 80 ms (Feel) and gone in 50 ms. SWELL: the choir
+ *   breathes in and out per cycle (level 0.1 .. 1, oo -> ah). CANON: section r of the Choir
+ *   (or singer r in a one-section choir, up to 3) sings the note and level of r Pace cycles
+ *   ago, from a 3 s history (one cycle at most 1 s). WHSPR: breath only, x12. The voice gain
+ *   compares the choir with the singers' level x envelope, so the envelopes are not undone.
  *
  * FORMANTS (per section, coefficients once per block)
  *   Three band-passes (Simper's state-variable filter, which stays clean while the vowel
@@ -82,12 +96,14 @@
  *   and notes 55..660 Hz; the same note on five sources within 2.1 dB.
  *
  * CONTROLS (screen values), in pedal order
- *   0 Choir  who sings: MEN WOMEN KIDS GIANT M+W M+KID W+KID G+M ALL
+ *   0 Choir  who sings: MEN WOMEN KIDS GIANT M+W M+KID W+KID G+M G+W G+KID M+W+K G+M+W
+ *            G+M+K G+W+K ALL (every combination of the four sections)
  *   1 Size   how many: SOLO DUO TRIO QUART QUINT SEXT (1..6 singers)
- *   2 Chord  how they sing together: UNIS (all on the note), OCT (every second singer an
- *            octave up). More to come (5th, triads, drone).
- *   3 Sing   what they sing: AAH, OOH, OOAH (opens from "oo" to "ah" and closes again, once
- *            per Pace cycle). More to come (hum, la, doo, canon, swell).
+ *   2 Chord  how they sing together: UNIS, then every second singer 1..12 semitones up: MI2
+ *            MA2 MI3 MA3 4TH TRI 5TH MI6 MA6 MI7 MA7 OCT; chords MAJ MIN SUS2 SUS4 DIM AUG
+ *            MAJ7 MIN7 DOM7 ADD9 OPEN; DRONE. Parallel: the same shape on every note.
+ *   3 Sing   what they sing: AAH EHH EEE OHH OOH MMM OOAH VOWL LA DOO HA SWELL CANON WHSPR
+ *            (see SING)
  *   4 Pace   length of one cycle of the movement: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4
  *            1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 (bar = 4 beats)
  *   5 Feel   0 = soft and legato (slow attack and release, wide late vibrato, breathy, dark)
@@ -134,7 +150,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define CH_MAGIC      0x43483036u          /* "CH06" */
+#define CH_MAGIC      0x43483037u          /* "CH07" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -154,6 +170,11 @@
 #define CH_PI_FS      7.1237928e-5f        /* pi / 44100                              */
 #define CH_LEVEL      6.2f                 /* overall choir level, set by measurement */
 #define CH_TILT       0.75f                /* level slope vs pitch: (220 Hz / f)^0.75, measured */
+#define CH_CRING      16384                /* CANON: note and level history, ~3 s (power of 2) */
+#define CH_CMASK      16383
+#define CH_SING_CANON 12                   /* Sing settings read by number (see ch_sing)  */
+#define CH_SING_WHSPR 13
+#define CH_DRONE      24                   /* last Chord setting                       */
 #define CH_BREATH     0.06f                /* breath noise, ~-24..-34 dB under the voice at Feel 40 */
 
 typedef struct {
@@ -174,6 +195,13 @@ typedef struct {
     float base;                            /* note after Glide                        */
     float vamp;                            /* voice level (after Feel)                */
     float vibon;                           /* vibrato fade-in after a note start, 0..1 */
+    float drone;                           /* first note of the phrase (Chord DRONE)  */
+    int   syl;                             /* blocks since the last new note (syllables) */
+    float env;                             /* Sing's voice envelope, smoothed         */
+    int   vw;                              /* VOWL: vowel being sung, 0..4            */
+    float lph;                             /* movement phase at the last block        */
+    float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block         */
+    int   cwp, cfill;                      /* write position; blocks written since clear */
     /* singers */
     float sph[CH_NS], vph[CH_NS], drift[CH_NS], amp[CH_NS];
     unsigned int rng;
@@ -315,30 +343,34 @@ static inline float sine_of(float ph)
     return t * (1.5706268f + t2 * (-0.6432292f + t2 * 0.0727102f));
 }
 
-/* Vowel table: formant n (0..2) of vowel v (0..4 = A E I O U), Hz; selects on literals */
+/* Vowel table: formant n (0..2) of vowel v (0..4 = A E I O U, 5 = M hum, 6 = L), Hz */
 SR_ALWAYS_INLINE(vowel_hz)
 static inline float vowel_hz(int n, int v)
 {
     float r;
     if (n == 0)
-        r = (v == 0) ? 800.0f  : (v == 1) ? 450.0f  : (v == 2) ? 280.0f  : (v == 3) ? 430.0f : 290.0f;
+        r = (v == 0) ? 800.0f  : (v == 1) ? 450.0f  : (v == 2) ? 280.0f  : (v == 3) ? 430.0f : (v == 4) ? 290.0f
+          : (v == 5) ? 270.0f : 360.0f;
     else if (n == 1)
-        r = (v == 0) ? 1250.0f : (v == 1) ? 2000.0f : (v == 2) ? 2400.0f : (v == 3) ? 800.0f : 750.0f;
+        r = (v == 0) ? 1250.0f : (v == 1) ? 2000.0f : (v == 2) ? 2400.0f : (v == 3) ? 800.0f : (v == 4) ? 750.0f
+          : (v == 5) ? 1000.0f : 1200.0f;
     else
-        r = (v == 0) ? 2800.0f : (v == 1) ? 2750.0f : (v == 2) ? 3100.0f : (v == 3) ? 2600.0f : 2300.0f;
+        r = (v == 0) ? 2800.0f : (v == 1) ? 2750.0f : (v == 2) ? 3100.0f : (v == 3) ? 2600.0f : (v == 4) ? 2300.0f
+          : (v == 5) ? 2200.0f : 2700.0f;
     return r;
 }
 
-/* level of formant n for vowel v, times the vowel's loudness trim (measured) */
+/* level of formant n for vowel v */
 SR_ALWAYS_INLINE(vowel_amp)
 static inline float vowel_amp(int n, int v)
 {
-    float r, tr;
+    float r;
     if (n == 0)      r = 1.0f;
-    else if (n == 1) r = (v == 0) ? 0.6f : (v == 1) ? 0.8f : (v == 2) ? 0.75f : (v == 3) ? 0.4f : 0.25f;
-    else             r = (v == 0) ? 0.3f : (v == 1) ? 0.3f : (v == 2) ? 0.3f : (v == 3) ? 0.2f : 0.1f;
-    tr = (v == 0) ? 1.0f : (v == 1) ? 1.0f : (v == 2) ? 1.0f : (v == 3) ? 1.0f : 1.0f;
-    return r * tr;
+    else if (n == 1) r = (v == 0) ? 0.6f : (v == 1) ? 0.8f : (v == 2) ? 0.75f : (v == 3) ? 0.4f : (v == 4) ? 0.25f
+                       : (v == 5) ? 0.06f : 0.35f;
+    else             r = (v == 0) ? 0.3f : (v == 1) ? 0.3f : (v == 2) ? 0.3f : (v == 3) ? 0.2f : (v == 4) ? 0.1f
+                       : (v == 5) ? 0.03f : 0.15f;
+    return r;
 }
 
 /* Pace index 0..16 -> cycles per beat (bar = 4 beats) */
@@ -384,7 +416,34 @@ static inline unsigned int choir_word(int c)
          : (c == 5) ? 0x200Du          /* M+KID: M K     */
          : (c == 6) ? 0x200Eu          /* W+KID: W K     */
          : (c == 7) ? 0x2001u          /* G+M:   M G     */
+         : (c == 8) ? 0x2002u          /* G+W:   W G     */
+         : (c == 9) ? 0x200Cu          /* G+KID: G K     */
+         : (c == 10) ? 0x3039u         /* M+W+K: M W K   */
+         : (c == 11) ? 0x3009u         /* G+M+W: M W G   */
+         : (c == 12) ? 0x30C1u         /* G+M+K: M G K   */
+         : (c == 13) ? 0x30C2u         /* G+W+K: W G K   */
          : 0x40C9u;                    /* ALL:   M W G K */
+}
+
+/* Chord: semitones above your note per singer, 5 bits each (singer 0 in the low bits).
+ * 0..12 = UNIS .. OCT: every second singer that many semitones up. Chords list their
+ * tones in the order singers get them, so a small choir sings the most important ones. */
+SR_ALWAYS_INLINE(chord_word)
+static inline unsigned int chord_word(int c)
+{
+    if (c <= 12) return (unsigned int)c * 0x2008020u;   /* singers 1, 3, 5 */
+    return (c == 13) ? 0x27061C80u     /* MAJ  0 4 7 12 16 19 */
+         : (c == 14) ? 0x26F61C60u     /* MIN  0 3 7 12 15 19 */
+         : (c == 15) ? 0x26E61C40u     /* SUS2 0 2 7 12 14 19 */
+         : (c == 16) ? 0x27161CA0u     /* SUS4 0 5 7 12 17 19 */
+         : (c == 17) ? 0x24F61860u     /* DIM  0 3 6 12 15 18 */
+         : (c == 18) ? 0x29062080u     /* AUG  0 4 8 12 16 20 */
+         : (c == 19) ? 0x20C59C80u     /* MAJ7 0 4 7 11 12 16 */
+         : (c == 20) ? 0x1EC51C60u     /* MIN7 0 3 7 10 12 15 */
+         : (c == 21) ? 0x20C51C80u     /* DOM7 0 4 7 10 12 16 */
+         : (c == 22) ? 0x26C71C80u     /* ADD9 0 4 7 14 12 19 */
+         : (c == 23) ? 0x313640E0u     /* OPEN 0 7 16 12 19 24 */
+         : 0u;                         /* DRONE: unison, every second singer holds */
 }
 
 /* Clear what sounds: filters, singers, tracker. The movement keeps its phase. */
@@ -394,6 +453,7 @@ static inline void ch_clear(ChState *s)
     int i;
     s->hpx = 0.0f; s->hpy = 0.0f; s->l1 = 0.0f; s->l2 = 0.0f; s->m1 = 0.0f; s->m2 = 0.0f;
     s->e2 = 0.0f; s->ef = 0.0f; s->onset = 0; s->wp = 0; s->stable = 0; s->hold = 0; s->lost = 0; s->lref = 0.0f; s->gone = 0; s->cand = 0.0f; s->vamp = 0.0f;
+    s->syl = 0; s->env = 0.0f; s->cwp = 0; s->cfill = 0;
     s->vibon = 0.0f; s->wsm = -1.0f; s->pw = 0.0f; s->pa = 0.0f; s->gn = 1.0f;
     SR_NOUNROLL
     for (i = 0; i < CH_RING; i++) s->ring[i] = 0.0f;
@@ -412,7 +472,8 @@ static inline void ch_init(ChState *s)
 {
     int i;
     ch_clear(s);
-    s->note = 7.78f; s->base = 7.78f;                  /* 220 Hz until a note is heard */
+    s->note = 7.78f; s->base = 7.78f; s->drone = 7.78f;  /* 220 Hz until a note is heard */
+    s->vw = 0; s->lph = 0.0f;
     SR_NOUNROLL
     for (i = 0; i < CH_MAXLAG + 2; i++) {
         float w = 2.0f * (float)i;
@@ -436,10 +497,10 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     float twin, f, m;
     P->tempo = (float)tempo_i;
     P->bpm   = (float)ch_tempo_bpm(tempo_i);
-    P->choir = (int)(k[0] * 8.0f + 0.5f);
+    P->choir = (int)(k[0] * 14.0f + 0.5f);
     P->size  = 1 + (int)(k[1] * 5.0f + 0.5f);
-    P->chord = (int)(k[2] + 0.5f);
-    P->sing  = (int)(k[3] * 2.0f + 0.5f);
+    P->chord = (int)(k[2] * 24.0f + 0.5f);
+    P->sing  = (int)(k[3] * 13.0f + 0.5f);
     m        = subdiv_mult((int)(k[4] * 16.0f + 0.5f));
     P->cpb   = 4.0f * m;
     P->lfo_inc = P->bpm * m * CH_BPM_BLOCK;
@@ -495,14 +556,14 @@ static inline float ch_dip(float y0, float y1, float y2)
 SR_ALWAYS_INLINE(ch_process)
 static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 {
-    float inc[CH_NS], iinc[CH_NS], sg[CH_NS], ka[CH_NS];
+    float inc[CH_NS], iinc[CH_NS], sg[CH_NS], ka[CH_NS], sa[CH_NS];
     int   sec[CH_NS];
     float a1[12], a2[12], a3[12], gk[12];
     float tl[4], ns[4], nc[4];
     int   act[4];
-    unsigned int cw;
-    int   i, j, n, b, nsec, best, ln;
-    float v, h, y, cum, cn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa;
+    unsigned int cw, tw;
+    int   i, j, n, b, nsec, best, ln, va, vb, cd;
+    float v, h, y, cum, cn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa, uu, ve, bm;
 
     /* ---- tracker: this block's input, low-passed and averaged to one sample ---- */
     v = 0.0f;
@@ -518,7 +579,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         s->e2 += 0.0025f * (in * in - s->e2);         /* ~9 ms power follower */
         s->ef += 0.05f * (in * in - s->ef);           /* ~0.5 ms */
     }
-    if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) s->onset = CH_ONSET;   /* a fast attack: a new note */
+    if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) { s->onset = CH_ONSET; s->syl = 0; }   /* a fast attack: a new note */
     else if (s->onset > 0) s->onset--;
     if (s->hpy < 1e-20f && s->hpy > -1e-20f) s->hpy = 0.0f;
     if (s->l1 < 1e-20f && s->l1 > -1e-20f) s->l1 = 0.0f;
@@ -546,10 +607,12 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     /* the note being sung no longer fits the input at all: a new note played legato (no
      * attack in the level). Treat it as an attack, and hush the voice until the new note is
      * found instead of singing the old one over it (fast arps). */
+    j = s->gone;
     s->gone = 0;
     if (s->hold > 0 && ln >= 2 && ln < CH_MAXLAG && cn > 1e-20f
         && ch_dip(s->dm[ln - 1], s->dm[ln], s->dm[ln + 1]) * (float)ln > CH_GONE * cn) {
         s->gone = 1;
+        if (!j && s->e2 > 0.5f * s->lref) s->syl = 0;  /* a legato note: a new syllable too */
         if (s->onset < CH_STABLE) s->onset = CH_STABLE + CH_STABLE;
     }
     if (best > 0 && s->e2 > 1e-7f) {                 /* under -70 dB (a fading tail): no reading */
@@ -575,7 +638,9 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         else s->stable = 0;
         s->cand = tgt;
         if (s->stable >= CH_STABLE) {
-            if (s->hold <= 0 || s->vamp < 1e-5f) { s->note = tgt; s->base = tgt; s->vibon = 0.0f; }
+            h = tgt - s->note;
+            if ((h > 0.0333f || h < -0.0333f) && s->syl > 440) s->syl = 0;   /* not found as gone */
+            if (s->hold <= 0 || s->vamp < 1e-5f) { s->note = tgt; s->base = tgt; s->drone = tgt; s->vibon = 0.0f; }
             else s->note = tgt;
             s->hold = CH_HOLD; s->lost = 0; s->lref = s->e2;
         }
@@ -595,46 +660,89 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     if (s->vamp < 1e-9f) s->vamp = 0.0f;
     s->base += P->glide_c * (s->note - s->base);
     s->vibon += 0.0007f * (1.0f - s->vibon);           /* vibrato fades in over ~0.3 s */
+    if (s->syl < 30000) s->syl++;
+    s->cwp = (s->cwp + 1) & CH_CMASK;                  /* CANON: what is sung, per block */
+    s->cnote[s->cwp] = s->base;
+    s->clvl[s->cwp] = s->vamp;
+    if (s->cfill < CH_CRING) s->cfill++;
+
+    /* ---- Sing: vowel va -> vb by uu, voice envelope ve, breath x bm ---- */
+    n  = P->sing;
+    va = (n <= 5) ? n : 0;                             /* AAH EHH EEE OHH OOH MMM */
+    vb = va; uu = 0.0f; ve = 1.0f; bm = 1.0f;
+    w  = (float)s->syl;
+    if (s->lfo_ph < s->lph) {                          /* a new cycle: VOWL's next vowel */
+        s->vw++; if (s->vw > 4) s->vw = 0;
+        if (n == 7) s->wsm = 0.0f;
+    }
+    s->lph = s->lfo_ph;
+    if (n == 6 || n == 11) {                           /* OOAH, SWELL: oo -> ah -> oo per cycle */
+        va = 4;
+        uu = 0.5f - 0.5f * sine_of(s->lfo_ph + 0.25f);
+        if (n == 11) ve = 0.1f + 0.9f * uu;            /* SWELL: the choir breathes in and out */
+        else uu = uu + P->feel * (uu * uu * (3.0f - uu - uu) - uu);   /* punchy: snaps */
+    } else if (n == 7) {                               /* VOWL: A E I O U, one per cycle */
+        vb = s->vw; va = vb - 1; if (va < 0) va = 4;
+        uu = clamp01(s->lfo_ph * (5.0f + 20.0f * P->feel));
+    } else if (n == 8) {                               /* LA: l opening to ah, 40 ms */
+        va = 6; uu = clamp01(w * 0.0045454544f);
+    } else if (n == 9) {                               /* DOO: a stop, then eh closing to oo */
+        va = 1; vb = 4;
+        uu = clamp01(w * 0.0060606063f);
+        ve = clamp01(w * 0.030303031f);
+    } else if (n == 10) {                              /* HA: breath, then a short ah */
+        h  = (0.35f - 0.27f * P->feel) * 5512.5f;      /* 350 .. 80 ms */
+        uu = clamp01(1.0f - (w - h) * 0.0036363637f);  /* then gone in 50 ms, breath too */
+        ve = clamp01(w * 0.009090909f) * uu;
+        bm = (9.0f - 8.0f * clamp01(w * 0.0060606063f)) * uu;
+        uu = 0.0f;
+    } else if (n == CH_SING_WHSPR) {                   /* breath only */
+        ve = 0.0f; bm = 12.0f;
+    }
+    if (s->wsm < 0.0f) s->wsm = uu;
+    s->wsm += 0.02f * (uu - s->wsm);
+    wv = s->wsm;
+    s->env += 0.3f * (ve - s->env);
 
     /* ---- singers: pitch, level and section, once per block ---- */
     cw   = choir_word(P->choir);
     nsec = (int)((cw >> 12) & 7u);
     nrm  = ch_rsqrt((float)P->size);
+    tw   = chord_word(P->chord);
+    cd   = (int)ch_recip(P->lfo_inc);                  /* CANON: blocks per Pace cycle */
+    if (cd > CH_CMASK / 3) cd = CH_CMASK / 3;
     j = 0;
     SR_NOUNROLL
     for (i = 0; i < CH_NS; i++) {
-        float det, oc, vib, hz, sp;
-        int   q = (int)((cw >> (j + j)) & 3u);
+        float det, oc, vib, hz, sp, bse, lv;
+        int   q = (int)((cw >> (j + j)) & 3u), r = (nsec > 1) ? j : i;
         j++; if (j >= nsec) j = 0;
         sec[i] = (i < P->size) ? q : -1;
         if (i >= P->size) { s->amp[i] = 0.0f; continue; }
         sp  = 0.5f + 0.1f * (float)P->size;          /* a bigger choir spreads wider */
         det = (i == 0) ? 0.0f : (i == 1) ? 8.0f : (i == 2) ? -7.0f : (i == 3) ? 12.0f : (i == 4) ? -11.0f : 4.0f;
         s->drift[i] = s->drift[i] * 0.9995f + (rnd01(s) - 0.5f) * 0.004f;
-        oc  = (float)(q - 1) + ((P->chord == 1 && (i & 1)) ? 1.0f : 0.0f);
+        bse = s->base; lv = s->vamp;
+        if (P->sing == CH_SING_CANON) {              /* section r sings r cycles behind */
+            if (r > 3) r = 3;
+            r *= cd;
+            if (r < s->cfill) { n = (s->cwp - r) & CH_CMASK; bse = s->cnote[n]; lv = s->clvl[n]; }
+            else lv = 0.0f;
+        }
+        if (P->chord == CH_DRONE && (i & 1)) bse = s->drone;
+        oc  = (float)(q - 1) + (float)((tw >> (5 * i)) & 31u) * 0.083333336f;
         s->vph[i] += ((q == 0) ? 4.6f : (q == 1) ? 5.2f : (q == 2) ? 5.6f : 6.0f) * (1.0f + 0.03f * (float)i) * CH_BLK_HZ;
         if (s->vph[i] >= 1.0f) s->vph[i] -= 1.0f;
         vib = P->vibc * s->vibon * sine_of(s->vph[i]);
-        w   = s->base + oc + (det * sp + 3.0f * s->drift[i]) * 0.00083333f + vib;
+        w   = bse + oc + (det * sp + 3.0f * s->drift[i]) * 0.00083333f + vib;
         if (w > 12.1f) w = 12.1f;                    /* 4.4 kHz */
         hz  = ch_exp2(w);
         inc[i]  = hz * CH_INC_HZ;
         iinc[i] = ch_recip(inc[i]);
         sg[i] = ch_exp2(CH_TILT * (7.78136f - w));      /* equal loudness over the range */
         ka[i] = (i == 0) ? 1.0f : 0.25f - 0.03f * (float)i;   /* the extra singers come in a little late */
-        s->amp[i] += ka[i] * (s->vamp - s->amp[i]);
-    }
-
-    /* ---- vowel: blend of two vowels, glided ---- */
-    {
-        float u = 0.0f;
-        if (P->sing == 2) {                          /* OOAH: oo -> ah -> oo over one cycle */
-            u = 0.5f - 0.5f * sine_of(s->lfo_ph + 0.25f);
-            u = u + P->feel * (u * u * (3.0f - u - u) - u);   /* punchy: snaps between them */
-        }
-        if (s->wsm < 0.0f) s->wsm = u;
-        s->wsm += 0.02f * (u - s->wsm);
-        wv = s->wsm;
+        s->amp[i] += ka[i] * (lv - s->amp[i]);
+        sa[i] = sg[i] * s->amp[i] * s->env;
     }
 
     /* ---- formants, once per block for the sections that sing ---- */
@@ -652,7 +760,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         }
         /* breath: follows the singers' own level (pitch scaling included), so it sits at the
          * same depth under the voice on every note; summed singers grow by sqrt(count) */
-        ns[b] *= P->breath * ch_rsqrt((float)act[b]) * ((b == 0) ? 0.6f : (b == 1) ? 0.8f : (b == 2) ? 1.0f : 1.1f);
+        ns[b] *= bm * P->breath * ch_rsqrt((float)act[b]) * ((b == 0) ? 0.6f : (b == 1) ? 0.8f : (b == 2) ? 1.0f : 1.1f);
         nc[b] = 2.0f * 6.2831853f * CH_INC_HZ * ch_exp2(s->base + (float)(b - 1));   /* 2 x f0 */
         if (nc[b] > 0.9f) nc[b] = 0.9f;
         ns[b] *= ch_rsqrt(nc[b]);                    /* the low-pass takes ~sqrt(nc) of the power */
@@ -663,8 +771,6 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         lo = 1.1f * f0;
         SR_NOUNROLL
         for (j = 0; j < 3; j++) {
-            int   va = (P->sing == 0) ? 0 : 4;       /* AAH = A; OOH and OOAH start on U */
-            int   vb = (P->sing == 1) ? 4 : 0;       /* OOAH ends on A                    */
             float fa = vowel_hz(j, va), fb = vowel_hz(j, vb);
             float ga = vowel_amp(j, va), gb = vowel_amp(j, vb);
             float hz = (fa + wv * (fb - fa)) * th, kk, g, t2, aa;
@@ -704,7 +810,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
             sw = p + p - 1.0f;                       /* saw, minus PolyBLEP at the wrap */
             if (p < inc[i]) { t = p * iinc[i]; sw -= t + t - t * t - 1.0f; }
             else if (p > 1.0f - inc[i]) { t = (p - 1.0f) * iinc[i]; sw -= t * t + t + t + 1.0f; }
-            sum[sec[i]] += sw * sg[i] * s->amp[i];
+            sum[sec[i]] += sw * sa[i];
         }
         SR_NOUNROLL
         for (b = 0; b < 4; b++) {
@@ -736,7 +842,13 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
      * choir power over the power the singers were asked for. Both follow the input's envelope
      * together, so the ratio moves only with pitch and vowel (no pumping on the synth's
      * dynamics). ~50 ms, held while the choir is silent, limited to +-14 dB. */
-    pa = 8.0f * s->vamp * s->vamp;
+    pa = 0.0f;                                         /* what the singers were asked for */
+    SR_NOUNROLL
+    for (i = 0; i < P->size; i++) {
+        h = s->amp[i] * ((P->sing == CH_SING_WHSPR) ? 1.0f : s->env);
+        pa += h * h;
+    }
+    pa *= 8.0f * ch_recip((float)P->size);
     if (pa > 1e-10f) {
         s->pw += 0.0036f * (pw - s->pw);
         s->pa += 0.0036f * (pa - s->pa);
@@ -790,7 +902,7 @@ static inline int fm_word_text(unsigned int w, char *out)
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     int n = (int)value;
-    if (n > 8) n = 8;
+    if (n > 14) n = 14;
     return ch_word_text(
           (n == 0) ? 0x2E96Du      /* MEN   */
         : (n == 1) ? 0x2E96DBF7u   /* WOMEN */
@@ -800,6 +912,12 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
         : (n == 5) ? 0x24A6B2EDu   /* M+KID */
         : (n == 6) ? 0x24A6B2F7u   /* W+KID */
         : (n == 7) ? 0x2D2E7u      /* G+M   */
+        : (n == 8) ? 0x372E7u      /* G+W   */
+        : (n == 9) ? 0x24A6B2E7u   /* G+KID */
+        : (n == 10) ? 0x2B2F72EDu  /* M+W+K */
+        : (n == 11) ? 0x372ED2E7u  /* G+M+W */
+        : (n == 12) ? 0x2B2ED2E7u  /* G+M+K */
+        : (n == 13) ? 0x2B2F72E7u  /* G+W+K */
         : 0x2CB21u                 /* ALL   */
         , out);
 }
@@ -822,16 +940,58 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
 /* 2 Chord */
 int ZDL_GetLabel_2(unsigned int value, char *out)
 {
-    return ch_word_text((value == 0u) ? 0xCE9BB5u /* UNIS */ : 0x348EFu /* OCT */, out);
+    int n = (int)value;
+    if (n > 24) n = 24;
+    return ch_word_text(
+          (n == 0) ? 0xCE9BB5u     /* UNIS  */
+        : (n == 1) ? 0x12A6Du      /* MI2   */
+        : (n == 2) ? 0x1286Du      /* MA2   */
+        : (n == 3) ? 0x13A6Du      /* MI3   */
+        : (n == 4) ? 0x1386Du      /* MA3   */
+        : (n == 5) ? 0x28D14u      /* 4TH   */
+        : (n == 6) ? 0x29CB4u      /* TRI   */
+        : (n == 7) ? 0x28D15u      /* 5TH   */
+        : (n == 8) ? 0x16A6Du      /* MI6   */
+        : (n == 9) ? 0x1686Du      /* MA6   */
+        : (n == 10) ? 0x17A6Du     /* MI7   */
+        : (n == 11) ? 0x1786Du     /* MA7   */
+        : (n == 12) ? 0x348EFu     /* OCT   */
+        : (n == 13) ? 0x2A86Du     /* MAJ   */
+        : (n == 14) ? 0x2EA6Du     /* MIN   */
+        : (n == 15) ? 0x4B3D73u    /* SUS2  */
+        : (n == 16) ? 0x533D73u    /* SUS4  */
+        : (n == 17) ? 0x2DA64u     /* DIM   */
+        : (n == 18) ? 0x27D61u     /* AUG   */
+        : (n == 19) ? 0x5EA86Du    /* MAJ7  */
+        : (n == 20) ? 0x5EEA6Du    /* MIN7  */
+        : (n == 21) ? 0x5EDBE4u    /* DOM7  */
+        : (n == 22) ? 0x664921u    /* ADD9  */
+        : (n == 23) ? 0xBA5C2Fu    /* OPEN  */
+        : 0x25BAFCA4u              /* DRONE */
+        , out);
 }
 
 /* 3 Sing */
 int ZDL_GetLabel_3(unsigned int value, char *out)
 {
-    return ch_word_text((value == 0u) ? 0x28861u      /* AAH  */
-                      : (value == 1u) ? 0x28BEFu      /* OOH  */
-                      : 0xA21BEFu                     /* OOAH */
-                      , out);
+    int n = (int)value;
+    if (n > 13) n = 13;
+    return ch_word_text(
+          (n == 0) ? 0x28861u      /* AAH   */
+        : (n == 1) ? 0x28A25u      /* EHH   */
+        : (n == 2) ? 0x25965u      /* EEE   */
+        : (n == 3) ? 0x28A2Fu      /* OHH   */
+        : (n == 4) ? 0x28BEFu      /* OOH   */
+        : (n == 5) ? 0x2DB6Du      /* MMM   */
+        : (n == 6) ? 0xA21BEFu     /* OOAH  */
+        : (n == 7) ? 0xB37BF6u     /* VOWL  */
+        : (n == 8) ? 0x86Cu        /* LA    */
+        : (n == 9) ? 0x2FBE4u      /* DOO   */
+        : (n == 10) ? 0x868u       /* HA    */
+        : (n == 11) ? 0x2CB25DF3u  /* SWELL */
+        : (n == 12) ? 0x2EBEE863u  /* CANON */
+        : 0x32C33A37u              /* WHSPR */
+        , out);
 }
 
 /* 4 Pace: 4bar 3bar 2bar 1.5b 1bar 1/2. 1/2 1/4. 1/4 1/8. 1/8 1/8T 1/16 1/16T 1/32 1/32T 1/64 */
@@ -922,10 +1082,10 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 
     s = (ChState *)stateBase;
 
-    k[0] = sr_knob(params[FORMANT_CHOIR_SLOT], (float)FORMANT_CHOIR_UI_DEFAULT, 0.125f);
+    k[0] = sr_knob(params[FORMANT_CHOIR_SLOT], (float)FORMANT_CHOIR_UI_DEFAULT, 0.071428575f);
     k[1] = sr_knob(params[FORMANT_SIZE_SLOT],  (float)FORMANT_SIZE_UI_DEFAULT,  0.2f);
-    k[2] = sr_knob(params[FORMANT_CHORD_SLOT], (float)FORMANT_CHORD_UI_DEFAULT, 1.0f);
-    k[3] = sr_knob(params[FORMANT_SING_SLOT],  (float)FORMANT_SING_UI_DEFAULT,  0.5f);
+    k[2] = sr_knob(params[FORMANT_CHORD_SLOT], (float)FORMANT_CHORD_UI_DEFAULT, 0.041666668f);
+    k[3] = sr_knob(params[FORMANT_SING_SLOT],  (float)FORMANT_SING_UI_DEFAULT,  0.07692308f);
     k[4] = sr_knob(params[FORMANT_PACE_SLOT],  (float)FORMANT_PACE_UI_DEFAULT,  0.0625f);
     k[5] = sr_knob(params[FORMANT_FEEL_SLOT],  (float)FORMANT_FEEL_UI_DEFAULT,  0.01f);
     k[6] = sr_knob(params[FORMANT_GLIDE_SLOT], (float)FORMANT_GLIDE_UI_DEFAULT, 0.01f);

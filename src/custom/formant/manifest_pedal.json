@@ -10,9 +10,9 @@
   "params": [
     {
       "name": "Choir",
-      "max": 8,
+      "max": 14,
       "default": 4,
-      "comment": "Who sings: 0 MEN (on your note), 1 WOMEN (an octave up), 2 KIDS (two octaves up), 3 GIANT (an octave down), 4 M+W, 5 M+KID, 6 W+KID, 7 G+M, 8 ALL (men, women, giants, kids). Each section has its own throat size, darkness, breath and vibrato. Singers are dealt to the sections in turn. Default M+W."
+      "comment": "Who sings: 0 MEN (on your note), 1 WOMEN (an octave up), 2 KIDS (two octaves up), 3 GIANT (an octave down), 4 M+W, 5 M+KID, 6 W+KID, 7 G+M, 8 G+W, 9 G+KID, 10 M+W+K, 11 G+M+W, 12 G+M+K, 13 G+W+K, 14 ALL (men, women, giants, kids). Each section has its own throat size, darkness, breath and vibrato. Singers are dealt to the sections in turn. Default M+W."
     },
     {
       "name": "Size",
@@ -22,15 +22,15 @@
     },
     {
       "name": "Chord",
-      "max": 1,
+      "max": 24,
       "default": 0,
-      "comment": "How they sing together: 0 UNIS (all on the note, in their section's register), 1 OCT (every second singer an octave up). More settings to come (5th, triads, drone)."
+      "comment": "How they sing together. 0 UNIS (all on the note) and steps up to the octave, every second singer that many semitones up: 1 MI2, 2 MA2, 3 MI3, 4 MA3, 5 4TH, 6 TRI (tritone), 7 5TH, 8 MI6, 9 MA6, 10 MI7, 11 MA7, 12 OCT. Chords, tones dealt to the singers in order (a small choir sings the first ones: root, then the 3rd or 2nd/4th, then the 5th): 13 MAJ, 14 MIN, 15 SUS2, 16 SUS4, 17 DIM, 18 AUG, 19 MAJ7, 20 MIN7, 21 DOM7, 22 ADD9, 23 OPEN (root, 5th, 10th). 24 DRONE: every second singer holds the first note of the phrase while the others follow you. Same shape on every note (parallel, no key). Default UNIS."
     },
     {
       "name": "Sing",
-      "max": 2,
-      "default": 2,
-      "comment": "What they sing: 0 AAH, 1 OOH, 2 OOAH (opens from oo to ah and closes again once per Pace cycle). More to come (hum, la, doo, canon, swell). Default OOAH."
+      "max": 13,
+      "default": 6,
+      "comment": "What they sing: 0 AAH, 1 EHH, 2 EEE, 3 OHH, 4 OOH, 5 MMM (hum), 6 OOAH (opens from oo to ah and closes again once per Pace cycle), 7 VOWL (A E I O U, one vowel per Pace cycle), 8 LA, 9 DOO, 10 HA (a syllable on every new note; HA is a short shout, Feel sets how short: 350 .. 80 ms), 11 SWELL (the choir breathes in and out once per Pace cycle), 12 CANON (sections come in one after another, each singing what you played one Pace cycle later, up to 3 cycles and 1 s per step), 13 WHSPR (whispered: breath only). Default OOAH."
     },
     {
       "name": "Pace",

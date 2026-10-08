@@ -16,19 +16,19 @@ static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); puts(""); fails++; } } while (0)
 
 static void setup(void){
-  if (!m) m = mmap(0, 1u<<20, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);
+  if (!m) m = mmap(0, 2u<<20, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_32BIT,-1,0);
   ctx=(unsigned int*)m; params=(float*)(m+256); fx=(float*)(m+512); dry=(float*)(m+1024); magic=(unsigned int*)(m+640); desc=(unsigned int*)(m+768); arena=m+4096;
-  memset(arena,0xC9,65536);
+  memset(arena,0xC9,1u<<20);
   ctx[1]=(unsigned)(uintptr_t)params; ctx[3]=(unsigned)(uintptr_t)desc; ctx[4]=(unsigned)(uintptr_t)dry; ctx[5]=(unsigned)(uintptr_t)fx;
   magic[0]=0xABCD1234u; magic[2]=(unsigned)(uintptr_t)&magic[1]; ctx[11]=(unsigned)(uintptr_t)&magic[2]; ctx[12]=(unsigned)(uintptr_t)&magic[0];
-  desc[0]=(unsigned)(uintptr_t)arena; desc[1]=(unsigned)(uintptr_t)(arena+65536); desc[2]=65536; params[0]=1.0f;
+  desc[0]=(unsigned)(uintptr_t)arena; desc[1]=(unsigned)(uintptr_t)(arena+(1u<<20)); desc[2]=1u<<20; params[0]=1.0f;
   st=(ChState*)(((uintptr_t)arena+3u)&~(uintptr_t)3u);
 }
 static void knobs(int choir,int size,int chord,int sing,int pace,int feel,int glide,int tempo,int mix){
   params[FORMANT_CHOIR_SLOT]=choir/100.f; params[FORMANT_SIZE_SLOT]=size/100.f; params[FORMANT_CHORD_SLOT]=chord/100.f;
   params[FORMANT_SING_SLOT]=sing/100.f; params[FORMANT_PACE_SLOT]=pace/100.f; params[FORMANT_FEEL_SLOT]=feel/100.f;
   params[FORMANT_GLIDE_SLOT]=glide/100.f; params[FORMANT_TEMPO_SLOT]=tempo/100.f; params[FORMANT_MIX_SLOT]=mix/100.f; }
-static void defaults(void){ knobs(4,2,0,2,4,40,20,120,70); }
+static void defaults(void){ knobs(4,2,0,6,4,40,20,120,70); }
 
 #define NMAX (SR*4)
 static float in_[NMAX], out[NMAX], note_[NMAX/8];
@@ -114,7 +114,7 @@ int main(void){
 
   /* 2e. Glide 0 starts every legato note fresh (the old note hushes), Glide above 0 slides
    *     to it with the voice held: lowest voice level in the 60 ms after the change */
-  { double dip[2]; for (int g=0; g<2; g++){ setup(); knobs(4,2,0,2,4,40,g?20:0,120,70); fconst=110; run(SR/2, 0, f_const, 0, 9);
+  { double dip[2]; for (int g=0; g<2; g++){ setup(); knobs(4,2,0,6,4,40,g?20:0,120,70); fconst=110; run(SR/2, 0, f_const, 0, 9);
       double v0=st->vamp, lo=1e9; fconst=165;
       for (int b=0;b<(int)(0.06*SR/8);b++){ for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx); if (st->vamp<lo) lo=st->vamp; }
       dip[g]=db(lo/v0); }
@@ -151,7 +151,7 @@ int main(void){
 
   /* 6. clicks: largest step between output samples vs a steady note, with Pace 2bar and a
    *    Tempo flip every bar (bar-aware: the cycle must go 0, 0.5, 0, 0.5 ...) */
-  { setup(); knobs(4,2,0,2,2,40,20,120,100); fconst=220; double worst_ph=0; int flips=0;
+  { setup(); knobs(4,2,0,6,2,40,20,120,100); fconst=220; double worst_ph=0; int flips=0;
     int bar = (int)(4*60.0*SR/120/8);  /* blocks per bar at 120 */
     ph1=0; double maxd=0, maxd_ref=0;
     for (int b=0;b<bar*9;b++){
@@ -162,21 +162,84 @@ int main(void){
     printf("bar flips, Pace 2bar: cycle off the bar by at most %.4f, vowel step at a flip %.4f (elsewhere %.4f)\n", worst_ph, maxd, maxd_ref);
     CHECK(worst_ph < 0.01 && maxd <= maxd_ref*1.5+1e-4, "bar-aware restart"); }
 
+  /* 6b. Chord: every singer on its interval (Choir MEN, SEXT, 110 Hz): singer pitch read from
+   *     its phase step per block, to the nearest semitone (detune and vibrato are < 50 cents) */
+  { int bad=0; int ch[11][6]={{0,4,7,12,16,19},{0,3,7,12,15,19},{0,2,7,12,14,19},{0,5,7,12,17,19},{0,3,6,12,15,18},
+      {0,4,8,12,16,20},{0,4,7,11,12,16},{0,3,7,10,12,15},{0,4,7,10,12,16},{0,4,7,14,12,19},{0,7,16,12,19,24}};
+    for (int c=0;c<=24;c++){ setup(); knobs(0,5,c,0,4,40,20,120,100); fconst=110; run(SR/2, 0, f_const, 0, 9);
+      float p0[6]; for(int i=0;i<6;i++) p0[i]=st->sph[i];
+      for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx);
+      for (int i=0;i<6;i++){ double d=st->sph[i]-p0[i]; if (d<0) d+=1; double semi=12*log2(d*SR/8/110.0);
+        int want = c<=12 ? ((i&1)?c:0) : c<24 ? ch[c-13][i] : 0; if ((int)lround(semi)!=want){ bad++; printf("  chord %d singer %d: %.2f semitones, want %d\n", c, i, semi, want); } } }
+    printf("chords: every singer of all 25 Chord settings on its interval: %d wrong\n", bad); CHECK(bad==0, "chord intervals"); }
+
+  /* 6c. DRONE holds the phrase's first note on every second singer; CANON: the second section
+   *     sings what was played one Pace cycle (1/4 at 120 = 0.5 s) later */
+  { double f0s[2]; setup(); knobs(0,1,24,0,4,40,20,120,100); fconst=110; run(SR/2, 0, f_const, 0, 9); fconst=165; run(SR/2, 0, f_const, 0, 9);
+    { float a=st->sph[0], b2=st->sph[1]; for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx);
+      double d0=st->sph[0]-a, d1=st->sph[1]-b2; if(d0<0)d0+=1; if(d1<0)d1+=1; f0s[0]=d0*SR/8; f0s[1]=d1*SR/8; }
+    printf("DRONE, 110 then 165 Hz legato: singer 0 at %.1f Hz, singer 1 holds %.1f Hz\n", f0s[0], f0s[1]);
+    CHECK(fabs(1200*log2(f0s[0]/165))<50 && fabs(1200*log2(f0s[1]/110))<50, "drone");
+    double fc[3]; int cyc=(int)(0.5*SR/8); setup(); knobs(4,1,0,12,8,40,20,120,100); fconst=110; ph1=0;
+    for (int b=0;b<cyc*4;b++){ if (b==cyc*2) fconst=165;
+      for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } float a=st->sph[1]; Fx_DLY_Formant(ctx);
+      double d=st->sph[1]-a; if(d<0)d+=1; if (b==cyc*2+cyc/2) fc[0]=d*SR/8/2; if (b==cyc*3+cyc/2) fc[1]=d*SR/8/2; if (b==cyc/2) fc[2]=st->amp[1]; }
+    printf("CANON M+W, Pace 1/4: women (an octave up) 0.25 s after the change sing %.1f Hz, 0.75 s after %.1f Hz; in the first cycle level %.2g\n", fc[0], fc[1], fc[2]);
+    CHECK(fabs(1200*log2(fc[0]/110))<50 && fabs(1200*log2(fc[1]/165))<50 && fc[2]<1e-3, "canon"); }
+
+  /* 6d. syllables (LA DOO HA): a new one on every note, re-attacked or legato */
+  { int pat[8]={0,7,12,3,15,10,19,5}, worst=99; int stepb=(int)(0.09375*SR/8);
+    for (int sg=8; sg<=10; sg++) for (int gate=0; gate<2; gate++){ setup(); knobs(4,2,0,sg,4,40,gate?20:0,120,100); int resets=0, last=0;
+      for (int n8=0;n8<24;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); ph1=0;
+        for (int b=0;b<stepb;b++){ for(int j=0;j<8;j++){ float x = (gate || b<stepb/2) ? src(0,f) : 0.0f; fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
+          Fx_DLY_Formant(ctx); if (st->syl < last && st->syl < 5 && last > 100) resets++; last=st->syl; } }
+      printf("  sing %d, %s: %d syllables on 23 note changes\n", sg, gate ? "legato" : "50%% gate", resets); if (resets<worst) worst=resets; }
+    CHECK(worst>=23, "a syllable on every note"); }
+
+  /* 6e. HA is short: Feel 40 (~240 ms), a 1 s note */
+  { setup(); knobs(0,0,0,10,4,40,20,120,100); fconst=220; run(SR, 0, f_const, 0, 9);
+    double e=rms(out,SR/20,SR/8), l=rms(out,SR*6/10,SR*3/10);
+    printf("HA: level 50..175 ms %.1f dB, 600..900 ms %.1f dB\n", db(e), db(l)); CHECK(db(e)-db(l) > 30, "HA short"); }
+
+  /* 6f. level of the steady settings (vowels, OOAH, VOWL, WHSPR) on every Choir */
+  { double lo=99, hi=-99; int sgs[9]={0,1,2,3,4,5,6,7,13}; int wl=0, wh=0;
+    for (int c=0;c<=14;c++) for (int z=0;z<=5;z+=5) for (int k=0;k<9;k++) for (int i=1;i<9;i+=2){
+      setup(); knobs(c,z,0,sgs[k],4,40,20,120,100); fconst=notes[i]; run(SR, 0, f_const, 0, 9);
+      double e = db(rms(out,SR/2,SR/2)/rms(in_,SR/2,SR/2)); if (e<lo){lo=e; wl=sgs[k]*1000+c*10+i;} if (e>hi){hi=e; wh=sgs[k]*1000+c*10+i;} }
+    printf("level, every Choir x Sing (vowels, OOAH, VOWL, WHSPR): %.1f .. %.1f dB (lowest sing/choir/note %d, highest %d)\n", lo, hi, wl, wh);
+    CHECK(lo > -6 && hi < 6, "level range, all settings"); }
+
+  /* 6g. every Chord x Sing on ALL SEXT, loud: no NaN, ceiling held; envelope modes click no
+   *     more than AAH on the same arp */
+  { double pk=0; int nan=0; double step[14];
+    for (int c=0;c<=24;c+=3) for (int sg=0;sg<=13;sg++){ setup(); knobs(14,5,c,sg,10,100,20,120,100); fconst=notes[(c+sg)%10]; run(SR/2, 4, f_const, 0, 9);
+      for (int t=0;t<SR/2;t++){ if (!(out[t]==out[t])) nan=1; if (fabs(out[t])>pk) pk=fabs(out[t]); } }
+    int pat[8]={0,7,12,3,15,10,19,5}; int stepb=(int)(0.1875*SR/8);
+    for (int sg=0;sg<=13;sg++){ setup(); knobs(4,2,0,sg,8,40,0,120,100); double mx=0, prev=0;
+      for (int n8=0;n8<16;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); ph1=0;
+        for (int b=0;b<stepb;b++){ for(int j=0;j<8;j++){ float x = b<stepb*3/4 ? src(2,f) : 0.0f; fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
+          Fx_DLY_Formant(ctx); for(int j=0;j<8;j++){ double d=fabs(fx[j]-prev); prev=fx[j]; if (n8>0 && d>mx) mx=d; } } }
+      step[sg]=mx; }
+    double wr=0; for (int sg=1;sg<=13;sg++) if (step[sg]/step[0]>wr) wr=step[sg]/step[0];
+    if (getenv("CHV")) for (int sg=0;sg<=13;sg++) printf("  sing %d step %.4f\n", sg, step[sg]);
+    printf("all Chord x Sing, ALL SEXT: peak %.2f, NaN %d; largest sample step on a sine arp vs AAH: x%.2f\n", pk, nan, wr);
+    CHECK(!nan && pk<=1.0001 && wr < 2.0, "chord x sing peak, NaN or clicks"); }
+
   /* 7. switch-on: no burst of old sound */
   { setup(); defaults(); fconst=330; run(SR, 0, f_const, 0, 9);
-    params[0]=0; fconst=110; run(SR/4, 0, f_const, 0, 9); params[0]=1; knobs(4,2,0,2,4,40,20,120,100);
+    params[0]=0; fconst=110; run(SR/4, 0, f_const, 0, 9); params[0]=1; knobs(4,2,0,6,4,40,20,120,100);
     for (int b=0;b<40;b++){ for(int j=0;j<8;j++){ fx[j]=0; fx[j+8]=0; } Fx_DLY_Formant(ctx); for(int j=0;j<8;j++) out[b*8+j]=fx[j]; }
     double pk=0; for (int t=0;t<320;t++) if (fabs(out[t])>pk) pk=fabs(out[t]);
     printf("switch-on into silence: peak %.2g\n", pk); CHECK(pk < 1e-4, "switch-on burst"); }
 
   /* 8. Mix 0 = dry */
-  { setup(); knobs(4,2,0,2,4,40,20,120,0); fconst=220; run(SR/2, 0, f_const, 0, 9); double d=0; for(int t=0;t<(SR/2/8)*8;t++) d=fmax(d,fabs(out[t]-in_[t])); printf("Mix 0: largest difference from dry %.2g (dryG/wetG raw %g)\n", d, params[FORMANT_MIX_SLOT]); CHECK(d<1e-6, "Mix 0 not dry"); }
+  { setup(); knobs(4,2,0,6,4,40,20,120,0); fconst=220; run(SR/2, 0, f_const, 0, 9); double d=0; for(int t=0;t<(SR/2/8)*8;t++) d=fmax(d,fabs(out[t]-in_[t])); printf("Mix 0: largest difference from dry %.2g (dryG/wetG raw %g)\n", d, params[FORMANT_MIX_SLOT]); CHECK(d<1e-6, "Mix 0 not dry"); }
 
   { char b[8]; unsigned i; printf("labels:");
-    for (i=0;i<=8;i++){ ZDL_GetLabel_0(i,b); printf(" %s",b); } printf(" |");
+    for (i=0;i<=14;i++){ ZDL_GetLabel_0(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=5;i++){ ZDL_GetLabel_1(i,b); printf(" %s",b); } printf(" |");
-    for (i=0;i<=1;i++){ ZDL_GetLabel_2(i,b); printf(" %s",b); } printf(" |");
-    for (i=0;i<=2;i++){ ZDL_GetLabel_3(i,b); printf(" %s",b); } printf(" |");
+    for (i=0;i<=24;i++){ ZDL_GetLabel_2(i,b); printf(" %s",b); } printf(" |");
+    for (i=0;i<=13;i++){ ZDL_GetLabel_3(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=16;i+=4){ ZDL_GetLabel_4(i,b); printf(" %s",b); } printf("\n"); }
   printf("%d failed checks\n", fails);
   return fails ? 1 : 0;
