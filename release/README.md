@@ -127,13 +127,15 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
 ### GridDly: one tempo-synced delay, six engines
+New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
 One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at Tempo), and Char changes what it means with each engine.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Type | DIGI, TAPE, DUB, REVRS, TAPS, LOFI | DIGI: clean repeats. TAPE: wobbly, darker, slightly saturated, and a Time or Tempo change glides the pitch like tape. DUB: thin, saturated repeats that self-oscillate near Fdbk 100. REVRS: each chunk of Time plays backwards; chunks start on the bar with bar sync. TAPS: three echoes inside Time, each quieter. LOFI: every repeat loses bits and sample rate, so it crumbles more each time. |
+| Type | DIGI, TAPE, DUB, REVRS, TAPS, LOFI | DIGI: clean repeats. TAPE: wobbly, darker, slightly saturated, and a Time or Tempo change glides the pitch like tape. DUB: band-limited, saturated repeats, the dirtiest drone above Fdbk 100. REVRS: each chunk of Time plays backwards; chunks start on the bar with bar sync. TAPS: three echoes inside Time, each quieter. LOFI: every repeat loses bits and sample rate, so it crumbles more each time. |
 | Time | 12 ms..1.00 s, then 1/32..1bar, 2bar | Free time on the first 100 steps (as DualShft), then note values at Tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. A time too long for the memory is halved (2bar below about 61 BPM; REVRS needs twice the time, so 1bar below about 61 BPM). Away from TAPE, a Time change crossfades with no pitch bend. |
-| Fdbk | 0..100 | How many repeats. TAPE, DUB and LOFI can ring on forever near 100; the others always die away. |
+| Fdbk | 0..120 | How many repeats. 100 = 1:1 into the loop: the repeats only fade by what the engine's filters take (DUB fastest). Above 100 they grow into a drone, DUB too at any Tone. |
 | Tone | 0..100 | Dark to bright repeats. On DUB it moves the whole band up (thin and nasal at 100). |
 | Char | 0..100 | DIGI: slight chorus on the repeats. TAPE: wow and flutter depth. DUB: drive. REVRS: the fade at each chunk's edges, choppy at 0, smooth at 100. TAPS: the pattern (0..24: 1/4, 1/2, 1 of Time; 25..49: 3/8, 3/4, 1; 50..74: 1/3, 2/3, 1; 75..100: 1/2, 3/4, 1). LOFI: crush, from 12 bits to 4 bits and 1/8 of the sample rate. |
 | Duck | 0..100 | The repeats dip while you play and swell back in the gaps. 0 = off. |
