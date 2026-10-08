@@ -103,6 +103,27 @@ int main(void){
     printf("legato octave up/down, 4 sources x 4 notes: new note after at most %.1f ms\n", worst);
     CHECK(worst < 100, "legato octave jumps"); }
 
+  /* 2f. decay tails: a 0.3 s note, then a long release with the filter closing (plain and
+   *     resonant), over input noise and 50 Hz hum (-50 dB): the voice never moves to another
+   *     octave or onto the hum while it can be heard */
+  { int wrong=0, nb=0;
+    for (int pr=0;pr<4;pr++) for (int m=36;m<=72;m+=6){ double f=440*pow(2,(m-69)/12.0); setup(); knobs(4,2,0,0,4,40,20,120,100);
+      double sp=0,l1=0,l2=0,hp=0; unsigned r=1;
+      for (int b=0;b<(int)(3.0*SR/8);b++){ for(int j=0;j<8;j++){ double t=(b*8+j)/(double)SR, a = t<0.3 ? 1 : exp(-(t-0.3)*3.5);
+          double fc = (pr&1) ? 150+3000*exp(-t*3) : 2000*a+100, dmp = (pr&2) ? 0.08 : 0.6, g=2*sin(3.14159*fc/SR);
+          sp+=f/SR; sp-=floor(sp); l1+=g*((2*sp-1)-l1-dmp*l2); l2+=g*l1; r=r*1664525u+1013904223u; hp+=50.0/SR; if(hp>1) hp-=1;
+          float y=(float)(0.3*a*l2 + 0.003*((double)(r>>8)/16777216.0-0.5) + 0.003*sin(6.2831853*hp)); fx[j]=y; fx[j+8]=y; dry[j]=y; dry[j+8]=0; }
+        Fx_DLY_Formant(ctx); nb++;
+        if (b*8.0/SR>0.1 && st->vamp>1e-4 && fabs(1200*(st->note-log2(f)))>300) wrong++; } }
+    printf("decay tails over noise and hum, 4 synth sounds x 7 notes: %.1f ms sung on a wrong note\n", wrong*8000.0/SR);
+    CHECK(wrong==0, "decay tails"); }
+
+  /* 2g. a soft note right after a loud one (-20 dB, re-attacked) is still found */
+  { setup(); defaults(); fconst=220; run(SR/2, 0, f_const, 0, 0.4); int lock=-1; ph1=0;
+    for (int b=0;b<(SR/4)/8;b++){ for(int j=0;j<8;j++){ float x=0.1f*src(0,330); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx);
+      if (lock<0 && st->hold>0 && fabs(1200*(st->note-log2(330)))<15) lock=b; }
+    printf("soft note 0.1 s after a loud one: found after %.1f ms\n", lock<0 ? 999 : lock*8000.0/SR); CHECK(lock>=0 && lock*8000.0/SR < 50, "soft note after a loud one"); }
+
   /* 2d. fast arp, 160 BPM 16ths (94 ms), 50 % gate, C3 up: every note sung */
   { int miss=0; double lat=0; int pat[8]={0,7,12,3,15,10,19,5}; setup(); defaults(); int stepb=(int)(0.09375*SR/8);
     for (int n8=0;n8<40;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); int first=-1; ph1=0;
@@ -180,48 +201,43 @@ int main(void){
       double d0=st->sph[0]-a, d1=st->sph[1]-b2; if(d0<0)d0+=1; if(d1<0)d1+=1; f0s[0]=d0*SR/8; f0s[1]=d1*SR/8; }
     printf("DRONE, 110 then 165 Hz legato: singer 0 at %.1f Hz, singer 1 holds %.1f Hz\n", f0s[0], f0s[1]);
     CHECK(fabs(1200*log2(f0s[0]/165))<50 && fabs(1200*log2(f0s[1]/110))<50, "drone");
-    double fc[3]; int cyc=(int)(0.5*SR/8); setup(); knobs(4,1,0,12,8,40,20,120,100); fconst=110; ph1=0;
+    double fc[3]; int cyc=(int)(0.5*SR/8); setup(); knobs(4,1,0,11,8,40,20,120,100); fconst=110; ph1=0;
     for (int b=0;b<cyc*4;b++){ if (b==cyc*2) fconst=165;
       for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } float a=st->sph[1]; Fx_DLY_Formant(ctx);
       double d=st->sph[1]-a; if(d<0)d+=1; if (b==cyc*2+cyc/2) fc[0]=d*SR/8/2; if (b==cyc*3+cyc/2) fc[1]=d*SR/8/2; if (b==cyc/2) fc[2]=st->amp[1]; }
     printf("CANON M+W, Pace 1/4: women (an octave up) 0.25 s after the change sing %.1f Hz, 0.75 s after %.1f Hz; in the first cycle level %.2g\n", fc[0], fc[1], fc[2]);
     CHECK(fabs(1200*log2(fc[0]/110))<50 && fabs(1200*log2(fc[1]/165))<50 && fc[2]<1e-3, "canon"); }
 
-  /* 6d. syllables (LA DOO HA): a new one on every note, re-attacked or legato */
+  /* 6d. syllables (LA DOO): a new one on every note, re-attacked or legato */
   { int pat[8]={0,7,12,3,15,10,19,5}, worst=99; int stepb=(int)(0.09375*SR/8);
-    for (int sg=8; sg<=10; sg++) for (int gate=0; gate<2; gate++){ setup(); knobs(4,2,0,sg,4,40,gate?20:0,120,100); int resets=0, last=0;
+    for (int sg=8; sg<=9; sg++) for (int gate=0; gate<2; gate++){ setup(); knobs(4,2,0,sg,4,40,gate?20:0,120,100); int resets=0, last=0;
       for (int n8=0;n8<24;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); ph1=0;
         for (int b=0;b<stepb;b++){ for(int j=0;j<8;j++){ float x = (gate || b<stepb/2) ? src(0,f) : 0.0f; fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
           Fx_DLY_Formant(ctx); if (st->syl < last && st->syl < 5 && last > 100) resets++; last=st->syl; } }
       printf("  sing %d, %s: %d syllables on 23 note changes\n", sg, gate ? "legato" : "50%% gate", resets); if (resets<worst) worst=resets; }
     CHECK(worst>=23, "a syllable on every note"); }
 
-  /* 6e. HA is short: Feel 40 (~240 ms), a 1 s note */
-  { setup(); knobs(0,0,0,10,4,40,20,120,100); fconst=220; run(SR, 0, f_const, 0, 9);
-    double e=rms(out,SR/20,SR/8), l=rms(out,SR*6/10,SR*3/10);
-    printf("HA: level 50..175 ms %.1f dB, 600..900 ms %.1f dB\n", db(e), db(l)); CHECK(db(e)-db(l) > 30, "HA short"); }
-
-  /* 6f. level of the steady settings (vowels, OOAH, VOWL, WHSPR) on every Choir */
-  { double lo=99, hi=-99; int sgs[9]={0,1,2,3,4,5,6,7,13}; int wl=0, wh=0;
-    for (int c=0;c<=16;c++) for (int z=0;z<=5;z+=5) for (int k=0;k<9;k++) for (int i=1;i<9;i+=2){
+  /* 6f. level of the steady settings (vowels, OOAH, VOWL) on every Choir */
+  { double lo=99, hi=-99; int sgs[8]={0,1,2,3,4,5,6,7}; int wl=0, wh=0;
+    for (int c=0;c<=16;c++) for (int z=0;z<=5;z+=5) for (int k=0;k<8;k++) for (int i=1;i<9;i+=2){
       setup(); knobs(c,z,0,sgs[k],4,40,20,120,100); fconst=notes[i]; run(SR, 0, f_const, 0, 9);
       double e = db(rms(out,SR/2,SR/2)/rms(in_,SR/2,SR/2)); if (e<lo){lo=e; wl=sgs[k]*1000+c*10+i;} if (e>hi){hi=e; wh=sgs[k]*1000+c*10+i;} }
-    printf("level, every Choir x Sing (vowels, OOAH, VOWL, WHSPR): %.1f .. %.1f dB (lowest sing/choir/note %d, highest %d)\n", lo, hi, wl, wh);
+    printf("level, every Choir x Sing (vowels, OOAH, VOWL): %.1f .. %.1f dB (lowest sing/choir/note %d, highest %d)\n", lo, hi, wl, wh);
     CHECK(lo > -6 && hi < 6, "level range, all settings"); }
 
   /* 6g. every Chord x Sing on ALL SEXT, loud: no NaN, ceiling held; envelope modes click no
    *     more than AAH on the same arp */
-  { double pk=0; int nan=0; double step[14];
-    for (int c=0;c<=24;c+=3) for (int sg=0;sg<=13;sg++){ setup(); knobs(14+(c%3),5,c,sg,10,100,20,120,100); fconst=notes[(c+sg)%10]; run(SR/2, 4, f_const, 0, 9);
+  { double pk=0; int nan=0; double step[12];
+    for (int c=0;c<=24;c+=3) for (int sg=0;sg<=11;sg++){ setup(); knobs(14+(c%3),5,c,sg,10,100,20,120,100); fconst=notes[(c+sg)%10]; run(SR/2, 4, f_const, 0, 9);
       for (int t=0;t<SR/2;t++){ if (!(out[t]==out[t])) nan=1; if (fabs(out[t])>pk) pk=fabs(out[t]); } }
     int pat[8]={0,7,12,3,15,10,19,5}; int stepb=(int)(0.1875*SR/8);
-    for (int sg=0;sg<=13;sg++){ setup(); knobs(4,2,0,sg,8,40,0,120,100); double mx=0, prev=0;
+    for (int sg=0;sg<=11;sg++){ setup(); knobs(4,2,0,sg,8,40,0,120,100); double mx=0, prev=0;
       for (int n8=0;n8<16;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); ph1=0;
         for (int b=0;b<stepb;b++){ for(int j=0;j<8;j++){ float x = b<stepb*3/4 ? src(2,f) : 0.0f; fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
           Fx_DLY_Formant(ctx); for(int j=0;j<8;j++){ double d=fabs(fx[j]-prev); prev=fx[j]; if (n8>0 && d>mx) mx=d; } } }
       step[sg]=mx; }
-    double wr=0; for (int sg=1;sg<=13;sg++) if (step[sg]/step[0]>wr) wr=step[sg]/step[0];
-    if (getenv("CHV")) for (int sg=0;sg<=13;sg++) printf("  sing %d step %.4f\n", sg, step[sg]);
+    double wr=0; for (int sg=1;sg<=11;sg++) if (step[sg]/step[0]>wr) wr=step[sg]/step[0];
+    if (getenv("CHV")) for (int sg=0;sg<=11;sg++) printf("  sing %d step %.4f\n", sg, step[sg]);
     printf("all Chord x Sing, ALL SEXT: peak %.2f, NaN %d; largest sample step on a sine arp vs AAH: x%.2f\n", pk, nan, wr);
     CHECK(!nan && pk<=1.0001 && wr < 2.0, "chord x sing peak, NaN or clicks"); }
 
@@ -239,7 +255,7 @@ int main(void){
     for (i=0;i<=16;i++){ ZDL_GetLabel_0(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=5;i++){ ZDL_GetLabel_1(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=24;i++){ ZDL_GetLabel_2(i,b); printf(" %s",b); } printf(" |");
-    for (i=0;i<=13;i++){ ZDL_GetLabel_3(i,b); printf(" %s",b); } printf(" |");
+    for (i=0;i<=11;i++){ ZDL_GetLabel_3(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=16;i+=4){ ZDL_GetLabel_4(i,b); printf(" %s",b); } printf("\n"); }
   printf("%d failed checks\n", fails);
   return fails ? 1 : 0;
