@@ -65,6 +65,20 @@
  *                   (twin copy for the sync reset, see RESET), shown as the BPM
  *   8 Mix   0..100  dry/wet, DJ-style: dry full up to 50, wet full from 50
  *
+ * MIDI TRANSPORT (MOD firmware 0.4 and later; TEST version, 2026-10-08)
+ *   The MOD firmware keeps a transport block at 0x1181FF00 (repo zoom-ms-modding,
+ *   docs/transport-block.md): magic 0x5A4D5401, a sequence word, running, Start counter,
+ *   MIDI clocks since Start (the first clock after Start is 1 = the downbeat) and the tempo
+ *   in BPM x 100 (clock tempo, or the patch TEMPO / tap without clock). When the magic is
+ *   there the block replaces the Tempo knob and the bar tag:
+ *   - tempo = the block's tempo, always;
+ *   - while running, the pattern steps on the clock count: step = (clocks - 1) / 6 (a 16th is
+ *     6 clocks) inside the pattern, so Start restarts it at step 1, an effect loaded mid-song
+ *     lands on the right step, and it can't drift. Between two clocks the phase moves on at
+ *     the tempo but never past the next clock. Reset NOTE / PEDAL do nothing while running;
+ *   - after Stop (or no clock for 0.5 s) it runs free at the tempo from where it was.
+ *   Without the magic (stock or older firmware) everything below works as before.
+ *
  * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag")
  *   Mozaic can only edit slots 1-3. While Mozaic flips this effect's Tempo, it writes a bar
  *   tag into the Dry buffer's right half for the slots after it. With Tempo on 0..39 = FOLLOW
@@ -86,7 +100,7 @@
 #define CH_CODE_SECTION(fn)
 #endif
 
-#define CH_MAGIC        0x43483036u          /* "CH06" */
+#define CH_MAGIC        0x43483037u          /* "CH07" */
 #define CH_BPM_MIN      40.0f
 #define CH_BPM_MAX      240.0f
 #define CH_TEMPO_MAX    441.0f               /* Tempo screen 0..441: the BPMs twice */
@@ -95,6 +109,16 @@
 #define CH_QUIET_LEN    2000                 /* samples of silence before a new note counts */
 #define CH_QUIET_LVL    0.002f               /* below this the input counts as silent */
 #define CH_NOTE_LVL     0.01f                /* above this a new note has started */
+#ifndef CH_ZMT_ADDR
+#ifdef __TI_COMPILER_VERSION__
+#define CH_ZMT_ADDR     0x1181FF00u          /* MOD firmware transport block (L2 RAM)   */
+#else
+static unsigned int ch_zmt_host[8];          /* host tests: no firmware, no block       */
+#define CH_ZMT_ADDR     ((uintptr_t)ch_zmt_host)
+#endif
+#endif
+#define CH_ZMT_MAGIC    0x5A4D5401u
+#define CH_FREE_MAX     4.0f                 /* pp limit when not on the clock: none    */
 
 typedef struct {
     unsigned int magic;
@@ -105,12 +129,20 @@ typedef struct {
     unsigned int was_off;  /* set while the footswitch is off (for Reset = PEDAL) */
     int   twin;            /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     DtSync sync;           /* bar tag to and from other slots (drytag.h) */
+    unsigned int clk, starts;  /* transport clocks and Start count seen last block */
 } ChState;
+
+/* What the MOD transport block says this block (ok = 0: no block, stock firmware) */
+typedef struct {
+    unsigned int ok, run, starts, clocks;
+    float bpm;
+} ChClock;
 
 typedef struct {
     float inc;             /* phase increment per sample (steps per sample)  */
     float swing;           /* 0..0.5                                          */
-    float gap, c;          /* gap before a touching note, in steps; slew coefficient */
+    float gap, c, e;       /* gap before a touching note, in steps; slew coefficient, slew rate */
+    float ppmax;           /* pp never passes this (the next clock); CH_FREE_MAX = free */
     float dryG, wetG;
     unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (steps - Shift, already < steps) */
     unsigned int lo, hi;           /* the pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
@@ -171,6 +203,7 @@ CH_ALWAYS_INLINE(ch_init)
 static inline void ch_init(ChState *s)
 {
     s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->twin = -1;
+    s->clk = 0u; s->starts = 0u;
     dt_sync_init(&s->sync);
     s->magic = CH_MAGIC;
 }
@@ -202,6 +235,8 @@ static inline void ch_prepare(ChParams *P, const float *u)
     P->gap   = u[5] * 0.01f;                             /* Gap 0..50 % of a step */
     k = 1.0f - u[6] * 0.01f;                             /* 1 = hard, 0 = soft */
     e = 3.0f + 600.0f * k * k * k;                       /* slew rate in 1/steps */
+    P->e = e;
+    P->ppmax = CH_FREE_MAX;
     P->c = P->inc * e;
     if (P->c > 0.5f) P->c = 0.5f;
     P->sync = (unsigned int)(int)(u[4] + 0.5f);               /* 0 OFF, 1 NOTE, 2 PEDAL, 3 SYNC (= OFF) */
@@ -209,6 +244,67 @@ static inline void ch_prepare(ChParams *P, const float *u)
     if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * (u[8] * 0.01f);                    /* wet fades in up to 50, then full       */
     if (P->wetG > 1.0f) P->wetG = 1.0f;
+}
+
+/* Tempo from the transport block instead of the knob (any BPM the firmware sends) */
+CH_ALWAYS_INLINE(ch_set_bpm)
+static inline void ch_set_bpm(ChParams *P, float bpm)
+{
+    if (bpm < 20.0f) bpm = 20.0f;
+    if (bpm > 300.0f) bpm = 300.0f;
+    P->inc = bpm * 4.0f * CH_INC_PER_BPM;
+    P->c = P->inc * P->e;
+    if (P->c > 0.5f) P->c = 0.5f;
+}
+
+/* Read the MOD transport block: plain loads, retried while the sequence word is odd or
+ * changes under us (the firmware writes with interrupts off, so this is only a guard). */
+CH_ALWAYS_INLINE(ch_clock_read)
+static inline void ch_clock_read(ChClock *k, volatile const unsigned int *z)
+{
+    unsigned int t, q;
+    k->ok = 0u;
+    if (z[0] != CH_ZMT_MAGIC) return;
+    for (t = 0u; t < 4u; t++) {
+        q = z[1];
+        if (q & 1u) continue;
+        k->run = z[2]; k->starts = z[3]; k->clocks = z[4];
+        k->bpm = (float)(int)z[5] * 0.01f;
+        if (z[1] == q) { k->ok = 1u; return; }
+    }
+}
+
+/* While the transport runs: put the pattern where the clock count says. 12 clocks = one
+ * pair of 16ths. pos and the clock inside the pair come from (clocks - 1) mod (12 * steps)
+ * by subtracting shifted copies (no division), so any count works, also mid-song. pp jumps
+ * to the clock's place only when a new clock (or Start) arrived; between clocks it moves on
+ * at the tempo up to just before the next clock. */
+CH_ALWAYS_INLINE(ch_clock_apply)
+static inline void ch_clock_apply(ChState *s, ChParams *P, const ChClock *k)
+{
+    unsigned int r, m, mk, p = 0u, b, pos;
+    P->sync = 0u;                                    /* the clock decides where the pattern is */
+    if (k->clocks == 0u) {                           /* Start seen, first clock not yet: wait on step 1 */
+        s->pos = 0u; s->pp = 0.0f; P->ppmax = 0.0f;
+        s->clk = 0u; s->starts = k->starts;
+        return;
+    }
+    r = k->clocks - 1u;
+    m = 12u * P->steps;
+    for (b = 28u; b-- > 0u; ) {
+        mk = m << b;
+        if ((mk >> b) == m && r >= mk) r -= mk;      /* r = (clocks - 1) mod (12 * steps) */
+    }
+    for (b = 7u; b-- > 0u; ) {
+        if (r >= (12u << b)) { r -= 12u << b; p += 1u << b; }   /* p = pairs, r = clock 0..11 */
+    }
+    pos = p + p;
+    while (pos >= P->steps) pos -= P->steps;
+    s->pos = pos;
+    if (k->clocks != s->clk || k->starts != s->starts) s->pp = (float)(int)r * 0.16666667f;
+    P->ppmax = (float)(int)r * 0.16666667f + 0.1666f;
+    if (s->pp > P->ppmax) s->pp = P->ppmax;
+    s->clk = k->clocks; s->starts = k->starts;
 }
 
 CH_ALWAYS_INLINE(ch_process)
@@ -229,8 +325,9 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf, int n)
             if (quiet >= (unsigned int)CH_QUIET_LEN && a > CH_NOTE_LVL && P->sync == 1u) { pp = 0.0f; pos = 0u; }
             if (a > CH_NOTE_LVL) quiet = 0u;
         }
-        /* advance the pair phase */
+        /* advance the pair phase (on the clock: never past the next clock) */
         pp += P->inc;
+        if (pp > P->ppmax) pp = P->ppmax;
         if (pp >= 2.0f) {                            /* next pair: two steps further in the pattern */
             pp -= 2.0f; pos += 2u;
             while (pos >= P->steps) pos -= P->steps;
@@ -264,6 +361,7 @@ CH_ALWAYS_INLINE(ch_idle)
 static inline void ch_idle(ChState *s, const ChParams *P, int n)
 {
     s->pp += P->inc * (float)n;
+    if (s->pp > P->ppmax) s->pp = P->ppmax;
     if (s->pp >= 2.0f) {
         s->pp -= 2.0f; s->pos += 2u;
         while (s->pos >= P->steps) s->pos -= P->steps;
@@ -348,6 +446,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ChState *s;
     ChParams P;
+    ChClock k;
     float u[9];
     int i;
 
@@ -379,12 +478,17 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[8] = ch_ui(params[EUGATE_MIX_SLOT],   (float)EUGATE_MIX_UI_DEFAULT,   100.0f);
 
     if (s->magic != CH_MAGIC) ch_init(s);
+    ch_clock_read(&k, (volatile const unsigned int *)CH_ZMT_ADDR);
     /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
+    if (!k.ok) u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
     ch_prepare(&P, u);
+    if (k.ok) {                                  /* MOD firmware: the transport replaces Tempo */
+        ch_set_bpm(&P, k.bpm);
+        if (k.run) ch_clock_apply(s, &P, &k);
+    }
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
-        if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* still follows the bar */
+        if (!k.ok && ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* still follows the bar */
         ch_idle(s, &P, 8);                       /* and the pattern clock keeps running */
         return;
     }
@@ -392,7 +496,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;
     }
-    if (ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* sync reset: step 1 now */
+    if (!k.ok && ch_twin_flip(s, u[7])) { s->pp = 0.0f; s->pos = 0u; }   /* sync reset: step 1 now */
     ch_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */

@@ -62,6 +62,8 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 
 Try 5 notes in 16 steps (the default), then 7 in 12 or 5 in 12 for a different feel.
 
+**On the MOD firmware (0.4 or later, test version):** EuGate follows the pedal's MIDI transport instead of the Tempo knob. While the clock runs the pattern steps on the clock count, so MIDI Start restarts it at step 1 and it never drifts; after Stop it runs free at the last tempo. Without a clock it plays at the pedal's tempo (tap or patch). On stock firmware nothing changes.
+
 ### DubSiren: dub siren with tape echo
 A siren oscillator with LFO modes, played from the footswitch, into its own tape-style echo. Your input passes through untouched.
 
