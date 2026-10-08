@@ -1,10 +1,10 @@
 {
   "effect_name": "GridDly",
-  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the Tempo knob; Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tempo (knob 8, twin copies, FOLLW), Tail (repeats ring out or stop when switched off). 7.9 s 16-bit ring.",
+  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo (MIDI clock, tap or patch tempo); Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tail (repeats ring out or stop when switched off). MIDI Start restarts the REVRS chunk; MIDI clock keeps synced chunks on the beat. 7.9 s 16-bit ring.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 495,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "audio_func_name": "Fx_DLY_GridDly",
@@ -21,7 +21,8 @@
       "name": "Time",
       "max": 113,
       "default": 108,
-      "comment": "0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms..1.00 s), as DualShft. 101..113 = note values at the Tempo knob: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. Too long for the 7.9 s ring = halved until it fits (REVRS needs twice the time). Default 108 = 1/8. (dotted eighth)."
+      "comment": "0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms..1.00 s), as DualShft. 101..113 = note values at the pedal's tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. Too long for the 7.9 s ring = halved until it fits (REVRS needs twice the time). Default 108 = 1/8. (dotted eighth).",
+      "flags": 40
     },
     {
       "name": "Fdbk",
@@ -52,12 +53,6 @@
       "max": 100,
       "default": 50,
       "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. Default 50."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "BPM 40..240 for the synced Time values; 0..39 = FOLLW (follows the bar tag from an earlier slot); 241..441 = twin copy (BPM = screen - 201): flipping between a BPM and its twin restarts the REVRS chunk on the bar. Knob 8 as on every synced effect. Default 120."
     },
     {
       "name": "Tail",

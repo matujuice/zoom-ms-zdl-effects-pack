@@ -119,22 +119,19 @@
  *   6 Glide  0 = every note starts fresh (a legato change hushes the old note and
  *            re-attacks, for fast arps); 1..100 = legato, the voice slides to a new note
  *            in ~3 ms .. ~0.6 s
- *   7 Tempo  BPM for Pace, 40..240; screen 0..441, 241..441 is the twin copy (see TEMPO SYNC);
- *            0..39 = FOLLW (bar tag). The 8th knob, as on every synced effect of the pack.
- *   8 Mix    dry synth / choir, DJ-style: dry full up to 50, choir full from 50
+ *   7 Mix    dry synth / choir, DJ-style: dry full up to 50, choir full from 50
+ *   Pace carries the tap flag (manifest flags 40) so the pedal shows its tap button.
  *
- * TEMPO SYNC
- *   A custom ZDL cannot read the pedal's BPM, so it comes from the Tempo knob and Pace picks
- *   the note value of one cycle. A new BPM only changes the speed. Flipping between a BPM and
- *   its twin (120 <-> 321) marks a downbeat: the movement goes to where it should be that
- *   many bars after the last downbeat (counted from the time between them at the current
- *   BPM), so a 2-bar or dotted Pace is never cut in the middle. The first flip, or one more
- *   than 512 bars after the last, starts the cycle from 0.
- * BAR TAG (src/custom/common/drytag.h, docs/TEMPO-SYNC.md "Bar tag"): with Tempo on FOLLW it
- *   takes the BPM and the bars from an effect in an earlier slot; on any BPM it ignores them.
- *   In slots 1-3, FOLLOW needs Mozaic's Send knob on another slot.
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it. Pace picks the note value of one
+ *   cycle of the movement; a new BPM only changes its speed. While the MIDI transport runs
+ *   the movement's phase is placed on the clock count (beats since Start x Pace's cycles per
+ *   beat; 96 beats hold whole cycles of every Pace), so MIDI Start restarts it on the
+ *   downbeat (and VOWL on A), a 2-bar or dotted Pace stays on its bars and an effect loaded
+ *   mid-song lands in the right place. After Stop it runs on at the last tempo.
  *
- * FOOTSWITCH: off = untouched input; the movement keeps time and follows flips. On again,
+ * FOOTSWITCH: off = untouched input; the movement keeps following the clock. On again,
  *   the filters, singers and tracker start clean and the choir fades in on the next note.
  *
  * SIZE: must stay well under the ~31 KB the pedal boots with (docs/SAFE-DSP-RULES.md, Size);
@@ -143,7 +140,7 @@
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -157,7 +154,7 @@
 #define SR_NOUNROLL
 #endif
 
-#define CH_MAGIC      0x43483041u          /* "CH0A" */
+#define CH_MAGIC      0x43483042u          /* "CH0B" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -179,7 +176,6 @@
 #define CH_INC_HZ     2.2675737e-5f        /* 1 / 44100                               */
 #define CH_BLK_HZ     1.8140590e-4f        /* 8 / 44100: a block's phase per Hz       */
 #define CH_BPM_BLOCK  3.0234e-6f           /* 8 / (60 * 44100): phase per block per (BPM x mult) */
-#define CH_BARS_PER_BLK 7.5586e-7f         /* bars per block per BPM: 8 / (4 * 60 * 44100) */
 #define CH_PI_FS      7.1237928e-5f        /* pi / 44100                              */
 #define CH_LEVEL      6.2f                 /* overall choir level, set by measurement */
 #define CH_TILT       0.75f                /* level slope vs pitch: (220 Hz / f)^0.75, measured */
@@ -234,16 +230,13 @@ typedef struct {
     float sph[CH_NS], vph[CH_NS], drift[CH_NS];
     unsigned int rng;
     /* movement and sync */
-    float lfo_ph, ref_ph;                  /* phase now; phase at the last downbeat   */
-    unsigned int since;                    /* blocks since the last downbeat          */
-    int   flipped;                         /* a downbeat has been seen                */
-    float last_twin;                       /* Tempo copy at the last block (0, 1)     */
-    DtSync sync;
+    float lfo_ph;                          /* movement phase, 0..1                    */
+    ZtSync zt;                             /* MIDI transport (zmt.h)                  */
     int   was_off;
 } ChState;
 
 typedef struct {
-    float bpm, tempo, lfo_inc, cpb;        /* cpb = cycles per bar                    */
+    float lfo_inc, mult;                   /* phase per block; cycles per beat (Pace) */
     int   choir, size, chord, sing;
     int legato; float feel, glide_c, att, rel, vibc, breath, bright;
     float dryG, wetG;
@@ -268,29 +261,6 @@ static inline float sr_knob(float raw, float def_ui, float inv_max)
     else ui = raw;
     ui = (float)(int)(ui + 0.5f);
     return clamp01(ui * inv_max);
-}
-
-/* Tempo knob (screen 0..441): read raw x 100 up to 4.415 (sr_knob's 3.05 guess would take
- * 4.41 for an on-screen 4). Returns the screen number. */
-SR_ALWAYS_INLINE(ch_tempo_ui)
-static inline float ch_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > 441.0f) ui = 441.0f;
-    return ui;
-}
-
-/* Tempo screen number -> BPM: 0..240 as is (at least 40), 241..441 the twin copy */
-SR_ALWAYS_INLINE(ch_tempo_bpm)
-static inline int ch_tempo_bpm(int ui)
-{
-    if (ui > 240) ui -= 201;
-    if (ui < 40) ui = 40;
-    return ui;
 }
 
 /* 1/x for x > 0: exponent trick, then three Newton steps (no divide) */
@@ -483,27 +453,24 @@ static inline void ch_init(ChState *s)
     SR_NOUNROLL
     for (i = 0; i < CH_NS; i++) { s->sph[i] = 0.17f * (float)i; s->vph[i] = 0.23f * (float)i; s->drift[i] = 0.0f; }
     s->rng = 0x1234567u;
-    s->lfo_ph = 0.0f; s->ref_ph = 0.0f; s->since = 0u; s->flipped = 0; s->last_twin = -1.0f;
+    s->lfo_ph = 0.0f;
     s->was_off = 0;
-    dt_sync_init(&s->sync);
+    zt_init(&s->zt);
     s->magic = CH_MAGIC;
 }
 
-/* k[] = 0..1 by each knob's own max, in pedal order (Tempo as screen/441) */
+/* k[] = 0..1 by each knob's own max, in pedal order; bpm = the pedal's (zt_update) */
 SR_ALWAYS_INLINE(ch_prepare)
-static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
+static inline void ch_prepare(ChParams *P, const float *k, float bpm)
 {
-    int   tempo_i = (int)(k[7] * 441.0f + 0.5f);
-    float twin, f, m;
-    P->tempo = (float)tempo_i;
-    P->bpm   = (float)ch_tempo_bpm(tempo_i);
+    float f, m;
     P->choir = (int)(k[0] * 16.0f + 0.5f);
     P->size  = 1 + (int)(k[1] * 5.0f + 0.5f);
     P->chord = (int)(k[2] * 24.0f + 0.5f);
     P->sing  = (int)(k[3] * 11.0f + 0.5f);
     m        = subdiv_mult((int)(k[4] * 16.0f + 0.5f));
-    P->cpb   = 4.0f * m;
-    P->lfo_inc = P->bpm * m * CH_BPM_BLOCK;
+    P->mult  = m;
+    P->lfo_inc = bpm * m * CH_BPM_BLOCK;
     f = k[5];
     P->feel  = f;
     /* Feel: attack 60 .. 2 ms, release 300 .. 30 ms (per-block coefficients), vibrato 28 .. 6
@@ -526,33 +493,24 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
         P->vibc *= 1.8f; P->bright *= 1.3f; P->breath *= 1.5f;
     }
     P->legato  = (k[6] > 0.005f);                     /* Glide 0: every note starts fresh */
-    P->dryG = 2.0f - 2.0f * k[8];
+    P->dryG = 2.0f - 2.0f * k[7];
     if (P->dryG > 1.0f) P->dryG = 1.0f;
-    P->wetG = 2.0f * k[8];
+    P->wetG = 2.0f * k[7];
     if (P->wetG > 1.0f) P->wetG = 1.0f;
-
-    /* sync: a flip of the Tempo copy is a downbeat. Go to where the cycle should be that
-     * many bars after the last one (bar-aware, so long and dotted Paces are not cut). */
-    twin = (P->tempo > 240.0f) ? 1.0f : 0.0f;
-    if (s->last_twin >= 0.0f && twin != s->last_twin) {
-        float bars = (float)s->since * P->bpm * CH_BARS_PER_BLK;
-        float ph = 0.0f;
-        if (s->flipped && bars < 512.0f) {
-            ph = s->ref_ph + (float)(int)(bars + 0.5f) * P->cpb;
-            ph -= (float)(int)ph;
-        }
-        s->lfo_ph = ph; s->ref_ph = ph; s->since = 0u; s->flipped = 1;
-    }
-    s->last_twin = twin;
 }
 
-/* the movement, once per block, also while switched off */
+/* the movement, once per block, also while switched off: on the clock while the MIDI
+ * transport runs (beats since Start x cycles per beat), else free at the tempo */
 SR_ALWAYS_INLINE(ch_tick)
-static inline void ch_tick(ChState *s, const ChParams *P)
+static inline void ch_tick(ChState *s, const ChParams *P, int run, float beats)
 {
-    s->lfo_ph += P->lfo_inc;
-    if (s->lfo_ph >= 1.0f) s->lfo_ph -= 1.0f;
-    if (s->since < 0x7FFFFFFFu) s->since++;
+    if (run) {
+        s->lfo_ph = beats * P->mult;           /* 96 beats hold whole cycles of every Pace */
+        s->lfo_ph -= (float)(int)s->lfo_ph;
+    } else {
+        s->lfo_ph += P->lfo_inc;
+        if (s->lfo_ph >= 1.0f) s->lfo_ph -= 1.0f;
+    }
 }
 
 /* bottom of a dip y1 between y0 and y2, by a parabola (y1 if they don't curve up) */
@@ -721,7 +679,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     va = (n <= 5) ? n : 0;                             /* AAH EHH EEE OHH OOH MMM */
     vb = va; uu = 0.0f; ve = 1.0f;
     w  = (float)s->syl;
-    if (s->lfo_ph < s->lph) {                          /* a new cycle: VOWL's next vowel */
+    if (s->lfo_ph < s->lph - 0.5f) {                   /* a new cycle: VOWL's next vowel */
         s->vw++; if (s->vw > 4) s->vw = 0;
         if (n == 7) s->wsm = 0.0f;
     }
@@ -1061,28 +1019,12 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
         , out);
 }
 
-/* 7 Tempo: FOLLW on 0..39, else the BPM "40" .. "240" (twin copy 241..441 shows it too) */
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = ch_tempo_bpm((int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
-}
-
 
 /* ---- pedal entry point (same structure as the rest of the pack) ---------- */
 #ifndef FORMANT_HOST_TEST
 
 #include "formant_params.h"
-#if FORMANT_MIX_SLOT != FORMANT_CHOIR_SLOT + 8
+#if FORMANT_MIX_SLOT != FORMANT_CHOIR_SLOT + 7
 #error "Choral reads its knobs as consecutive slots"
 #endif
 
@@ -1096,7 +1038,6 @@ SR_CODE_SECTION(FORMANT_AUDIO_FUNC)
 void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -1106,8 +1047,8 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ChState *s;
     ChParams P;
-    float k[9];
-    int i;
+    float k[8], bpm, beats;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -1127,8 +1068,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     s = (ChState *)stateBase;
 
     SR_NOUNROLL
-    for (i = 0; i < 9; i++) {                    /* knobs in a row, Tempo (7) apart */
-        if (i == 7) continue;
+    for (i = 0; i < 8; i++) {                    /* knobs in a row */
         k[i] = sr_knob(params[FORMANT_CHOIR_SLOT + i],
                        (float)((i == 0) ? FORMANT_CHOIR_UI_DEFAULT : (i == 1) ? FORMANT_SIZE_UI_DEFAULT
                              : (i == 2) ? FORMANT_CHORD_UI_DEFAULT : (i == 3) ? FORMANT_SING_UI_DEFAULT
@@ -1139,14 +1079,12 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     }
 
     if (s->magic != CH_MAGIC) ch_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    k[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0,
-                    ch_tempo_ui(params[FORMANT_TEMPO_SLOT], (float)FORMANT_TEMPO_UI_DEFAULT),
-                    dt_id(stateBase)) * 0.0022675737f;   /* 1/441 */
-    ch_prepare(s, &P, k);                        /* a Tempo flip is a downbeat */
-    ch_tick(s, &P);
+    bpm = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
+    ch_prepare(&P, k, bpm);
+    if (start) { s->lfo_ph = 0.0f; s->lph = 0.0f; s->vw = 0; }   /* MIDI Start: downbeat, VOWL on A */
+    ch_tick(s, &P, run, beats);
     if (params[0] < 0.5f) {                      /* switched off: input untouched, the */
-        s->was_off = 1;                          /* movement keeps time with the bar   */
+        s->was_off = 1;                          /* movement keeps following the clock */
         return;
     }
     if (s->was_off) { ch_clear(s); s->was_off = 0; }

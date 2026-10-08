@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 NAMES = ["WaveFold", "DualShft", "Choral", "EuGate", "DubSiren", "SGNL", "Scrub",
-         "DirtBox", "Breather", "SyncEQ", "GridDly", "Sweep"]
+         "DirtBox", "Breather", "GridDly", "Sweep"]
 missing = [n for n in NAMES if not (ROOT / "dist" / (n + ".ZDL")).exists()]
 if missing:
     sys.exit("Missing in dist\\: " + ", ".join(n + ".ZDL" for n in missing) + "\nRun py build_all.py first.")

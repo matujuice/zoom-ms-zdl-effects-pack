@@ -26,7 +26,7 @@
  * KNOBS (screen values)
  *   0 Type  0..7    PH 4 / PH 8 / FL + / FL - / LP / BP / HP / NTCH
  *   1 Rate  0..115  faster all the way up. 0..100 free, about 0.05 Hz to 8 Hz (shown in Hz);
- *                   101..115 synced to Tempo, one full sweep (up and down) lasts 8 bars (101),
+ *                   101..115 synced to the pedal's tempo, one full sweep (up and down) lasts 8 bars (101),
  *                   7, 6, 5, 4, 3, 2 bars, 1.5 bars (108), 1 bar (109), 3/4 (110), 1/2 (111),
  *                   1/4 (112), 1/8 (113), 1/16 (114), 1/32 note (115)
  *   2 Depth 0..100  how far the sweep travels each way around Cntr, 0 = parked, 100 = +-2.5
@@ -41,29 +41,25 @@
  *                   a new random height twice per sweep
  *   6 Tone  0..100  phaser/flanger: how bright the feedback is (0 dark, 100 open);
  *                   filters: drive into the filter (0 clean, 100 hot, level kept about equal)
- *   7 Tempo 0..441  BPM 40..240 (0..39 = FOLLOW, see BAR TAG); 241..441 = the same BPMs again
- *                   (twin copy for the sync reset), shown as the BPM. Read raw x 100.
- *   8 Mix   0..100  DJ crossfade: dry full up to 50, wet full from 50
+ *   7 Mix   0..100  DJ crossfade: dry full up to 50, wet full from 50
+ *   Rate carries the tap flag (manifest flags 40) so the pedal shows its tap button.
  *
- * TEMPO / SYNC RESET
- *   Same scheme as EuGate / DualShft (docs/TEMPO-SYNC.md). Flipping between a BPM and its twin
- *   (120 <-> 321) happens once per bar when a host sends it. With a synced Rate the LFO jumps
- *   to where it would be after that many bars, (32 x bars mod length) / length, lengths counted in 32nd notes, so a 4 bar sweep
- *   keeps going across the flips instead of restarting each bar. With a free Rate a flip
- *   restarts the sweep at its centre. A plain tempo change restarts nothing. Switched off, the
- *   input passes untouched but the LFO keeps running and follows flips.
- *
- * BAR TAG (src/custom/common/drytag.h)
- *   Like the other tempo effects: Tempo on 0..39 = FOLLOW takes BPM and bars from the tag of an
- *   earlier slot, on any BPM the effect runs on its own. In slots 1-3, FOLLOW needs Mozaic's
- *   Send knob on another slot.
+ * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
+ *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
+ *   MOD firmware's transport block; 120 BPM without it. It sets the speed of a synced Rate.
+ *   While the MIDI transport runs, a synced Rate places the LFO on the clock count: phase =
+ *   (clocks since Start mod the sweep length) / length, lengths counted in clocks (a 32nd note
+ *   is 3), so MIDI Start restarts the sweep on the downbeat and even a 5 or 7 bar sweep stays
+ *   on the grid. A free Rate runs free and restarts at its centre on MIDI Start. After Stop
+ *   the sweep runs on at the last tempo. Switched off, the input passes untouched but the LFO
+ *   keeps running and keeps following the clock.
  *
  * State: 1024-sample ring for the flanger (4 KB), 8 all-pass states, the SVF, the LFO. It lives
  * in the arena, validated by a magic number (change it when the struct changes).
  */
 
 #include <stdint.h>
-#include "../common/drytag.h"
+#include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SW_DO_PRAGMA(x) _Pragma(#x)
@@ -75,11 +71,7 @@
 #define SW_CODE_SECTION(fn)
 #endif
 
-#define SW_MAGIC        0x53573032u          /* "SW02" */
-#define SW_BPM_MIN      40.0f
-#define SW_BPM_MAX      240.0f
-#define SW_TEMPO_MAX    441.0f
-#define SW_TEMPO_TWIN   201.0f
+#define SW_MAGIC        0x53573033u          /* "SW03" */
 #define SW_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define SW_HZ_TO_INC    2.2675737e-5f        /* 1 / 44100                       */
 #define SW_RING         1024u                /* flanger ring, a power of two    */
@@ -94,15 +86,13 @@ typedef struct {
     float r0, r1;          /* RAND: the height it glides from and to                 */
     float lfo;             /* smoothed LFO value, -1..1                              */
     unsigned int rng;
-    unsigned int bt;       /* 32nd notes into the sweep at the last synced flip      */
-    int twin;              /* Tempo on its twin copy (1) or not (0); -1 = not read yet */
     unsigned int was_off;
     unsigned int w;        /* ring write index                                       */
     float d;               /* current flanger delay, samples                          */
     float fbs;             /* damped feedback signal                                  */
     float ic1, ic2;        /* state variable filter memory                            */
     float ap[8];           /* all-pass memory                                         */
-    DtSync sync;           /* bar tag to and from other slots (drytag.h)              */
+    ZtSync zt;             /* MIDI transport (zmt.h)                                  */
     float ring[SW_RING];
 } SwState;
 
@@ -116,7 +106,7 @@ typedef struct {
     float dg, mk;          /* filter drive and its level make-up                       */
     float gain;            /* phaser/flanger wet gain at high feedback                 */
     float dryG, wetG;
-    unsigned int stages, flip_sync, bt_len;
+    unsigned int stages, bt_len;
     float inv_len;
     unsigned int type;
 } SwParams;
@@ -133,37 +123,6 @@ static inline float sw_ui(float raw, float def_ui, float max_ui)
     if (ui > max_ui) ui = max_ui;
     if (ui < 0.0f) ui = 0.0f;
     return ui;
-}
-
-/* Tempo knob (screen 0..441): raw x 100 up to 4.415, never through the 3.05 guess. */
-SW_ALWAYS_INLINE(sw_tempo_ui)
-static inline float sw_tempo_ui(float raw, float def_ui)
-{
-    float ui;
-    if (!(raw >= 0.0f && raw <= 441.5f)) ui = def_ui;
-    else if (raw <= 4.415f) ui = raw * 100.0f;
-    else ui = raw;
-    ui = (float)(int)(ui + 0.5f);
-    if (ui > SW_TEMPO_MAX) ui = SW_TEMPO_MAX;
-    return ui;
-}
-
-SW_ALWAYS_INLINE(sw_tempo_bpm)
-static inline float sw_tempo_bpm(float ui)
-{
-    if (ui > SW_BPM_MAX) ui -= SW_TEMPO_TWIN;
-    if (ui < SW_BPM_MIN) ui = SW_BPM_MIN;
-    if (ui > SW_BPM_MAX) ui = SW_BPM_MAX;
-    return ui;
-}
-
-SW_ALWAYS_INLINE(sw_twin_flip)
-static inline int sw_twin_flip(SwState *s, float tempo_ui)
-{
-    int tw = (tempo_ui > SW_BPM_MAX) ? 1 : 0;
-    int flip = (s->twin >= 0 && tw != s->twin);
-    s->twin = tw;
-    return flip;
 }
 
 /* 1 / x for x > 0: a first guess from the float bits, then three Newton steps (no divide) */
@@ -258,16 +217,32 @@ static inline unsigned int sw_len(unsigned int r, float *inv)
     *inv = 1.0f;                          return 1u;       /* 1/32     */
 }
 
+/* Synced phase on the running clock: ((clocks since Start - 1) mod (3 x len) + share of the
+ * next clock) / (3 x len). Counted from the raw clock count, not zmt's 96-beat beats, because
+ * 96 beats are not a whole number of 5 or 7 bar sweeps. The mod is a shifted subtraction. */
+SW_ALWAYS_INLINE(sw_clock_phase)
+static inline float sw_clock_phase(const ZtSync *z, unsigned int len, float inv_len)
+{
+    unsigned int r, L = 3u * len, mk, k;
+    if (z->clk == 0u) return 0.0f;                  /* Start, waiting for clock 1 */
+    r = z->clk - 1u;
+    for (k = 32u; k-- > 0u; ) {                     /* largest shift that fits first: */
+        mk = L << k;                                /* then at most one step per shift */
+        if ((mk >> k) == L && r >= mk) r -= mk;
+    }
+    return ((float)(int)r + z->sub) * inv_len * 0.33333334f;
+}
+
 SW_ALWAYS_INLINE(sw_init)
 static inline void sw_init(SwState *s)
 {
     unsigned int i;
     s->ph = 0.0f; s->rp = 0.0f; s->r0 = 0.0f; s->r1 = 0.7f; s->lfo = 0.0f;
-    s->rng = 0x2545F491u; s->bt = 0u; s->twin = -1; s->was_off = 0u;
+    s->rng = 0x2545F491u; s->was_off = 0u;
     s->w = 0u; s->d = 100.0f; s->fbs = 0.0f; s->ic1 = 0.0f; s->ic2 = 0.0f;
     for (i = 0u; i < 8u; i++) s->ap[i] = 0.0f;
     for (i = 0u; i < SW_RING; i++) s->ring[i] = 0.0f;
-    dt_sync_init(&s->sync);
+    zt_init(&s->zt);
     s->magic = SW_MAGIC;
 }
 
@@ -309,7 +284,7 @@ static inline float sw_lfo(SwState *s, unsigned int shape)
 }
 
 SW_ALWAYS_INLINE(sw_prepare)
-static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm)
+static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm, int run)
 {
     unsigned int type = (unsigned int)(int)u[0], rate = (unsigned int)(int)u[1];
     float depth = u[2] * 0.025f, cntr = u[3];
@@ -317,11 +292,11 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
     float lfo, f, g;
 
     P->type = type;
-    P->flip_sync = (rate >= 101u) ? 1u : 0u;
     P->bt_len = 1u; P->inv_len = 1.0f;
     if (rate >= 101u) {
         P->bt_len = sw_len(rate, &P->inv_len);
         P->inc = bpm * SW_INC_PER_BPM * 8.0f * P->inv_len;   /* a length is len / 8 beats */
+        if (run) s->ph = sw_clock_phase(&s->zt, P->bt_len, P->inv_len);
     } else {
         P->inc = 0.05f * sw_exp2((float)rate * 0.0732f) * SW_HZ_TO_INC;
     }
@@ -430,23 +405,12 @@ static inline void sw_filter(SwState *s, const SwParams *P, float *buf, int n)
     s->ic1 = ic1; s->ic2 = ic2;
 }
 
-/* The LFO moves on by one block; a flip first puts it where the bar says it is. */
+/* The LFO moves on by one block (while the clock runs, a synced Rate is placed again next block). */
 SW_ALWAYS_INLINE(sw_advance)
-static inline void sw_advance(SwState *s, const SwParams *P, int flip)
+static inline void sw_advance(SwState *s, const SwParams *P)
 {
-    if (flip) {
-        if (P->flip_sync) {
-            s->bt += 32u;
-            while (s->bt >= P->bt_len) s->bt -= P->bt_len;
-            s->ph = (float)s->bt * P->inv_len;
-        } else {
-            s->ph = 0.0f;
-        }
-        s->rp = 0.0f;
-    } else {
-        s->ph += P->inc * 8.0f;
-        if (s->ph >= 1.0f) s->ph -= 1.0f;
-    }
+    s->ph += P->inc * 8.0f;
+    if (s->ph >= 1.0f) s->ph -= 1.0f;
 }
 
 int ZDL_GetLabel_0(unsigned int value, char *out)
@@ -514,21 +478,6 @@ int ZDL_GetLabel_5(unsigned int value, char *out)
     return 4;
 }
 
-int ZDL_GetLabel_7(unsigned int value, char *out)
-{
-    int n, h = 0, t = 0, len = 0;
-    if (value <= 39u) return dt_follow_text(out);
-    if (value > 441u) value = 441u;
-    n = (int)sw_tempo_bpm((float)(int)value);
-    while (n >= 100) { n -= 100; h++; }
-    while (n >= 10)  { n -= 10;  t++; }
-    if (h > 0) { out[len] = (char)('0' + h); len++; }
-    out[len] = (char)('0' + t); len++;
-    out[len] = (char)('0' + n); len++;
-    out[len] = 0;
-    return len;
-}
-
 #ifndef SWEEP_HOST_TEST
 
 #include "sweep_params.h"
@@ -543,7 +492,6 @@ SW_CODE_SECTION(SWEEP_AUDIO_FUNC)
 void SWEEP_AUDIO_FUNC(unsigned int *ctx)
 {
     float *params = ZDL_PTR(float *, ctx[1]);
-    float *dryBuf = ZDL_PTR(float *, ctx[4]);
     float *fxBuf  = ZDL_PTR(float *, ctx[5]);
     unsigned int *magicSrc = ZDL_PTR(unsigned int *, ctx[12]);
     unsigned int *magicDst = ZDL_PTR(unsigned int *,
@@ -553,8 +501,8 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     SwState *s;
     SwParams P;
-    float u[9], bpm;
-    int i, flip;
+    float u[9], bpm, beats;
+    int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -580,25 +528,22 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     u[4] = sw_ui(params[SWEEP_RESO_SLOT],  (float)SWEEP_RESO_UI_DEFAULT,  100.0f);
     u[5] = sw_ui(params[SWEEP_SHAPE_SLOT], (float)SWEEP_SHAPE_UI_DEFAULT, 5.0f);
     u[6] = sw_ui(params[SWEEP_TONE_SLOT],  (float)SWEEP_TONE_UI_DEFAULT,  100.0f);
-    u[7] = sw_tempo_ui(params[SWEEP_TEMPO_SLOT], (float)SWEEP_TEMPO_UI_DEFAULT);
     u[8] = sw_ui(params[SWEEP_MIX_SLOT],   (float)SWEEP_MIX_UI_DEFAULT,   100.0f);
 
     if (s->magic != SW_MAGIC) sw_init(s);
-    /* bar tag: bars from earlier slots flip the Tempo copy too, FOLLOW takes their BPM */
-    u[7] = dt_tempo(&s->sync, dryBuf ? dryBuf + 8 : 0, u[7], dt_id(stateBase));
-    bpm = sw_tempo_bpm(u[7]);
-    flip = sw_twin_flip(s, u[7]);
-    sw_prepare(s, &P, u, bpm);
+    bpm = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
+    if (start) { s->ph = 0.0f; s->rp = 0.0f; }   /* MIDI Start: the sweep back to its start */
+    sw_prepare(s, &P, u, bpm, run);              /* a synced Rate goes on the clock here */
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
-        sw_advance(s, &P, flip);                 /* the sweep keeps running, follows the bar */
+        sw_advance(s, &P);                       /* the sweep keeps running, on the clock */
         return;
     }
     if (s->was_off) sw_wake(s);
     if (P.type < 2u)      sw_phaser(s, &P, fxBuf, 8);
     else if (P.type < 4u) sw_flanger(s, &P, fxBuf, 8);
     else                  sw_filter(s, &P, fxBuf, 8);
-    sw_advance(s, &P, flip);
+    sw_advance(s, &P);
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
 }

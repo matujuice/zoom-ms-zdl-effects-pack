@@ -2,7 +2,7 @@
 """Build the effects into ./dist/.
 
     py build_all.py              # all of them
-    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl, scrub, synceq, breather, dirtbox, sweep, griddly)
+    py build_all.py eugate       # one (wavefold, dualshft, formant, eugate, dubsiren, sgnl, scrub, breather, dirtbox, sweep, griddly)
     py build_all.py tempoprb     # a hardware probe (src/probes/); only built when named
     py build_all.py dryprb       # likewise
 
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl", "scrub", "synceq", "breather", "dirtbox", "sweep", "griddly"]
+EFFECTS = ["wavefold", "dualshft", "formant", "eugate", "dubsiren", "sgnl", "scrub", "breather", "dirtbox", "sweep", "griddly"]
 PROBES = ["tempoprb", "dryprb"]
 
 want = sys.argv[1:] or EFFECTS

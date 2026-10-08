@@ -1,10 +1,10 @@
 {
   "effect_name": "EuGate",
-  "comment": "EuGate - Euclidean rhythm gate that chops the sound into a repeating pattern in time with your tempo, for synths, vocals, samples and drum machines. Steps = pattern length (1 to 64 sixteenths, so odd lengths make polymeters); Notes = how many notes play, spread evenly (Euclidean) over the steps; Shift moves the pattern; Swing delays only the weak 16ths; Reset restarts the pattern at every new note or when the pedal is turned on; Gap = small silence between two notes that touch; Soft = how soft the edges are; Tempo is the BPM; Mix is dry/wet.",
+  "comment": "EuGate - Euclidean rhythm gate that chops the sound into a repeating pattern in time with the pedal's tempo (MIDI clock, tap or patch tempo), for synths, vocals, samples and drum machines. Steps = pattern length (1 to 64 sixteenths, so odd lengths make polymeters); Notes = how many notes play, spread evenly (Euclidean) over the steps; Shift moves the pattern; Swing delays only the weak 16ths; Reset restarts the pattern at every new note or when the pedal is turned on; Gap = small silence between two notes that touch; Soft = how soft the edges are; Mix is dry/wet. MIDI Start restarts the pattern; MIDI clock keeps it on the grid.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 488,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 494 SyncEQ, 495 GridDly, 496 Sweep (this pack; 492 was used by a dropped effect, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -18,7 +18,8 @@
       "name": "Steps",
       "max": 63,
       "default": 15,
-      "comment": "Pattern length in 16th-note steps, shows 1 to 64. The pattern repeats after this many steps, so any length other than 16 (or 32, 64) runs against the bar: polymeters. Default 16."
+      "comment": "Pattern length in 16th-note steps, shows 1 to 64. The pattern repeats after this many steps, so any length other than 16 (or 32, 64) runs against the bar: polymeters. Default 16.",
+      "flags": 40
     },
     {
       "name": "Shift",
@@ -34,9 +35,9 @@
     },
     {
       "name": "Reset",
-      "max": 3,
+      "max": 2,
       "default": 0,
-      "comment": "What restarts the pattern at step 1. OFF = nothing, the pattern keeps running. NOTE = each time a note starts after a moment of silence. PEDAL = when you turn the effect on with the footswitch. SYNC = the setting for bar sync from a host: same as OFF, only the Tempo twin flips restart the pattern. Default OFF."
+      "comment": "What restarts the pattern at step 1 (MIDI Start always does). OFF = nothing, the pattern keeps running. NOTE = each time a note starts after a moment of silence. PEDAL = when you turn the effect on with the footswitch. Default OFF."
     },
     {
       "name": "Gap",
@@ -49,12 +50,6 @@
       "max": 100,
       "default": 35,
       "comment": "How soft the start and end of each note are. 0 = sharp chop, 100 = smooth swell. Scales with the tempo. Default 35."
-    },
-    {
-      "name": "Tempo",
-      "max": 441,
-      "default": 120,
-      "comment": "Speed in BPM (40 to 240), shown on screen. Every step is a 16th note, so 120 = 125 ms per step. Flipping to the twin copy of the same BPM (120 <-> 321) restarts the pattern at step 1 without changing the tempo, whatever Reset says: a host can send that on each downbeat. A plain tempo change does not restart it. SYNC RESET: the knob runs 0..441 and holds every BPM twice: 241..441 is a twin copy (BPM = screen - 201, so past 240 the screen shows 40 again; both copies show the BPM). Default 120. FOLLW (0..39, the bottom of the knob): follows the bar sync sent by an effect in an earlier slot, its BPM (120 until one is heard, the last one kept if it goes away) and its bars, which restart it like a flip of its own Tempo. On a BPM it ignores that and runs on its own. In slots 1-3 FOLLW needs Mozaic's Send knob on another slot."
     },
     {
       "name": "Mix",

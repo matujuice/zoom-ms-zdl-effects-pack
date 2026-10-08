@@ -1,13 +1,12 @@
 /* EuGate on the MOD firmware transport block: steps on the clock count, restarts on Start,
- * lands right when loaded mid-song, runs free after Stop, falls back to the Tempo knob
+ * lands right when loaded mid-song, runs free after Stop at the tempo word, runs at 120 BPM
  * when the block is missing or always mid-write. */
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <sys/mman.h>
-static unsigned int zmt[8];
-#define CH_ZMT_ADDR ((uintptr_t)zmt)
 #include "../src/custom/eugate/eugate.c"
+#define zmt zt_host
 
 static unsigned char *m; static unsigned int *ctx, *magic, *desc; static float *fx, *params;
 static ChState *st; static int fails = 0; static double t = 0.0;   /* samples */
@@ -24,7 +23,7 @@ static void setup(void)
     ctx[11] = (unsigned)(uintptr_t)&magic[2]; ctx[12] = (unsigned)(uintptr_t)&magic[0];
     desc[0] = (unsigned)(uintptr_t)(m + 4096); desc[1] = desc[0] + 65536u; desc[2] = 65536u;
     params[0] = 1.0f;
-    D(NOTES); D(STEPS); D(SHIFT); D(SWING); D(RESET); D(GAP); D(SOFT); D(TEMPO); D(MIX);
+    D(NOTES); D(STEPS); D(SHIFT); D(SWING); D(RESET); D(GAP); D(SOFT); D(MIX);
     params[EUGATE_STEPS_SLOT] = 0.63f;                       /* 64 steps: long counts */
     st = (ChState *)(uintptr_t)desc[0];
 }
@@ -47,7 +46,7 @@ int main(void)
     unsigned int bad = 0u, e;
     float lastp = 0.0f, back = 0.0f, a; unsigned int lastpos = 0u;
     setup();
-    zmt[0] = CH_ZMT_MAGIC; zmt[1] = 0u; zmt[2] = 1u; zmt[3] = 1u; zmt[4] = 0u; zmt[5] = 12000u;
+    zmt[0] = ZT_MAGIC; zmt[1] = 0u; zmt[2] = 1u; zmt[3] = 1u; zmt[4] = 0u; zmt[5] = 12000u;
 
     /* 1: 30 s on the clock: the 16th always equals (clocks - 1) / 6 mod 64, never moves back */
     t0 = 500.0;
@@ -71,29 +70,29 @@ int main(void)
     while (t < t0 + 13.0 * per) block_on_clock(t0, per);
     CHECK(idx() == 2u, "Start: not on step 3 after 13 clocks (got %u)", idx());
 
-    /* 3: Stop: runs free at word 5's tempo (120 BPM = 8 16ths per second) */
-    zmt[2] = 0u;
+    /* 3: Stop: runs free at word 5's tempo (90 BPM = 6 16ths per second) */
+    zmt[2] = 0u; zmt[5] = 9000u;
     { unsigned int i0 = idx(); long n; for (n = 0; n < 44100 / 8; n++) block();
       e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
       printf("after Stop: %u 16ths in 1 s\n", e);
-      CHECK(e == 8u, "Stop: expected 8 16ths in 1 s, got %u", e); }
+      CHECK(e == 6u, "Stop: expected 6 16ths in 1 s, got %u", e); }
 
     /* 4: loaded mid-song: fresh state, clock count 1000 -> 16th 999 / 6 = 166 -> 166 mod 64 = 38 */
     memset(st, 0, sizeof(ChState));
     zmt[2] = 1u; zmt[4] = 1000u; zmt[1] += 2u; block();
     CHECK(idx() == 38u, "mid-song load: expected 16th 38, got %u", idx());
 
-    /* 5: block always mid-write (odd sequence) -> Tempo knob (60 BPM = 4 16ths per second) */
-    zmt[1] = 1u; params[EUGATE_TEMPO_SLOT] = 0.60f;
+    /* 5: block always mid-write (odd sequence) -> 120 BPM = 8 16ths per second */
+    zmt[1] = 1u; zmt[5] = 6000u;
     { unsigned int i0; long n; block(); i0 = idx(); for (n = 0; n < 44100 / 8; n++) block();
       e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
-      CHECK(e == 4u, "torn block: expected the knob's 4 16ths in 1 s, got %u", e); }
+      CHECK(e == 8u, "torn block: expected 8 16ths in 1 s, got %u", e); }
 
-    /* 6: no block (stock firmware) -> Tempo knob as before */
+    /* 6: no block (stock firmware) -> 120 BPM */
     zmt[0] = 0u; zmt[1] = 0u;
     { unsigned int i0; long n; block(); i0 = idx(); for (n = 0; n < 44100 / 8; n++) block();
       e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
-      CHECK(e == 4u, "no block: expected the knob's 4 16ths in 1 s, got %u", e); }
+      CHECK(e == 8u, "no block: expected 8 16ths in 1 s, got %u", e); }
 
     printf("%s\n", fails ? "eugate_clock: FAILED" : "eugate_clock: ok");
     return fails ? 1 : 0;

@@ -1,5 +1,5 @@
 /* Breather: the real pedal entry on a garbage arena. Checks: state set up, no NaN; switching
- * on restarts on beat 1 with no host, but not within ~8 s of a Tempo twin flip; the reverb
+ * on restarts on beat 1 while the MIDI transport is stopped, but not while it runs; the reverb
  * starts clean after switching on again (no old tail). */
 #include "../src/custom/breather/breather.c"
 #include <stdio.h>
@@ -38,8 +38,7 @@ int main(void)
     ctx[11] = (unsigned)(uintptr_t)&magic[2]; ctx[12] = (unsigned)(uintptr_t)&magic[0];
     desc[0] = (unsigned)(uintptr_t)arena; desc[1] = (unsigned)(uintptr_t)(arena + ARENA_BYTES); desc[2] = ARENA_BYTES;
     params[0] = 1.0f;
-    D(TARGT); D(SHAPE); D(DEPTH); D(DIV); D(SHIFT); D(CURVE); D(VERB); D(TEMPO); D(SIZE);
-    params[BREATHER_TEMPO_SLOT] = 1.60f;
+    D(TARGT); D(SHAPE); D(DEPTH); D(DIV); D(SHIFT); D(CURVE); D(VERB); D(SIZE);
     st = (PuState *)(((uintptr_t)arena + 3u) & ~(uintptr_t)3u);
     printf("state %u bytes (arena >= 705,536)\n", (unsigned)sizeof(PuState));
     CHECK(sizeof(PuState) < 705536u, "state too big");
@@ -55,18 +54,18 @@ int main(void)
     printf("on, no host: beat %.4f -> %.4f\n", before, after);
     CHECK(after < 0.01f && before > 0.1f, "switching on without a host did not restart on beat 1");
 
-    /* host: a twin flip, then off/on within 8 s keeps the clock */
-    params[BREATHER_TEMPO_SLOT] = 3.61f; run(1); run(5000);
+    /* transport running (clock 50 = beat 2 + 1/24): off/on keeps the clock's place */
+    zt_host[0] = ZT_MAGIC; zt_host[2] = 1u; zt_host[3] = 1u; zt_host[4] = 50u; zt_host[5] = 16000u;
     params[0] = 0.0f; run(3000);
     before = st->bp; params[0] = 1.0f; run(1); after = st->bp;
-    printf("on, host flipped %.1f s ago: beat %.4f -> %.4f\n", 8000 * 8 / 44100.0, before, after);
-    CHECK(after > before && before > 0.1f, "switching on restarted although a host is syncing");
+    printf("on, transport running: beat %.4f -> %.4f\n", before, after);
+    CHECK(after > 2.0f && before > 2.0f, "switching on restarted although the transport runs");
 
-    /* 9 s after the last flip the host counts as gone */
-    run(50000); params[0] = 0.0f; run(100);
+    /* Stop: switching on restarts on beat 1 again */
+    zt_host[2] = 0u; run(100); params[0] = 0.0f; run(100);
     before = st->bp; params[0] = 1.0f; run(1); after = st->bp;
-    printf("on, last flip ~10 s ago: beat %.4f -> %.4f\n", before, after);
-    CHECK(after < 0.01f && before > 0.1f, "host gone but switching on did not restart");
+    printf("on, transport stopped: beat %.4f -> %.4f\n", before, after);
+    CHECK(after < 0.01f && before > 0.1f, "transport stopped but switching on did not restart");
 
     /* reverb clean after switching on: VERB only, Depth 0, Verb 100, Size 100: after the
      * input stops the tail rings; switch off and on: the tail is gone */
