@@ -122,6 +122,15 @@ int main(void){
     printf("160 BPM 16th arp from C3, 50%% gate: %d of 32 notes missed, each found within %.1f ms\n", miss, lat);
     CHECK(miss==0 && lat<30, "fast arp"); }
 
+  /* 2e. Glide 0 starts every legato note fresh (the old note hushes), Glide above 0 slides
+   *     to it with the voice held: lowest voice level in the 60 ms after the change */
+  { double dip[2]; for (int g=0; g<2; g++){ setup(); knobs(4,2,0,2,4,40,g?20:0,120,70); fconst=110; run(SR/2, 0, f_const, 0, 9);
+      double v0=st->vamp, lo=1e9; fconst=165;
+      for (int b=0;b<(int)(0.06*SR/8);b++){ for(int j=0;j<8;j++){ float x=src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx); if (st->vamp<lo) lo=st->vamp; }
+      dip[g]=db(lo/v0); }
+    printf("legato 110 -> 165 Hz, voice level dip: Glide 0 %.1f dB, Glide 20 %.1f dB\n", dip[0], dip[1]);
+    CHECK(dip[0] < -12 && dip[1] > -3, "Glide 0 re-attack, Glide 20 legato"); }
+
   /* 3. level: choir (Mix 100) vs input, every Choir x Size x Sing, notes 55..660 Hz, saw */
   { double lo=99, hi=-99; int wlo[4]={0}, whi[4]={0};
     for (int c=0;c<=8;c++) for (int z=0;z<=5;z++) for (int sg=0;sg<=2;sg++) for (int i=1;i<9;i++){

@@ -48,7 +48,7 @@
       "name": "Glide",
       "max": 100,
       "default": 20,
-      "comment": "How fast the voice slides to a new note: 0 = about 3 ms .. 100 = about 0.6 s, the same time for every interval. After a silence the next note starts directly. Default 20."
+      "comment": "0 = every note starts fresh, legato or not (fast arps). 1..100 = legato: the voice slides to a new note in about 3 ms .. 0.6 s, the same time for every interval. After a silence the next note starts directly. Default 20."
     },
     {
       "name": "Tempo",

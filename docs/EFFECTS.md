@@ -31,7 +31,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: choir
-Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 70 ms, octave jumps included, and fast arps (16ths at 160 BPM) are followed note by note: on a legato change the old note is hushed until the new one is found. Two detuned oscillators drifting in and out of phase can look like an octave or a fifth up for a while; the choir ignores that and stays on your note. Breath noise follows the singers' own level, so it stays well under the voice on high notes and high sections too.
+Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 70 ms, octave jumps included, and fast arps (16ths at 160 BPM) are followed note by note: at Glide 0 a legato change hushes the old note and starts the new one fresh. Two detuned oscillators drifting in and out of phase can look like an octave or a fifth up for a while; the choir ignores that and stays on your note. Breath noise follows the singers' own level, so it stays well under the voice on high notes and high sections too.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -41,7 +41,7 @@ Listens to the note your synth plays and sings it with its own choir, so every s
 | Sing | AAH, OOH, OOAH | What they sing. OOAH opens from "oo" to "ah" and back once per Pace cycle. More to come. |
 | Pace | 4bar .. 1/64 | Length of one cycle of the movement. |
 | Feel | 0..100 | 0 = soft and legato (slow attack, wide vibrato, breathy, dark) .. 100 = punchy and staccato (fast attack and release, bright, OOAH snaps). |
-| Glide | 0..100 | How fast the voice slides to a new note, ~3 ms .. ~0.6 s. |
+| Glide | 0..100 | 0 = every note starts fresh, even when you play legato (best for fast arps). 1..100 = legato: the voice keeps singing and slides to the new note, ~3 ms .. ~0.6 s. |
 | Tempo | FOLLW, 40..240 BPM, twice | Tempo for Pace. Changing it only changes the speed; the second copy of the same BPM marks a downbeat (see above), and the movement lands where it should be after that many bars, so a 2-bar or dotted Pace is never cut. |
 | Mix | 0..100 | Dry synth / choir crossfade, DJ style: the dry sound stays full up to 50, the choir is full from 50, so at 50 both play at full level. |
 

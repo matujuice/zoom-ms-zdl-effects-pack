@@ -25,8 +25,9 @@
  *   period). A new note is taken once it has stayed within 40 cents for 24 blocks (4 ms).
  *   After an attack in the input (onset: fast envelope > 4 x slow envelope) the means forget
  *   the old note twice as fast. A legato note change has no attack: once the old note's
- *   period no longer fits the input at all, it counts as one, and the voice hushes (~6 ms)
- *   until the new note is found, so fast arps never sing the old note over the new one.
+ *   period no longer fits the input at all, it counts as one. At Glide 0 the voice then
+ *   hushes (~6 ms) and the new note comes in with its own attack, so fast arps never sing
+ *   the old note over the new one; at any other Glide it keeps singing and slides (legato).
  *   Detuned oscillators that beat (or start out of phase) cancel the fundamental for a while,
  *   and the wave then really reads an octave or a fifth up (or the octave below). So with no
  *   attack, a new reading that the old note's period still fits as well waits 3 s; this
@@ -97,7 +98,9 @@
  *   5 Feel   0 = soft and legato (slow attack and release, wide late vibrato, breathy, dark)
  *            .. 100 = punchy and staccato (fast attack and release, narrow vibrato, bright,
  *            and OOAH snaps between its two vowels)
- *   6 Glide  how fast the voice slides to a new note: 0 = ~3 ms .. 100 = ~0.6 s
+ *   6 Glide  0 = every note starts fresh (a legato change hushes the old note and
+ *            re-attacks, for fast arps); 1..100 = legato, the voice slides to a new note
+ *            in ~3 ms .. ~0.6 s
  *   7 Tempo  BPM for Pace, 40..240; screen 0..441, 241..441 is the twin copy (see TEMPO SYNC);
  *            0..39 = FOLLW (bar tag). The 8th knob, as on every synced effect of the pack.
  *   8 Mix    dry synth / choir, DJ-style: dry full up to 50, choir full from 50
@@ -207,7 +210,7 @@ typedef struct {
 typedef struct {
     float bpm, tempo, lfo_inc, cpb;        /* cpb = cycles per bar                    */
     int   choir, size, chord, sing;
-    float feel, glide_c, att, rel, vibc, breath, bright;
+    int legato; float feel, glide_c, att, rel, vibc, breath, bright;
     float dryG, wetG;
 } ChParams;
 
@@ -465,6 +468,7 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     P->breath = CH_BREATH * (1.4f - 0.8f * f);
     P->bright = 0.55f + 0.45f * f;
     P->glide_c = 0.06f * ch_exp2(-7.6f * k[6]);       /* ~3 ms .. ~0.6 s */
+    P->legato  = (k[6] > 0.005f);                     /* Glide 0: every note starts fresh */
     P->dryG = 2.0f - 2.0f * k[8];
     if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * k[8];
@@ -635,8 +639,9 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 
     /* ---- voice level: the input's loudness while there is a note, with Feel's envelope ---- */
     lvl = (s->e2 > 1e-9f) ? s->e2 * ch_rsqrt(s->e2) : 0.0f;
-    tgt = (s->hold > 0 && !s->gone) ? lvl : 0.0f;
-    s->vamp += ((tgt > s->vamp) ? P->att : s->gone ? 0.03f : P->rel) * (tgt - s->vamp);   /* gone: ~6 ms */
+    i = s->gone && !P->legato;                         /* Glide 0: hush the old note */
+    tgt = (s->hold > 0 && !i) ? lvl : 0.0f;
+    s->vamp += ((tgt > s->vamp) ? P->att : i ? 0.03f : P->rel) * (tgt - s->vamp);   /* hush: ~6 ms */
     if (s->vamp < 1e-9f) s->vamp = 0.0f;
     s->base += P->glide_c * (s->note - s->base);
     s->vibon += 0.0007f * (1.0f - s->vibon);           /* vibrato fades in over ~0.3 s */
