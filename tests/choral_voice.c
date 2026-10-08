@@ -203,7 +203,7 @@ int main(void){
 
   /* 6f. level of the steady settings (vowels, OOAH, VOWL, WHSPR) on every Choir */
   { double lo=99, hi=-99; int sgs[9]={0,1,2,3,4,5,6,7,13}; int wl=0, wh=0;
-    for (int c=0;c<=14;c++) for (int z=0;z<=5;z+=5) for (int k=0;k<9;k++) for (int i=1;i<9;i+=2){
+    for (int c=0;c<=16;c++) for (int z=0;z<=5;z+=5) for (int k=0;k<9;k++) for (int i=1;i<9;i+=2){
       setup(); knobs(c,z,0,sgs[k],4,40,20,120,100); fconst=notes[i]; run(SR, 0, f_const, 0, 9);
       double e = db(rms(out,SR/2,SR/2)/rms(in_,SR/2,SR/2)); if (e<lo){lo=e; wl=sgs[k]*1000+c*10+i;} if (e>hi){hi=e; wh=sgs[k]*1000+c*10+i;} }
     printf("level, every Choir x Sing (vowels, OOAH, VOWL, WHSPR): %.1f .. %.1f dB (lowest sing/choir/note %d, highest %d)\n", lo, hi, wl, wh);
@@ -212,7 +212,7 @@ int main(void){
   /* 6g. every Chord x Sing on ALL SEXT, loud: no NaN, ceiling held; envelope modes click no
    *     more than AAH on the same arp */
   { double pk=0; int nan=0; double step[14];
-    for (int c=0;c<=24;c+=3) for (int sg=0;sg<=13;sg++){ setup(); knobs(14,5,c,sg,10,100,20,120,100); fconst=notes[(c+sg)%10]; run(SR/2, 4, f_const, 0, 9);
+    for (int c=0;c<=24;c+=3) for (int sg=0;sg<=13;sg++){ setup(); knobs(14+(c%3),5,c,sg,10,100,20,120,100); fconst=notes[(c+sg)%10]; run(SR/2, 4, f_const, 0, 9);
       for (int t=0;t<SR/2;t++){ if (!(out[t]==out[t])) nan=1; if (fabs(out[t])>pk) pk=fabs(out[t]); } }
     int pat[8]={0,7,12,3,15,10,19,5}; int stepb=(int)(0.1875*SR/8);
     for (int sg=0;sg<=13;sg++){ setup(); knobs(4,2,0,sg,8,40,0,120,100); double mx=0, prev=0;
@@ -236,7 +236,7 @@ int main(void){
   { setup(); knobs(4,2,0,6,4,40,20,120,0); fconst=220; run(SR/2, 0, f_const, 0, 9); double d=0; for(int t=0;t<(SR/2/8)*8;t++) d=fmax(d,fabs(out[t]-in_[t])); printf("Mix 0: largest difference from dry %.2g (dryG/wetG raw %g)\n", d, params[FORMANT_MIX_SLOT]); CHECK(d<1e-6, "Mix 0 not dry"); }
 
   { char b[8]; unsigned i; printf("labels:");
-    for (i=0;i<=14;i++){ ZDL_GetLabel_0(i,b); printf(" %s",b); } printf(" |");
+    for (i=0;i<=16;i++){ ZDL_GetLabel_0(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=5;i++){ ZDL_GetLabel_1(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=24;i++){ ZDL_GetLabel_2(i,b); printf(" %s",b); } printf(" |");
     for (i=0;i<=13;i++){ ZDL_GetLabel_3(i,b); printf(" %s",b); } printf(" |");

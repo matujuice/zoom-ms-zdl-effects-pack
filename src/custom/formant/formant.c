@@ -97,10 +97,12 @@
  *
  * CONTROLS (screen values), in pedal order
  *   0 Choir  who sings: MEN WOMEN KIDS GIANT M+W M+KID W+KID G+M G+W G+KID M+W+K G+M+W
- *            G+M+K G+W+K ALL (every combination of the four sections)
+ *            G+M+K G+W+K ALL (every combination of the four sections), then MONKS (men and
+ *            giants, straight tone, dark, little breath) and GOSPL (men and women, wide
+ *            vibrato x1.8, bright, breathy)
  *   1 Size   how many: SOLO DUO TRIO QUART QUINT SEXT (1..6 singers)
- *   2 Chord  how they sing together: UNIS, then every second singer 1..12 semitones up: MI2
- *            MA2 MI3 MA3 4TH TRI 5TH MI6 MA6 MI7 MA7 OCT; chords MAJ MIN SUS2 SUS4 DIM AUG
+ *   2 Chord  how they sing together: UNIS, then every second singer 1..12 semitones up: +1
+ *            .. +11, OCT; chords MAJ MIN SUS2 SUS4 DIM AUG
  *            MAJ7 MIN7 DOM7 ADD9 OPEN; DRONE. Parallel: the same shape on every note.
  *   3 Sing   what they sing: AAH EHH EEE OHH OOH MMM OOAH VOWL LA DOO HA SWELL CANON WHSPR
  *            (see SING)
@@ -422,7 +424,9 @@ static inline unsigned int choir_word(int c)
          : (c == 11) ? 0x3009u         /* G+M+W: M W G   */
          : (c == 12) ? 0x30C1u         /* G+M+K: M G K   */
          : (c == 13) ? 0x30C2u         /* G+W+K: W G K   */
-         : 0x40C9u;                    /* ALL:   M W G K */
+         : (c == 14) ? 0x40C9u         /* ALL:   M W G K */
+         : (c == 15) ? 0x2001u         /* MONKS: M G     */
+         : 0x2009u;                    /* GOSPL: M W     */
 }
 
 /* Chord: semitones above your note per singer, 5 bits each (singer 0 in the low bits).
@@ -497,7 +501,7 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     float twin, f, m;
     P->tempo = (float)tempo_i;
     P->bpm   = (float)ch_tempo_bpm(tempo_i);
-    P->choir = (int)(k[0] * 14.0f + 0.5f);
+    P->choir = (int)(k[0] * 16.0f + 0.5f);
     P->size  = 1 + (int)(k[1] * 5.0f + 0.5f);
     P->chord = (int)(k[2] * 24.0f + 0.5f);
     P->sing  = (int)(k[3] * 13.0f + 0.5f);
@@ -513,6 +517,11 @@ static inline void ch_prepare(ChState *s, ChParams *P, const float *k)
     P->vibc   = (28.0f - 22.0f * f) * 0.00083333f;    /* cents -> octaves */
     P->breath = CH_BREATH * (1.4f - 0.8f * f);
     P->bright = 0.55f + 0.45f * f;
+    if (P->choir == 15) {                             /* MONKS: straight tone, dark, little breath */
+        P->vibc = 0.0f; P->bright *= 0.7f; P->breath *= 0.6f;
+    } else if (P->choir == 16) {                      /* GOSPL: wide vibrato, bright, breathy */
+        P->vibc *= 1.8f; P->bright *= 1.3f; P->breath *= 1.5f;
+    }
     P->glide_c = 0.06f * ch_exp2(-7.6f * k[6]);       /* ~3 ms .. ~0.6 s */
     P->legato  = (k[6] > 0.005f);                     /* Glide 0: every note starts fresh */
     P->dryG = 2.0f - 2.0f * k[8];
@@ -902,7 +911,7 @@ static inline int fm_word_text(unsigned int w, char *out)
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
     int n = (int)value;
-    if (n > 14) n = 14;
+    if (n > 16) n = 16;
     return ch_word_text(
           (n == 0) ? 0x2E96Du      /* MEN   */
         : (n == 1) ? 0x2E96DBF7u   /* WOMEN */
@@ -918,7 +927,9 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
         : (n == 11) ? 0x372ED2E7u  /* G+M+W */
         : (n == 12) ? 0x2B2ED2E7u  /* G+M+K */
         : (n == 13) ? 0x2B2F72E7u  /* G+W+K */
-        : 0x2CB21u                 /* ALL   */
+        : (n == 14) ? 0x2CB21u     /* ALL   */
+        : (n == 15) ? 0x33AEEBEDu  /* MONKS */
+        : 0x2CC33BE7u              /* GOSPL */
         , out);
 }
 
@@ -944,17 +955,17 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     if (n > 24) n = 24;
     return ch_word_text(
           (n == 0) ? 0xCE9BB5u     /* UNIS  */
-        : (n == 1) ? 0x12A6Du      /* MI2   */
-        : (n == 2) ? 0x1286Du      /* MA2   */
-        : (n == 3) ? 0x13A6Du      /* MI3   */
-        : (n == 4) ? 0x1386Du      /* MA3   */
-        : (n == 5) ? 0x28D14u      /* 4TH   */
-        : (n == 6) ? 0x29CB4u      /* TRI   */
-        : (n == 7) ? 0x28D15u      /* 5TH   */
-        : (n == 8) ? 0x16A6Du      /* MI6   */
-        : (n == 9) ? 0x1686Du      /* MA6   */
-        : (n == 10) ? 0x17A6Du     /* MI7   */
-        : (n == 11) ? 0x1786Du     /* MA7   */
+        : (n == 1) ? 0x44Bu        /* +1 */
+        : (n == 2) ? 0x48Bu        /* +2 */
+        : (n == 3) ? 0x4CBu        /* +3 */
+        : (n == 4) ? 0x50Bu        /* +4 */
+        : (n == 5) ? 0x54Bu        /* +5 */
+        : (n == 6) ? 0x58Bu        /* +6 */
+        : (n == 7) ? 0x5CBu        /* +7 */
+        : (n == 8) ? 0x60Bu        /* +8 */
+        : (n == 9) ? 0x64Bu        /* +9 */
+        : (n == 10) ? 0x1044Bu     /* +10 */
+        : (n == 11) ? 0x1144Bu     /* +11 */
         : (n == 12) ? 0x348EFu     /* OCT   */
         : (n == 13) ? 0x2A86Du     /* MAJ   */
         : (n == 14) ? 0x2EA6Du     /* MIN   */
@@ -1082,7 +1093,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
 
     s = (ChState *)stateBase;
 
-    k[0] = sr_knob(params[FORMANT_CHOIR_SLOT], (float)FORMANT_CHOIR_UI_DEFAULT, 0.071428575f);
+    k[0] = sr_knob(params[FORMANT_CHOIR_SLOT], (float)FORMANT_CHOIR_UI_DEFAULT, 0.0625f);
     k[1] = sr_knob(params[FORMANT_SIZE_SLOT],  (float)FORMANT_SIZE_UI_DEFAULT,  0.2f);
     k[2] = sr_knob(params[FORMANT_CHORD_SLOT], (float)FORMANT_CHORD_UI_DEFAULT, 0.041666668f);
     k[3] = sr_knob(params[FORMANT_SING_SLOT],  (float)FORMANT_SING_UI_DEFAULT,  0.07692308f);
