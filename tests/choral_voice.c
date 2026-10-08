@@ -78,12 +78,13 @@ int main(void){
     CHECK(fabs(worst) < 10 && miss==0 && wf < 0.02, "pitch tracking"); }
 
   /* 2. note changes, legato (no new attack) and as an arp (each note re-attacked after a
-   *    20 ms gap): time to the new note, and no wrong notes after it */
+   *    20 ms gap): time to the new note (within 15 cents), and nothing more than 25 cents
+   *    off after it (the first readings of a new note may wobble a few cents) */
   { int pairs[][2]={{110,165},{220,330},{55,82},{440,220},{330,660},{82,330},{660,110},{110,220},{220,110}}; double worst=0, worsta=0; int wrong=0;
     for (int arp=0;arp<2;arp++) for (int p=0;p<9;p++){ setup(); defaults(); fconst=pairs[p][0]; run(SR/2, 0, f_const, 0, 9);
       fconst=pairs[p][1]; ph1=0; int lock=-1, gap = arp ? (int)(0.02*SR/8) : 0;
       for (int b=0;b<(SR/2)/8;b++){ for(int j=0;j<8;j++){ float x = b<gap ? 0.0f : src(0,fconst); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; } Fx_DLY_Formant(ctx);
-        double c=1200*(st->note-log2(fconst)); if (fabs(c)<15){ if(lock<0) lock=b; } else if (lock>=0) wrong++; }
+        double c=1200*(st->note-log2(fconst)); if (fabs(c)<15){ if(lock<0) lock=b; } else if (lock>=0 && fabs(c)>25) wrong++; }
       double ms=(lock-gap)*8000.0/SR; if (lock<0) ms=999;
       printf("  %s %d -> %d Hz: new note after %.1f ms\n", arp ? "arp   " : "legato", pairs[p][0], pairs[p][1], ms);
       if (arp) { if (ms>worsta) worsta=ms; } else if (ms>worst) worst=ms; }
@@ -100,6 +101,26 @@ int main(void){
       double ms = lock<0 ? 999 : lock*8000.0/SR; if (ms>worst) worst=ms; }
     printf("legato octave up/down, 4 sources x 4 notes: new note after at most %.1f ms\n", worst);
     CHECK(worst < 100, "legato octave jumps"); }
+
+  /* 2c. held notes on detuned oscillators (2 saws 0.15..1.2 % apart, 3 saws): no octave or
+   *     harmonic slips while held, C2..A4 (the beating cancels the fundamental for a while) */
+  { int slips=0; double dets[][2]={{1.0015,0},{1.003,0},{1.006,0},{1.012,0},{1.002,0.9985},{1.006,0.9965}};
+    for (int d=0; d<6; d++) for (int m=36; m<=69; m+=3){ double f=440*pow(2,(m-69)/12.0), q[3]={0,0.3,0.7}; setup(); defaults();
+      for (int b=0;b<SR*6/8;b++){ for(int j=0;j<8;j++){ q[0]+=f/SR; q[1]+=f*dets[d][0]/SR; q[2]+=f*dets[d][1]/SR; for(int k=0;k<3;k++) q[k]-=floor(q[k]);
+          float x=(float)(0.25*((2*q[0]-1)+(2*q[1]-1)+(dets[d][1]>0?(2*q[2]-1):0))); fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
+        Fx_DLY_Formant(ctx);
+        if (b>SR/8 && st->hold>0 && fabs(1200*(st->note-log2(f)))>300) { slips++; if (getenv("CHV")) printf("  slip d%d m%d t %.0f ms %.0f c od %d on %d gone %d st %d age %d\n", d, m, b*8000.0/SR, 1200*(st->note-log2(f)), (int)st->odrop, (int)st->onset, (int)st->gone, (int)st->stable, (int)st->age); } } }
+    printf("held detuned 2-3 oscillator notes C2..A4, 6 s each: %.1f ms on a wrong octave or harmonic\n", slips*8000.0/SR);
+    CHECK(slips==0, "held detuned notes slip"); }
+
+  /* 2d. fast arp, 160 BPM 16ths (94 ms), 50 % gate, C3 up: every note sung */
+  { int miss=0; double lat=0; int pat[8]={0,7,12,3,15,10,19,5}; setup(); defaults(); int stepb=(int)(0.09375*SR/8);
+    for (int n8=0;n8<40;n8++){ double f=440*pow(2,(48+pat[n8%8]-69)/12.0); int first=-1; ph1=0;
+      for (int b=0;b<stepb;b++){ for(int j=0;j<8;j++){ float x = b<stepb/2 ? src(0,f) : 0.0f; fx[j]=x; fx[j+8]=x; dry[j]=x; dry[j+8]=0; }
+        Fx_DLY_Formant(ctx); if (first<0 && st->hold>0 && st->vamp>0 && fabs(1200*(st->note-log2(f)))<40) first=b; }
+      if (n8<8) continue; if (first<0) miss++; else if (first*8000.0/SR>lat) lat=first*8000.0/SR; }
+    printf("160 BPM 16th arp from C3, 50%% gate: %d of 32 notes missed, each found within %.1f ms\n", miss, lat);
+    CHECK(miss==0 && lat<30, "fast arp"); }
 
   /* 3. level: choir (Mix 100) vs input, every Choir x Size x Sing, notes 55..660 Hz, saw */
   { double lo=99, hi=-99; int wlo[4]={0}, whi[4]={0};

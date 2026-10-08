@@ -31,7 +31,7 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: choir
-Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 80 ms, octave jumps included. Two detuned oscillators drifting in and out of phase can look like an octave up for a moment; the choir ignores that and stays on your note.
+Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 70 ms, octave jumps included, and fast arps (16ths at 160 BPM) are followed note by note: on a legato change the old note is hushed until the new one is found. Two detuned oscillators drifting in and out of phase can look like an octave or a fifth up for a while; the choir ignores that and stays on your note. Breath noise follows the singers' own level, so it stays well under the voice on high notes and high sections too.
 
 | Knob | Range | What it does |
 |---|---|---|
