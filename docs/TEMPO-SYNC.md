@@ -470,7 +470,7 @@ TEMPO from tap, the setting or the patch). `src/custom/common/zmt.h` reads it on
 - The BPM is held until it moves by 0.3 BPM, so synced delay times don't follow the clock's 0.1 BPM wobble.
 - Tap button: every stock MS-50G tempo effect has one param with `pedal_flags` 0x28 or 0x38 (and a +20
   tempo handler in its `Dll_` table). Each synced effect sets `"flags": 40` (0x28) on its main synced knob;
-  whether that alone shows the tap button is to be confirmed on the pedal.
+  that alone shows the tap button (MS-60B, MOD 0.4, 2026-10-08).
 - Host tests: `tests/transport.h` (shared) and `tests/<effect>_transport.c`, `tests/eugate_clock.c`.
 
 The Mozaic twin-Tempo flip, FOLLOW and the Dry-buffer bar tag (v1.5 and earlier, for stock firmware) were
