@@ -75,13 +75,13 @@
  *   own in the arena, beats a heartbeat every block (the firmware frees a silent claim after
  *   ~48 ms), and writes the firmware's status box: 8 characters (EMPTY, REC WAIT, REC or
  *   REC MONO, PLAY, STOP, DEL WAIT; STOP or PLAY while waiting to stop or play), the loop
- *   progress 0..256 (recording: time recorded / Length; playing: place in the loop) and an
- *   inverted flag (an 1/8 pulse every 2 beats while recording, the countdown blink while
- *   waiting). While the firmware says the looper is under the cursor it drives the LED
+ *   progress 0..256 (recording: time recorded / Length; playing or stopped: place in the
+ *   loop; REC WAIT: the wait for the line), which blinks while the box itself never inverts
+ *   (Luca): off an 1/8 every 2 beats while recording, the countdown blink while waiting. While the firmware says the looper is under the cursor it drives the LED
  *   (PWM, 32 steps of one block: 172 Hz), as the v2.0 brief's LED table: off when empty or
  *   stopped, a fade every 2 beats while recording, on while playing or rolling, and while
  *   an action waits a countdown blink whose rate doubles as the time left halves (one per
- *   bar 8 bars out, down to 1/16 notes). Losing the claim with a loop in the big buffer
+ *   2 bars 8 bars out, down to 1/8 notes). Losing the claim with a loop in the big buffer
  *   empties the looper. A double press while stopped deletes at once, whatever When says.
  *   Counters ev_rec, ev_stop, ev_del are kept for Perform mode's events.
  *
@@ -765,21 +765,22 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
 
 /* "b/L" into t[k..k+2] (bars 1..8) */
 /* once per block while we hold the claim: 8 characters, the loop progress and the box's
- * inverted flag for the firmware's status box, and a level 0..32 that the LED shows (PWM)
+ * (blinking) loop progress for the firmware's status box, and a level 0..32 that the LED shows (PWM)
  * while the firmware says the looper is under the cursor */
 LP_ALWAYS_INLINE(lp_out)
 static inline void lp_out(LpState *s)
 {
     volatile unsigned int *b = LS;
     char t[8];
-    int k, lev = 0, u, lit, inv = 0, prog = 0;
+    int k, lev = 0, u, lit, hide = 0, prog = 0;
     float p;
     unsigned int w0, w1;
     if (!s->own) return;
     for (k = 0; k < 8; k++) t[k] = ' ';
     if (s->st == LP_EMPTY) {
         t[0] = 'E'; t[1] = 'M'; t[2] = 'P'; t[3] = 'T'; t[4] = 'Y';
-        if (s->pend) { t[0] = 'R'; t[1] = 'E'; t[2] = 'C'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T'; }
+        if (s->pend) { t[0] = 'R'; t[1] = 'E'; t[2] = 'C'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T';
+            prog = (int)(((float)(s->pm - s->pu + s->gu) + s->gf) * 256.0f * lp_recip((float)s->pm)); }  /* the wait for the line */
     } else if (s->st == LP_REC) {
         t[0] = 'R'; t[1] = 'E'; t[2] = 'C';
         if (!s->stereo) { t[4] = 'M'; t[5] = 'O'; t[6] = 'N'; t[7] = 'O'; }
@@ -787,30 +788,33 @@ static inline void lp_out(LpState *s)
         p = ((float)(s->gu & 15) + s->gf) * 0.125f;   /* a fade every 2 beats, on the grid */
         if (p > 1.0f) p = 2.0f - p;
         lev = 4 + (int)(28.0f * p * p);
-        inv = (s->gu & 15) < 4;                         /* the box: an 1/8 pulse every 2 beats */
-    } else if (s->st == LP_PLAY) {
-        u = lp_imod(s->gu - s->lu0, s->U);
-        t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y';
-        if (s->pend == LP_A_STOP) { t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P'; }
-        prog = (int)(((float)u + s->gf) * 256.0f * lp_recip((float)s->U));
-        lev = LP_PWM;                                   /* on (rolling too) */
+        hide = (s->gu & 15) < 4;                        /* the bar: off an 1/8 every 2 beats */
     } else {
-        t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';  /* off */
-        if (s->pend == LP_A_PLAY) { t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y'; }
+        u = lp_imod(s->gu - s->lu0, s->U);              /* place in the loop, stopped too */
+        prog = (int)(((float)u + s->gf) * 256.0f * lp_recip((float)s->U));
+        if (s->st == LP_PLAY) {
+            t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y';
+            if (s->pend == LP_A_STOP) { t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P'; }
+            lev = LP_PWM;                               /* on (rolling too) */
+        } else {
+            t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';  /* off */
+            if (s->pend == LP_A_PLAY) { t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y'; }
+        }
     }
     if (s->pend == LP_A_DEL) {
         t[0] = 'D'; t[1] = 'E'; t[2] = 'L'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T';
     }
     if (s->pend) {
-        /* countdown blink: the period (1/8-beat units) is the remaining time / 8 as a power
-         * of 2, from a bar down to a 1/16 note, so it doubles as the time halves */
+        /* countdown blink: the period (1/8-beat units) is the remaining time / 4 as a power
+         * of 2, from 2 bars down to an 1/8 note (Luca), so it doubles as the time halves */
         u = s->pu - s->gu;
-        k = 2;
-        while (k < 32 && k + k <= (u >> 3)) k += k;
-        if (s->pwait >= 0) k = 2;                       /* IMMED: about to happen */
+        k = 4;
+        while (k < 64 && k + k <= (u >> 2)) k += k;
+        if (s->pwait >= 0) k = 4;                       /* IMMED: about to happen */
         lev = ((float)(s->gu & (k - 1)) + s->gf < 0.5f * (float)k) ? LP_PWM : 0;
-        inv = (lev != 0);
+        hide = (lev == 0);
     }
+    if (hide) prog = 0;                                 /* only the bar blinks (Luca) */
     if (prog < 0) prog = 0;
     if (prog > 256) prog = 256;
     w0 = (unsigned int)(unsigned char)t[0] | ((unsigned int)(unsigned char)t[1] << 8)
@@ -820,7 +824,7 @@ static inline void lp_out(LpState *s)
     b[LS_TEXT] = w0; b[LS_TEXT + 1] = w1;
     b[LS_LEVEL] = (unsigned int)lev;
     b[LS_PROG] = (unsigned int)prog;
-    b[LS_INV] = (unsigned int)inv;
+    b[LS_INV] = 0u;                                     /* the box never inverts (Luca) */
     if (!b[LS_MINE] || b[LS_LEDON] == 0u || b[LS_LEDOFF] == 0u) { s->led = -1; return; }
     s->pwm++;
     if (s->pwm >= LP_PWM) s->pwm = 0;

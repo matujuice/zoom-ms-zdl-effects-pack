@@ -367,7 +367,7 @@ int main(void)
         CHECK(S->st == LP_EMPTY && !S->pend, "a flip counted while the firmware counts presses");
         fw_press(); text(tx);
         CHECK(S->st == LP_REC, "firmware press did not record (st %d)", S->st);
-        run(97020); text(tx);                  /* 2.2 s: bar 2 */
+        run(101430); text(tx);                 /* 2.3 s: bar 2, past the 1/8 the bar is off */
         CHECK(!strcmp(tx, "REC     ") && ls_host[LS_PROG] > 128 && ls_host[LS_PROG] < 256, "recording text '%s' progress %u", tx, ls_host[LS_PROG]);
         CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
         while (S->st != LP_PLAY) block();
@@ -393,11 +393,14 @@ int main(void)
                 if (ls_host[LS_LEVEL] != lv) { if (S->pu - S->gu >= 8) ch1++; else ch2++; }
                 lv = ls_host[LS_LEVEL];
                 CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
+                CHECK(ls_host[LS_INV] == 0 && (lv || !S->pend || ls_host[LS_PROG] == 0), "countdown: box inverted or bar shown while blinked off");
             }
             printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
-            CHECK(ch2 >= 6 && ch2 <= 9, "last beat: %ld changes, want 1/16 blinks (8)", ch2);
+            CHECK(ch2 >= 3 && ch2 <= 5, "last beat: %ld changes, want 1/8 blinks (4)", ch2);
         }
         text(tx); CHECK(!strcmp(tx, "STOP    "), "stopped text '%s'", tx);
+        { unsigned int p0 = ls_host[LS_PROG]; run(22050);   /* the bar goes on while stopped */
+          CHECK(ls_host[LS_PROG] != p0, "stopped: bar still at %u", p0); }
         block(); CHECK(ls_host[LS_LEVEL] == 0, "stopped level %u", ls_host[LS_LEVEL]);
         fw_press(); run(8); fw_press();       /* double press: delete, at once when stopped */
         { long n2 = 0; while (S->st != LP_EMPTY && n2 < 100000) { block(); n2++; }
