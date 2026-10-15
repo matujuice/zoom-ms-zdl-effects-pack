@@ -17,7 +17,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
 | **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
 | **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
-| **Looper** | A bar-synced stereo looper on the song grid: the footswitch records Length bars, stops, plays and (double press) deletes, each on the next beat, bar or cycle; latched beat Roll; the loop stays on the grid when the tempo changes. Test build for MIDISTOMP v2.0: until the firmware gives it its big buffer it only holds about 10 s mono. Not in a release. |
+| **Looper** | A bar-synced stereo looper on the song grid: the footswitch records Length bars, stops, plays and (double press) deletes, each on the next beat, bar or cycle; latched beat Roll; the loop stays on the grid when the tempo changes. Test build for MIDISTOMP v2.0: with the MIDISTOMP looper services (v2.0 step 2, in test) it holds 8 bars stereo from 79 BPM, the footswitch no longer flips it and the LED shows its state; on older firmware about 10 s mono. Not in a release. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 

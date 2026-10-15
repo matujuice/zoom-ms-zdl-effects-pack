@@ -193,11 +193,11 @@ One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for sy
 Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.
 
 ### Looper: a bar-synced looper on the song grid
-Test build for MIDISTOMP v2.0 (step 1, 2026-10-15), not in a release. Needs the MIDISTOMP firmware for its grid (on stock firmware it runs at 120 BPM). Not tested on a pedal yet.
+Test build for MIDISTOMP v2.0 (step 1, 2026-10-15; looper services, step 2, in test), not in a release. Needs the MIDISTOMP firmware for its grid (on stock firmware it runs at 120 BPM). Not tested on a pedal yet.
 
 The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
 
-**Footswitch.** Until the firmware's looper services exist (v2.0 step 2), every on/off flip is a press, from the footswitch or the effect's on/off CC; the LED means nothing, and each flip marks the patch as edited.
+**Footswitch.** With the MIDISTOMP looper services (v2.0 step 2) and the Looper under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, and the patch is not marked edited. The Looper's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On older firmware, and for a second Looper in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
 
 | State | Press | Double press (two within 300 ms) |
 |---|---|---|
@@ -216,6 +216,8 @@ Every action waits for the When line. MIDI Start moves a waiting action to the d
 | When | IMMED, BEAT, BAR, CYCLE | When record, stop, play and delete happen: at once (a single press waits 300 ms in case it is a double), on the next beat, the next bar, or the next Amount-bar line counted from bar 1. |
 | Amount | 1BAR..16BAR | The cycle for When CYCLE. Length 4 with CYCLE 8 records the first 4 bars of the next 8-bar phrase. |
 
-**Memory.** 12-bit block floating point (Luca's A/B, 2026-10-15). With the firmware's big buffer (2.72 MB, v2.0 step 2): 20.1 s stereo or 39.5 s mono, so 8 bars stereo from 96 BPM, mono from 49 BPM, 4 bars below that. Until then only the effect's own 705 KB: about 10 s mono or 5 s stereo (1 bar stereo at any tempo, 2 bars stereo from about 93 BPM, 4 bars mono from about 95, 8 bars mono from about 190). A mono loop records the left input. The loop is lost on a patch change.
+**Memory.** 12-bit block floating point (Luca's A/B, 2026-10-15). With the firmware's big buffer (v2.0 step 2: free RAM regions 3, 2 and 1 plus the effect's own block, 3.3 MB): 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). One Looper per patch gets it; a second one keeps its own block. Until then only the effect's own 705 KB: about 10 s mono or 5 s stereo (1 bar stereo at any tempo, 2 bars stereo from about 93 BPM, 4 bars mono from about 95, 8 bars mono from about 190). A mono loop records the left input. The loop is lost on a patch change.
+
+**Screen and LED** (looper services). The Looper publishes a status (EMPTY, WAIT, REC 3/8, PLAY 5/8, STOP; MONO alternates with REC on beats 3-4 when the loop fell back to mono) and a pulse: off when empty, a quick blink on each beat while an action waits, solid while recording, a pulse on each beat while playing (strongest on the loop's bar 1), slow breathing (2 s in, 2 s out) when stopped. The LED shows it while the Looper is under the cursor.
 
 **Tempo changes.** The loop stays on the grid and keeps its pitch. Every 1/16 line it checks where it should be. Faster than recorded, each 1/16 is cut short at the next line. Slower, a 1/16 that runs out is filled with overlapping 30 ms grains of its own tail (15 ms crossfades) until the line, so sustained sounds stretch smoothly and no attack is heard twice; the hits stay on their lines. The grain size is the constant `LP_GX` in looper.c. At the recording tempo nothing moves.
