@@ -237,6 +237,28 @@ int main(void)
     printf("140 BPM on a 120 loop: %ld seams in 4 bars\n", jumps);
     CHECK(jumps > 56 && jumps < 70, "140 BPM: %ld seams in 4 bars (want one per 1/16)", jumps);
 
+    /* 7b: the whole 30-40 BPM range: 120 -> 80, 85, 160, 150 each way (ratios 0.67 .. 1.33), no clicks, never into the next slice */
+    {
+        static const int tgt[4] = { 80, 85, 160, 150 };
+        int q;
+        for (q = 0; q < 4; q++) {
+            double cnt = (t - clk_t0) / clk_per, bt = (double)tgt[q];
+            clk_per = 44100.0 * 60.0 / (bt * 24.0); clk_t0 = (double)t - cnt * clk_per; zt_host[5] = (unsigned)(tgt[q] * 100);
+            run(8000); maxstep = 0.0f; a = lastout[7]; worst = 0.0f;
+            for (i = 0; i < 3 * 132300 / 8; i++) {
+                block();
+                for (j = 0; j < 8; j++) { d = fabsf(lastout[j] - a); if (d > maxstep) maxstep = d; a = lastout[j]; }
+                n = S->v[S->mi].pos - lp_target(S, S->gu & ~1);
+                if (n < -S->L / 2) n += S->L;
+                if (n > S->L / 2) n -= S->L;
+                if (n > worst) worst = (float)n;
+            }
+            printf("120 loop at %d BPM: largest step %.3f, playhead at most %.0f past its line (slice %d)\n", tgt[q], maxstep, worst, S->slice);
+            CHECK(maxstep < 0.06f, "%d BPM: click (step %.3f)", tgt[q], maxstep);
+            CHECK(worst <= S->slice + 24, "%d BPM: ran into the next slice (%.0f)", tgt[q], worst);
+        }
+    }
+
     /* 8: MIDI Start: a waiting action is re-aimed at the downbeat, the loop restarts */
     U[3] = 3; U[4] = 15;                                  /* CYCLE 16 */
     press();                                              /* stop at the next 16-bar line */
