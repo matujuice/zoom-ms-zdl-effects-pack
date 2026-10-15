@@ -369,7 +369,7 @@ int main(void)
         CHECK(S->st == LP_REC, "firmware press did not record (st %d)", S->st);
         run(97020); text(tx);                  /* 2.2 s: bar 2 */
         CHECK(!strcmp(tx, "REC  2/2"), "recording text '%s'", tx);
-        CHECK(ls_host[LS_LEVEL] == 32, "recording level %u", ls_host[LS_LEVEL]);
+        CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
         while (S->st != LP_PLAY) block();
         run(400); text(tx);
         CHECK(!strcmp(tx, "PLAY 1/2"), "playing text '%s'", tx);
@@ -383,11 +383,22 @@ int main(void)
             last = lit;
         }
         printf("LED, playing: lit %.0f %% of the blocks, %ld switch-ons\n", 100.0 * n / 22050, on_writes);
-        CHECK(n > 22050 / 50 && n < 22050 / 2 && on_writes > 100, "LED duty %ld / 22050, %ld switch-ons", n, on_writes);
+        CHECK(n == 22050 && on_writes == 1, "LED not solid while playing: %ld / 22050, %ld switch-ons", n, on_writes);
         fw_press(); text(tx);
         CHECK(!strncmp(tx, "PLAY", 4) && ls_host[LS_LEVEL] <= 32, "waiting to stop: '%s'", tx);
-        while (S->st != LP_STOP) block();
+        {   /* countdown blink: on/off changes of the level come faster near the stop */
+            long ch1 = 0, ch2 = 0, blk = 0; unsigned int lv = ls_host[LS_LEVEL];
+            while (S->st != LP_STOP) {
+                block(); blk++;
+                if (ls_host[LS_LEVEL] != lv) { if (S->pu - S->gu >= 8) ch1++; else ch2++; }
+                lv = ls_host[LS_LEVEL];
+                CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
+            }
+            printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
+            CHECK(ch2 >= 8, "no fast blink in the last beat (%ld)", ch2);
+        }
         text(tx); CHECK(!strcmp(tx, "STOP    "), "stopped text '%s'", tx);
+        block(); CHECK(ls_host[LS_LEVEL] == 0, "stopped level %u", ls_host[LS_LEVEL]);
         fw_press(); run(8); fw_press();       /* double press: delete */
         while (S->st != LP_EMPTY) block();
         CHECK(S->ev_del == 1, "double press did not delete");

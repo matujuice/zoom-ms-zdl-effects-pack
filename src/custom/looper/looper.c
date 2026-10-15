@@ -76,9 +76,10 @@
  *   ~48 ms), and writes 8 status characters (EMPTY, WAIT, REC 3/8, PLAY 5/8, STOP; MONO on
  *   beats 3-4 of a mono recording) and a pulse level 0..32 for the firmware's status box.
  *   While the firmware says the looper is under the cursor it drives the LED with that
- *   level (PWM, 32 steps of one block: 172 Hz): off when empty, a quick blink on each beat
- *   while an action waits, solid while recording, a pulse on each beat while playing
- *   (strongest on the loop's bar 1), breathing 2 s in / 2 s out when stopped. Losing the
+ *   level (PWM, 32 steps of one block: 172 Hz), as the v2.0 brief's LED table: off when
+ *   empty or stopped, a slow pulse (one per bar) while recording, on while playing or
+ *   rolling, and while an action waits a countdown blink whose rate doubles as the time
+ *   left halves (one per bar 8 bars out, down to 32nds in the last beat). Losing the
  *   claim with a loop in the big buffer empties the looper.
  *   Counters ev_rec, ev_stop, ev_del are kept for Perform mode's events.
  *
@@ -141,7 +142,6 @@ static unsigned int ls_host[32];         /* host tests: no firmware; tests fill 
 #define LS_LEVEL   16                    /* ours: pulse level 0..32 (LED duty, box fill)   */
 #define LS_TEXT    17                    /* ours: 8 status characters (words 17, 18)       */
 #define LP_PWM     32                    /* LED PWM steps (one per block: 172 Hz)          */
-#define LP_BREATH  22050                 /* stopped: one breath, blocks (4 s)              */
 
 #define LP_EMPTY 0                       /* st */
 #define LP_REC   1
@@ -208,7 +208,7 @@ typedef struct {
     int   big;             /* this loop is in the big buffer                     */
     int   want;            /* Length asked for when this loop was recorded       */
     int   pwm, led;        /* LED PWM step, last LED write (-1 = none)           */
-    int   tick;            /* blocks, for the stopped loop's breathing           */
+    int   tick;            /* unused (was the stopped loop's breathing)          */
     /* buffer */
     uintptr_t ab; int asz; /* the arena (always the last region)                 */
     int   nreg;
@@ -780,8 +780,6 @@ static inline void lp_out(LpState *s)
     unsigned int w0, w1;
     if (!s->own) return;
     for (k = 0; k < 8; k++) t[k] = ' ';
-    s->tick++;
-    if (s->tick >= LP_BREATH) s->tick = 0;
     p = ((float)(s->gu & 7) + s->gf) * 0.125f;          /* phase in the beat */
     if (p < 0.0f) p = 0.0f;
     if (p > 1.0f) p = 1.0f;
@@ -793,21 +791,26 @@ static inline void lp_out(LpState *s)
         t[0] = 'R'; t[1] = 'E'; t[2] = 'C';
         if (!s->stereo && (s->gu & 31) >= 16) { t[0] = 'M'; t[1] = 'O'; t[2] = 'N'; t[3] = 'O'; }
         lp_put_bar(t, 5, bar, len);
-        lev = LP_PWM;
+        p = ((float)(s->gu & 31) + s->gf) * (1.0f / 16.0f);   /* slow pulse: one per bar */
+        if (p > 1.0f) p = 2.0f - p;
+        lev = 4 + (int)(28.0f * p * p);
     } else if (s->st == LP_PLAY) {
         u = lp_imod(s->gu - s->lu0, s->U);
         t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y';
         lp_put_bar(t, 5, (u >> 5) + 1, len);
-        p = 1.0f - p;                                   /* a pulse on each beat ... */
-        lev = (int)((u < 8 ? 32.0f : 20.0f) * p * p);  /* ... strongest on the loop's bar 1 */
+        lev = LP_PWM;                                   /* on (rolling too) */
     } else {
-        t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';
-        k = s->tick + s->tick;                          /* breathing: in 2 s, out 2 s */
-        if (k >= LP_BREATH) k = 2 * LP_BREATH - k;
-        p = (float)k * (1.0f / (float)LP_BREATH);
-        lev = (int)(32.0f * p * p);
+        t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';  /* off */
     }
-    if (s->pend) lev = ((s->gu & 7) < 2) ? LP_PWM : 0;  /* waiting: a quick blink each beat */
+    if (s->pend) {
+        /* countdown blink: the period (1/8-beat units) is the remaining time / 8 as a power
+         * of 2, from a bar down to a 32nd in the last beat, so it doubles as the time halves */
+        u = s->pu - s->gu;
+        k = 1;
+        while (k < 32 && k + k <= (u >> 3)) k += k;
+        if (s->pwait >= 0) k = 1;                       /* IMMED: about to happen */
+        lev = ((float)(s->gu & (k - 1)) + s->gf < 0.5f * (float)k) ? LP_PWM : 0;
+    }
     w0 = (unsigned int)(unsigned char)t[0] | ((unsigned int)(unsigned char)t[1] << 8)
        | ((unsigned int)(unsigned char)t[2] << 16) | ((unsigned int)(unsigned char)t[3] << 24);
     w1 = (unsigned int)(unsigned char)t[4] | ((unsigned int)(unsigned char)t[5] << 8)
