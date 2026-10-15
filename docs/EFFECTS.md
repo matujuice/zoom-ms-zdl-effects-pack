@@ -206,7 +206,7 @@ The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it ru
 | Playing | stop (the loop is kept) | delete the loop |
 | Stopped | play again, in its place on the grid | delete the loop |
 
-Every action waits for the When line. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat.
+Every action waits for the When line. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat. MIDI Stop stops a playing loop at once (a recording under way and a waiting action are dropped), and the next MIDI Start plays it again from bar 1. A loop you stopped with the footswitch stays stopped.
 
 | Knob | Range | What it does |
 |---|---|---|

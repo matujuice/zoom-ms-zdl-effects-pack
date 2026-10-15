@@ -226,6 +226,27 @@ int main(void)
     CHECK(S->gu == 0, "stop after Start at unit %d, want 0", S->gu);
     zt_host[2] = 0u; clk_per = 0.0;
 
+    /* 8b: MIDI Stop stops a playing loop at once, the next Start plays it from bar 1;
+     * a loop stopped from the footswitch stays stopped */
+    U[3] = 1;                                             /* BEAT */
+    clock_start(100.0); run(4000); press();
+    while (S->st != LP_PLAY) block();
+    run(20000);
+    zt_host[2] = 0u; clk_per = 0.0; block();
+    CHECK(S->st == LP_STOP && S->mstop == 1, "MIDI Stop did not stop the loop (st %d)", S->st);
+    run(20000);
+    CHECK(S->st == LP_STOP && S->pend == 0, "loop moved while the transport was stopped");
+    clock_start(100.0); block();
+    CHECK(S->pend == LP_A_PLAY && S->pu == 0, "Start did not aim play at the downbeat");
+    while (S->st != LP_PLAY) block();
+    CHECK(S->gu == 0, "play after Start at unit %d, want 0", S->gu);
+    run(20000); press();
+    while (S->st == LP_PLAY) block();
+    zt_host[2] = 0u; clk_per = 0.0; run(4000);
+    clock_start(100.0); run(44100);
+    CHECK(S->st == LP_STOP, "footswitch stop: Start played the loop again");
+    zt_host[2] = 0u; clk_per = 0.0;
+
     /* 9: fit: stereo / mono / shorter in the 705 KB arena and in a 2.72 MB big buffer */
     {
         static unsigned char big[2720000 + 1000];

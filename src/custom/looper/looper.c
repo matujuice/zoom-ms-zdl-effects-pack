@@ -24,6 +24,9 @@
  *   A press while an action waits is ignored, except the second press of a double.
  *   MIDI Start re-aims a waiting action at the downbeat; a recording under way starts again
  *   on the downbeat.
+ *   MIDI Stop (or 0.5 s without clock) stops a playing loop at once and drops a waiting
+ *   action and a recording under way; the next MIDI Start plays that loop again from bar 1.
+ *   A loop stopped from the footswitch stays stopped.
  *
  * KNOBS (screen values; page 1 Mix, Roll, Length; page 2 When, Amount)
  *   0 Mix    0..100  DJ crossfade live <-> loop: live min(1, 2 - 2m), loop min(1, 2m), both
@@ -82,7 +85,7 @@
 #define LP_CODE_SECTION(fn)
 #endif
 
-#define LP_MAGIC   0x4C4F4F31u           /* "LOO1": change whenever LpState changes        */
+#define LP_MAGIC   0x4C4F4F32u           /* "LOO2": change whenever LpState changes        */
 #define LP_X       128                   /* seam crossfade, samples (2.9 ms)               */
 #define LP_XINV    0.0078125f
 #define LP_SNAP    64                    /* re-sync only when this many samples off        */
@@ -122,6 +125,7 @@ typedef struct {
     int   wraps;           /* the transport's 96-beat wraps seen since Start      */
     float lastb;           /* the transport's beats last block                   */
     int   run;             /* the MIDI transport runs                            */
+    int   mstop;           /* MIDI Stop stopped the loop: Start plays it again   */
     /* footswitch and the action waiting for its line */
     int   on_prev;         /* last on/off seen, -1 = none yet                    */
     int   age;             /* samples since the last press                       */
@@ -396,7 +400,7 @@ LP_ALWAYS_INLINE(lp_init)
 static inline void lp_init(LpState *s, uintptr_t buf, int bytes)
 {
     int k;
-    s->gu = 0; s->gf = 0.0f; s->wraps = 0; s->lastb = 0.0f; s->run = 0;
+    s->gu = 0; s->gf = 0.0f; s->wraps = 0; s->lastb = 0.0f; s->run = 0; s->mstop = 0;
     s->on_prev = -1; s->age = LP_DBL; s->first = 0;
     s->pend = 0; s->pu = 0; s->pm = 32; s->pwait = -1;
     s->st = LP_EMPTY; s->stereo = 1; s->bs = LP_BS2; s->U = 32; s->lu0 = 0; s->lu0f = 0.0f;
@@ -467,7 +471,7 @@ static inline void lp_finish(LpState *s)
 LP_ALWAYS_INLINE(lp_do)
 static inline void lp_do(LpState *s, const LpParams *P, float bpm, int act, int line)
 {
-    s->pend = 0; s->pwait = -1;
+    s->pend = 0; s->pwait = -1; s->mstop = 0;
     if (act == LP_A_REC && s->st == LP_EMPTY) lp_record(s, P, bpm, s->gu, line ? 0.0f : s->gf);
     if (act == LP_A_STOP && s->st == LP_PLAY) { lp_jump(s, -1); s->st = LP_STOP; s->roll = 0; s->ev_stop++; }
     if (act == LP_A_PLAY && s->st == LP_STOP) { s->st = LP_PLAY; s->slice = 0; lp_jump(s, lp_target(s, s->gu)); }
@@ -510,6 +514,11 @@ static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *
 
     bpm = zt_update(&s->zt, &run, &beats, &start);
     *du = bpm * LP_UNIT;
+    if (s->run && !run) {                        /* MIDI Stop: stop with the song */
+        if (s->st == LP_PLAY) { lp_do(s, P, bpm, LP_A_STOP, 0); s->mstop = 1; }
+        if (s->st == LP_REC) s->st = LP_EMPTY;
+        s->pend = 0; s->pwait = -1;
+    }
     s->run = run;
     if (start) {                                 /* MIDI Start: the downbeat is bar 1 */
         s->wraps = 0; s->lastb = 0.0f;
@@ -517,6 +526,7 @@ static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *
         s->lu0 = 0; s->lu0f = 0.0f;              /* the loop starts again on it */
         s->roll = 0;
         if (s->st == LP_REC) { s->st = LP_EMPTY; s->pend = LP_A_REC; s->pwait = -1; }
+        if (s->mstop && s->st == LP_STOP) s->pend = LP_A_PLAY;
         if (s->pend) { s->pu = 0; s->pwait = -1; }
     }
     if (run) {
