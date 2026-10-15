@@ -548,11 +548,6 @@ static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *
         }
         s->age = 0;
         if (act == LP_A_DEL && s->st == LP_EMPTY) s->pend = 0;    /* the record never started */
-        else if (act == LP_A_DEL && s->st == LP_REC) lp_do(s, P, bpm, LP_A_DEL, 0);  /* nothing heard yet */
-        else if (act == LP_A_REC && !run) {      /* no clock: this press is bar 1 */
-            s->gu = 0; s->gf = 0.0f;
-            lp_do(s, P, bpm, LP_A_REC, 1);
-        }
         else if (act && (!s->pend || act == LP_A_DEL)) {
             s->pend = act;
             m = 8;
@@ -562,6 +557,11 @@ static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *
             s->pu = lp_next(s->gu, m);
             s->pwait = -1;
             if (P->when == 0) s->pwait = (act == LP_A_DEL) ? 1 : LP_DBL;
+            if (act == LP_A_DEL && s->st == LP_REC) s->pwait = 1;   /* nothing heard yet: at once */
+            if (act == LP_A_REC && !run) {       /* no clock: this press is bar 1, record now */
+                s->gu = 0; s->gf = -*du;         /* the first sample lands on 0 */
+                s->pwait = 1;
+            }
         }
     }
     if (s->age < LP_DBL) s->age += 8;
@@ -580,7 +580,7 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
 
         s->gf += du;
         while (s->gf >= 1.0f) { s->gf -= 1.0f; s->gu++; lp_line(s, P, bpm, s->gu); }
-        if (s->pend && s->pwait > 0 && --s->pwait == 0) lp_do(s, P, bpm, s->pend, 0);
+        if (s->pend && s->pwait > 0 && --s->pwait == 0) lp_do(s, P, bpm, s->pend, s->gf == 0.0f);
 
         if (s->st == LP_REC && (s->gu > s->eu || (s->gu == s->eu && s->gf >= s->ef)))
             lp_finish(s);

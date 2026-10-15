@@ -17,6 +17,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
 | **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
 | **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
+| **Looper** | A bar-synced stereo looper on the song grid: the footswitch records Length bars, stops, plays and (double press) deletes, each on the next beat, bar or cycle; latched beat Roll; the loop stays on the grid when the tempo changes. Test build for MIDISTOMP v2.0: until the firmware gives it its big buffer it only holds about 10 s mono. Not in a release. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
@@ -33,7 +34,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
 The effects marked new are on `main` but not in a release yet: take the tested builds from [dist/](dist/) or build them from source (below) until the next release.
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep, 497 Looper). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 

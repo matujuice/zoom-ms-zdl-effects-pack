@@ -191,3 +191,31 @@ One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for sy
 | Mix | 0..100 | Dry/wet crossfade, DJ style. The phaser and flanger sound already contains the dry (that is where the notches come from), so 100 is the whole effect. |
 
 Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.
+
+### Looper: a bar-synced looper on the song grid
+Test build for MIDISTOMP v2.0 (step 1, 2026-10-15), not in a release. Needs the MIDISTOMP firmware for its grid (on stock firmware it runs at 120 BPM). Not tested on a pedal yet.
+
+The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
+
+**Footswitch.** Until the firmware's looper services exist (v2.0 step 2), every on/off flip is a press, from the footswitch or the effect's on/off CC; the LED means nothing, and each flip marks the patch as edited.
+
+| State | Press | Double press (two within 300 ms) |
+|---|---|---|
+| Empty | record Length bars, then play | — |
+| Recording | nothing | throw the recording away (at once) |
+| Playing | stop (the loop is kept) | delete the loop |
+| Stopped | play again, in its place on the grid | delete the loop |
+
+Every action waits for the When line. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Mix | 0..100 | Live and loop, DJ crossfade: live full up to 50, loop full from 50. With no loop playing only the live part is heard (100 = silence). |
+| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat. It starts on the next bar line and repeats the last 1/2 .. 1/32 of the bar that was playing. A new rate takes over on its next line (1/4 to 1/8 doubles the repeats). OFF lands on the next line, where the loop would have been. |
+| Length | 1BAR..8BAR | Loop length. Stereo if it fits, else mono, else halved (8, 4, 2, 1). |
+| When | IMMED, BEAT, BAR, CYCLE | When record, stop, play and delete happen: at once (a single press waits 300 ms in case it is a double), on the next beat, the next bar, or the next Amount-bar line counted from bar 1. |
+| Amount | 1BAR..16BAR | The cycle for When CYCLE. Length 4 with CYCLE 8 records the first 4 bars of the next 8-bar phrase. |
+
+**Memory.** 12-bit block floating point (Luca's A/B, 2026-10-15). With the firmware's big buffer (2.72 MB, v2.0 step 2): 20.1 s stereo or 39.5 s mono, so 8 bars stereo from 96 BPM, mono from 49 BPM, 4 bars below that. Until then only the effect's own 705 KB: about 10 s mono or 5 s stereo (1 bar stereo at any tempo, 2 bars stereo from about 93 BPM, 4 bars mono from about 95, 8 bars mono from about 190). A mono loop records the left input. The loop is lost on a patch change.
+
+**Tempo changes.** The loop stays on the grid and keeps its pitch. Every 1/16 line it checks where it should be. Faster than recorded, each 1/16 is cut short at the next line; slower, a 1/16 that runs out repeats its own second half until the line, so no attack is heard twice. At the recording tempo nothing moves.
