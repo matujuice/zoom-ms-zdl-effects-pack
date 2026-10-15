@@ -33,7 +33,7 @@ for src in sorted(HERE.glob("*.c")):
         continue
     exe = GEN / src.stem
     print(f"\n=== {src.stem}")
-    if subprocess.run(["gcc", "-O1", f"-I{GEN}", str(src), "-lm", "-o", str(exe)]).returncode != 0:
+    if subprocess.run(["gcc", "-O1", "-no-pie", f"-I{GEN}", str(src), "-lm", "-o", str(exe)]).returncode != 0:
         failed.append(src.stem); continue
     if subprocess.run([str(exe)]).returncode != 0:
         failed.append(src.stem)

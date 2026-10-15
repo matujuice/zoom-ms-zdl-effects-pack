@@ -12,8 +12,11 @@
  *   press that records (loop empty, clock not running) makes that moment bar 1, so the
  *   first recording starts right away. The grid counts in units of 1/32 note (1/8 beat).
  *
- * FOOTSWITCH (until the firmware's looper services exist: every on/off flip is a press,
- * from the footswitch or the effect's on/off CC; the LED means nothing)
+ * FOOTSWITCH: with the MOD firmware's looper services (v2.0 step 2) the firmware counts
+ * presses (footswitch with the looper under the cursor, which then never flips it; the
+ * looper slot's on/off CC, values 64-127) in its services block. Without them (older
+ * firmware, a second looper, the firmware has not found our slot yet) every on/off flip is
+ * a press, from the footswitch or the CC, and the LED means nothing.
  *   Empty   press: record Length bars at the When line, then play
  *   Playing press: stop at the When line (the loop is kept, the loop part goes silent)
  *   Stopped press: play again at the When line, in its place on the grid
@@ -49,9 +52,11 @@
  *   by L and R, as Luca's A/B), then 12-bit samples packed two in three bytes. 49 bytes per
  *   stereo block (3.06 B per frame), 25 per mono block. A mono loop stores the left input.
  *   Stereo or mono is picked when recording starts: stereo whenever Length fits.
- *   Memory: until the firmware hands over its big buffer (step 2), the effect's own arena
- *   (705 KB: about 10 s mono, 5 s stereo). The buffer is a list of regions so the big
- *   buffer's pieces slot in. Recorded audio is never read before it is written, so a new
+ *   Memory: the firmware's big buffer (free RAM regions 3, 2, 1 from the services block)
+ *   plus the effect's own arena, 3.3 MB: 8 bars stereo from 79 BPM, mono at every tempo.
+ *   The looper that holds the services claim gets it, picked when recording starts; a
+ *   second looper, or older firmware, has the arena alone (705 KB: about 10 s mono, 5 s
+ *   stereo). Recorded audio is never read before it is written, so a new
  *   arena needs no clearing; a new arena (patch change, reload) means an empty looper.
  *
  * PLAYBACK ON THE GRID (tempo changes)
@@ -65,8 +70,20 @@
  *   start and stop are a 128-sample (2.9 ms) crossfade; at the loop end the old voice reads on into 128 samples
  *   recorded just after the loop (the tail), so the end flows into the start like a splice.
  *
- * STATE OUT (for the firmware's looper services, step 2): st (empty / recording / playing /
- * stopped) and the counters ev_rec, ev_stop, ev_del (Perform mode's events).
+ * LOOPER SERVICES (zoom-ms-midistomp docs/looper-services.md, block at 0xC00F3000): the
+ *   looper claims the block with its params pointer (ctx[1]) while it has no loop of its
+ *   own in the arena, beats a heartbeat every block (the firmware frees a silent claim after
+ *   ~48 ms), and writes the firmware's status box: 8 characters (EMPTY, REC WAIT, REC or
+ *   REC MONO, PLAY, STOP, DEL WAIT; STOP or PLAY while waiting to stop or play), the loop
+ *   progress 0..256 (recording: time recorded / Length; playing: place in the loop) and an
+ *   inverted flag (an 1/8 pulse every 2 beats while recording, the countdown blink while
+ *   waiting). While the firmware says the looper is under the cursor it drives the LED
+ *   (PWM, 32 steps of one block: 172 Hz), as the v2.0 brief's LED table: off when empty or
+ *   stopped, a fade every 2 beats while recording, on while playing or rolling, and while
+ *   an action waits a countdown blink whose rate doubles as the time left halves (one per
+ *   bar 8 bars out, down to 1/16 notes). Losing the claim with a loop in the big buffer
+ *   empties the looper. A double press while stopped deletes at once, whatever When says.
+ *   Counters ev_rec, ev_stop, ev_del are kept for Perform mode's events.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -86,7 +103,7 @@
 #define LP_CODE_SECTION(fn)
 #endif
 
-#define LP_MAGIC   0x4C4F4F32u           /* "LOO2": change whenever LpState changes        */
+#define LP_MAGIC   0x4C4F4F33u           /* "LOO3": change whenever LpState changes        */
 #define LP_X       128                   /* seam crossfade, samples (2.9 ms)               */
 #define LP_XINV    0.0078125f
 #define LP_GX      661                   /* grain crossfade, samples (15 ms): tune by ear   */
@@ -98,10 +115,37 @@
 #define LP_SPB     2646000.0f            /* samples per beat x BPM                         */
 #define LP_BS2     49                    /* bytes per stereo block                         */
 #define LP_BS1     25                    /* bytes per mono block                           */
-#define LP_NREG    3                     /* buffer regions (the big buffer comes in pieces) */
+#define LP_NREG    4                     /* buffer regions: the big buffer's 3 + the arena */
 #ifndef LP_ON_JUMP
 #define LP_ON_JUMP()                     /* host tests count the seams */
 #endif
+
+/* The MOD firmware's looper services block (zoom-ms-midistomp docs/looper-services.md):
+ * plain loads and stores, nothing calls into the firmware. Word indexes. */
+#ifndef LS_ADDR
+#ifdef __TI_COMPILER_VERSION__
+#define LS_ADDR    0xC00F3000u
+#else
+static unsigned int ls_host[32];         /* host tests: no firmware; tests fill it in */
+#define LS_ADDR    ((uintptr_t)ls_host)
+#endif
+#endif
+#define LS         ((volatile unsigned int *)LS_ADDR)
+#define LS_MAGIC   0x5A4C5301u           /* "ZLS", version 1                               */
+#define LS_NREG    1                     /* regions, then base / bytes pairs from word 2   */
+#define LS_CLAIM   8                     /* ours: the params pointer of the looper using it */
+#define LS_HB      9                     /* ours: +1 every block while we hold the claim   */
+#define LS_SLOT    10                    /* firmware: our slot, -1 until it has found it   */
+#define LS_PRESS   11                    /* firmware: footswitch / CC presses              */
+#define LS_MINE    12                    /* firmware: we are under the cursor: drive the LED */
+#define LS_LEDON   13                    /* firmware: GPIO register that lights the LED    */
+#define LS_LEDOFF  14                    /* firmware: GPIO register that darkens it        */
+#define LS_LEDMASK 15
+#define LS_LEVEL   16                    /* ours: LED level 0..32 (PWM duty)                */
+#define LS_TEXT    17                    /* ours: 8 status characters (words 17, 18)       */
+#define LS_PROG    19                    /* ours: loop progress 0..256 (status box fill)    */
+#define LS_INV     20                    /* ours: 1 = status box inverted (pulse, blink)    */
+#define LP_PWM     32                    /* LED PWM steps (one per block: 172 Hz)          */
 
 #define LP_EMPTY 0                       /* st */
 #define LP_REC   1
@@ -161,7 +205,16 @@ typedef struct {
     float gd, gw;          /* live and loop gains (gliding)                      */
     /* state out */
     int   ev_rec, ev_stop, ev_del;
+    /* looper services */
+    unsigned int me;       /* our params pointer: the claim                      */
+    int   own;             /* we hold the services block's claim                 */
+    unsigned int npress;   /* its press counter, as far as we have counted      */
+    int   big;             /* this loop is in the big buffer                     */
+    int   want;            /* Length asked for when this loop was recorded       */
+    int   pwm, led;        /* LED PWM step, last LED write (-1 = none)           */
+    int   tick;            /* unused (was the stopped loop's breathing)          */
     /* buffer */
+    uintptr_t ab; int asz; /* the arena (always the last region)                 */
     int   nreg;
     uintptr_t rb[LP_NREG]; /* region start                                       */
     int   rsz[LP_NREG];    /* bytes                                              */
@@ -420,8 +473,8 @@ static inline void lp_init(LpState *s, uintptr_t buf, int bytes)
     s->mi = 0; s->fade = 0; s->fi = LP_XINV; s->roll = 0; s->ru0 = 0; s->slice = 0; s->nrun = 0;
     s->gd = 1.0f; s->gw = 1.0f;
     s->ev_rec = 0; s->ev_stop = 0; s->ev_del = 0;
-    /* ponytail: one region (the arena) until the firmware's looper services (step 2) add
-     * the free RAM regions 3 and 2 here */
+    s->own = 0; s->npress = 0u; s->big = 0; s->want = 8; s->pwm = 0; s->led = -1; s->tick = 0;
+    s->ab = buf; s->asz = bytes;
     s->nreg = 1; s->rb[0] = buf; s->rsz[0] = bytes;
     for (k = 1; k < LP_NREG; k++) { s->rb[k] = 0u; s->rsz[k] = 0; }
     zt_init(&s->zt);
@@ -442,12 +495,36 @@ static inline void lp_prepare(LpParams *P, const float *u)
     P->amt = (int)(u[4] + 0.5f) + 1;
 }
 
+/* the buffer for a new recording: the firmware's big buffer and our arena while we hold
+ * the services claim, else the arena alone */
+LP_ALWAYS_INLINE(lp_regions)
+static inline void lp_regions(LpState *s)
+{
+    volatile unsigned int *b = LS;
+    int k, n = 0, m;
+    if (s->own) {
+        m = (int)b[LS_NREG];
+        if (m > LP_NREG - 1) m = LP_NREG - 1;
+        for (k = 0; k < m; k++) {
+            s->rb[n] = (uintptr_t)b[2 + 2 * k];
+            s->rsz[n] = (int)b[3 + 2 * k];
+            if (s->rb[n] != 0u && s->rsz[n] > 0) n++;
+        }
+    }
+    s->big = (n > 0);
+    s->rb[n] = s->ab; s->rsz[n] = s->asz;
+    s->nreg = n + 1;
+}
+
 /* start recording at the grid position (u, f): pick stereo or mono and the length that fits */
 LP_ALWAYS_INLINE(lp_record)
 static inline void lp_record(LpState *s, const LpParams *P, float bpm, int u, float f)
 {
     float beat = LP_SPB * lp_recip(bpm), need;
-    int len = P->len, cs = lp_count(s, LP_BS2), cm = lp_count(s, LP_BS1);
+    int len = P->len, cs, cm;
+    lp_regions(s);
+    cs = lp_count(s, LP_BS2); cm = lp_count(s, LP_BS1);
+    s->want = len;
     for (;;) {
         need = 4.02f * (float)len * beat + (float)(LP_X + 32);   /* 0.5 % for a tempo drift */
         if (need <= (float)cs) { s->stereo = 1; break; }
@@ -515,12 +592,71 @@ static inline void lp_line(LpState *s, const LpParams *P, float bpm, int u)
     s->nrun = 0;
 }
 
+/* one footswitch press: record, stop or play at the When line; two within 300 ms delete */
+LP_ALWAYS_INLINE(lp_press)
+static inline void lp_press(LpState *s, const LpParams *P, int run, float *du)
+{
+    int act, m;
+    act = 0;
+    if (s->age < LP_DBL && s->first) { s->first = 0; act = LP_A_DEL; }
+    else {
+        s->first = 1;
+        if (s->st == LP_EMPTY) act = LP_A_REC;
+        if (s->st == LP_PLAY) act = LP_A_STOP;
+        if (s->st == LP_STOP) act = LP_A_PLAY;
+    }
+    s->age = 0;
+    if (act == LP_A_DEL && s->st == LP_EMPTY) s->pend = 0;    /* the record never started */
+    else if (act && (!s->pend || act == LP_A_DEL)) {
+        s->pend = act;
+        m = 8;
+        if (P->when == 2) m = 32;
+        if (P->when >= 3) m = P->amt << 5;
+        s->pm = m;
+        s->pu = lp_next(s->gu, m);
+        s->pwait = -1;
+        if (P->when == 0) s->pwait = (act == LP_A_DEL) ? 1 : LP_DBL;
+        if (act == LP_A_DEL && s->st == LP_REC) s->pwait = 1;   /* nothing heard yet: at once */
+        if (act == LP_A_DEL && s->st == LP_STOP) s->pwait = 1;  /* silent anyway: at once */
+        if (act == LP_A_REC && !run) {       /* no clock: this press is bar 1, record now */
+            s->gu = 0; s->gf = -*du;         /* the first sample lands on 0 */
+            s->pwait = 1;
+        }
+    }
+}
+
+/* the services block: claim it while nobody has (only with no loop of our own in the
+ * arena), beat the heartbeat, and return the presses since the last block; -1 = count
+ * on/off flips instead (no services, someone else's claim, slot not found yet) */
+LP_ALWAYS_INLINE(lp_services)
+static inline int lp_services(LpState *s)
+{
+    volatile unsigned int *b = LS;
+    unsigned int c, p;
+    if (b[0] != LS_MAGIC || s->me == 0u) { s->own = 0; return -1; }
+    c = b[LS_CLAIM];
+    if (c == 0u && s->st == LP_EMPTY && !s->pend) { b[LS_CLAIM] = s->me; c = s->me; }
+    if (c != s->me) {
+        if (s->big) { s->st = LP_EMPTY; s->pend = 0; s->roll = 0; s->tail = 0; s->big = 0;   /* lost it */
+                      s->v[0].pos = -1; s->v[1].pos = -1; s->fade = 0; }
+        s->own = 0; s->led = -1;
+        return -1;
+    }
+    p = b[LS_PRESS];
+    if (!s->own) { s->own = 1; s->npress = p; }
+    b[LS_HB] = b[LS_HB] + 1u;
+    if ((int)b[LS_SLOT] < 0) { s->npress = p; return -1; }
+    c = p - s->npress;
+    s->npress = p;
+    return (int)c;
+}
+
 /* once per block: the song grid from the transport, the footswitch */
 LP_ALWAYS_INLINE(lp_block)
 static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *du)
 {
     float beats, err, bpm;
-    int run, start, on, act, m, h;
+    int run, start, on, n, m, h;
 
     bpm = zt_update(&s->zt, &run, &beats, &start);
     *du = bpm * LP_UNIT;
@@ -553,37 +689,16 @@ static inline float lp_block(LpState *s, const LpParams *P, float onoff, float *
         }
     }
 
-    /* footswitch: every flip is a press */
+    /* footswitch: the firmware's press counter while it has found our slot, else every
+     * on/off flip is a press (no services, a second looper, older firmware) */
     on = s->on_prev ? (onoff > 0.3f) : (onoff > 0.7f);
     if (s->on_prev < 0) s->on_prev = on;         /* the first block: not a press */
-    if (on != s->on_prev) {
-        s->on_prev = on;
-        act = 0;
-        if (s->age < LP_DBL && s->first) { s->first = 0; act = LP_A_DEL; }
-        else {
-            s->first = 1;
-            if (s->st == LP_EMPTY) act = LP_A_REC;
-            if (s->st == LP_PLAY) act = LP_A_STOP;
-            if (s->st == LP_STOP) act = LP_A_PLAY;
-        }
-        s->age = 0;
-        if (act == LP_A_DEL && s->st == LP_EMPTY) s->pend = 0;    /* the record never started */
-        else if (act && (!s->pend || act == LP_A_DEL)) {
-            s->pend = act;
-            m = 8;
-            if (P->when == 2) m = 32;
-            if (P->when >= 3) m = P->amt << 5;
-            s->pm = m;
-            s->pu = lp_next(s->gu, m);
-            s->pwait = -1;
-            if (P->when == 0) s->pwait = (act == LP_A_DEL) ? 1 : LP_DBL;
-            if (act == LP_A_DEL && s->st == LP_REC) s->pwait = 1;   /* nothing heard yet: at once */
-            if (act == LP_A_REC && !run) {       /* no clock: this press is bar 1, record now */
-                s->gu = 0; s->gf = -*du;         /* the first sample lands on 0 */
-                s->pwait = 1;
-            }
-        }
-    }
+    n = (on != s->on_prev);
+    s->on_prev = on;
+    m = lp_services(s);
+    if (m >= 0) n = m;
+    if (n > 2) n = 2;                            /* a burst (a CC flood) is a double press at most */
+    for (; n > 0; n--) lp_press(s, P, run, du);
     if (s->age < LP_DBL) s->age += 8;
     if (s->st != LP_PLAY) s->roll = 0;
     return bpm;
@@ -644,6 +759,76 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
         buf[i + 8] = gd * inr + gw * mr;
     }
     s->gd = gd; s->gw = gw;
+}
+
+/* ---- state out: the status text, the pulse level and the LED ------------------- */
+
+/* "b/L" into t[k..k+2] (bars 1..8) */
+/* once per block while we hold the claim: 8 characters, the loop progress and the box's
+ * inverted flag for the firmware's status box, and a level 0..32 that the LED shows (PWM)
+ * while the firmware says the looper is under the cursor */
+LP_ALWAYS_INLINE(lp_out)
+static inline void lp_out(LpState *s)
+{
+    volatile unsigned int *b = LS;
+    char t[8];
+    int k, lev = 0, u, lit, inv = 0, prog = 0;
+    float p;
+    unsigned int w0, w1;
+    if (!s->own) return;
+    for (k = 0; k < 8; k++) t[k] = ' ';
+    if (s->st == LP_EMPTY) {
+        t[0] = 'E'; t[1] = 'M'; t[2] = 'P'; t[3] = 'T'; t[4] = 'Y';
+        if (s->pend) { t[0] = 'R'; t[1] = 'E'; t[2] = 'C'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T'; }
+    } else if (s->st == LP_REC) {
+        t[0] = 'R'; t[1] = 'E'; t[2] = 'C';
+        if (!s->stereo) { t[4] = 'M'; t[5] = 'O'; t[6] = 'N'; t[7] = 'O'; }
+        prog = (int)(((float)(s->gu - s->lu0) + s->gf) * 256.0f * lp_recip((float)s->U));
+        p = ((float)(s->gu & 15) + s->gf) * 0.125f;   /* a fade every 2 beats, on the grid */
+        if (p > 1.0f) p = 2.0f - p;
+        lev = 4 + (int)(28.0f * p * p);
+        inv = (s->gu & 15) < 4;                         /* the box: an 1/8 pulse every 2 beats */
+    } else if (s->st == LP_PLAY) {
+        u = lp_imod(s->gu - s->lu0, s->U);
+        t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y';
+        if (s->pend == LP_A_STOP) { t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P'; }
+        prog = (int)(((float)u + s->gf) * 256.0f * lp_recip((float)s->U));
+        lev = LP_PWM;                                   /* on (rolling too) */
+    } else {
+        t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';  /* off */
+        if (s->pend == LP_A_PLAY) { t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y'; }
+    }
+    if (s->pend == LP_A_DEL) {
+        t[0] = 'D'; t[1] = 'E'; t[2] = 'L'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T';
+    }
+    if (s->pend) {
+        /* countdown blink: the period (1/8-beat units) is the remaining time / 8 as a power
+         * of 2, from a bar down to a 1/16 note, so it doubles as the time halves */
+        u = s->pu - s->gu;
+        k = 2;
+        while (k < 32 && k + k <= (u >> 3)) k += k;
+        if (s->pwait >= 0) k = 2;                       /* IMMED: about to happen */
+        lev = ((float)(s->gu & (k - 1)) + s->gf < 0.5f * (float)k) ? LP_PWM : 0;
+        inv = (lev != 0);
+    }
+    if (prog < 0) prog = 0;
+    if (prog > 256) prog = 256;
+    w0 = (unsigned int)(unsigned char)t[0] | ((unsigned int)(unsigned char)t[1] << 8)
+       | ((unsigned int)(unsigned char)t[2] << 16) | ((unsigned int)(unsigned char)t[3] << 24);
+    w1 = (unsigned int)(unsigned char)t[4] | ((unsigned int)(unsigned char)t[5] << 8)
+       | ((unsigned int)(unsigned char)t[6] << 16) | ((unsigned int)(unsigned char)t[7] << 24);
+    b[LS_TEXT] = w0; b[LS_TEXT + 1] = w1;
+    b[LS_LEVEL] = (unsigned int)lev;
+    b[LS_PROG] = (unsigned int)prog;
+    b[LS_INV] = (unsigned int)inv;
+    if (!b[LS_MINE] || b[LS_LEDON] == 0u || b[LS_LEDOFF] == 0u) { s->led = -1; return; }
+    s->pwm++;
+    if (s->pwm >= LP_PWM) s->pwm = 0;
+    lit = (s->pwm < lev);
+    if (lit != s->led) {
+        *(volatile unsigned int *)(uintptr_t)(lit ? b[LS_LEDON] : b[LS_LEDOFF]) = b[LS_LEDMASK];
+        s->led = lit;
+    }
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -775,8 +960,10 @@ void LOOPER_AUDIO_FUNC(unsigned int *ctx)
 
     lp_prepare(&P, u);
     if (s->magic != LP_MAGIC) lp_init(s, bufBase, (int)(end - bufBase));
+    s->me = ctx[1];                              /* our claim on the looper services */
     bpm = lp_block(s, &P, params[0], &du);       /* on/off only counts presses */
     lp_process(s, &P, bpm, du, fxBuf);
+    lp_out(s);
 }
 
 #endif /* LOOPER_HOST_TEST */

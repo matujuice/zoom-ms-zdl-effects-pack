@@ -34,6 +34,8 @@ static void fresh(void)
     S = (LpState *)arena;
     lp_init(S, (uintptr_t)(arena + ((sizeof(LpState) + 3) & ~3u)), ARENA - (int)((sizeof(LpState) + 3) & ~3u));
     memset(zt_host, 0, sizeof zt_host);
+    memset(ls_host, 0, sizeof ls_host);
+    S->me = 0u;
     clk_per = 0.0; t = 0; onoff = 1.0f;
     U[0] = 100; U[1] = 0; U[2] = 0; U[3] = 2; U[4] = 7;
 }
@@ -51,6 +53,7 @@ static void block(void)
     lp_prepare(&P, U);
     bpm = lp_block(S, &P, onoff, &du);
     lp_process(S, &P, bpm, du, b);
+    lp_out(S);
     memcpy(lastout, b, sizeof b);
     t += 8;
 }
@@ -59,6 +62,28 @@ static void press(void) { onoff = (onoff > 0.5f) ? 0.0f : 1.0f; block(); }
 static void tempo_word(int bpm) { zt_host[0] = ZT_MAGIC; zt_host[5] = (unsigned int)(bpm * 100); }
 static void clock_start(double bpm) { zt_host[0] = ZT_MAGIC; zt_host[2] = 1u; zt_host[3]++; zt_host[5] = (unsigned int)(bpm * 100.0 + 0.5); clk_per = 44100.0 * 60.0 / (bpm * 24.0); clk_t0 = (double)t + 100.0; }
 static long upos(void) { return S->gu; }   /* grid units since bar 1 */
+
+/* the firmware's looper services: free RAM regions 3, 2 and 1 (sizes as on the pedal) in
+ * one host buffer; the build runs -no-pie so host addresses fit the block's 32-bit words */
+#define R3 1677952
+#define R2 337196
+#define R1 614400
+static unsigned char big[R3 + R2 + R1 + 64] __attribute__((aligned(8)));
+static unsigned int gpio_set, gpio_clr;     /* the LED's GPIO registers */
+static long led_writes;
+static void services(int slot)
+{
+    ls_host[0] = LS_MAGIC; ls_host[1] = 3;
+    ls_host[2] = (unsigned int)(uintptr_t)big; ls_host[3] = R3;
+    ls_host[4] = (unsigned int)(uintptr_t)(big + R3); ls_host[5] = R2;
+    ls_host[6] = (unsigned int)(uintptr_t)(big + R3 + R2); ls_host[7] = R1;
+    ls_host[LS_SLOT] = (unsigned int)slot;
+    ls_host[LS_LEDON] = (unsigned int)(uintptr_t)&gpio_clr; ls_host[LS_LEDOFF] = (unsigned int)(uintptr_t)&gpio_set;
+    ls_host[LS_LEDMASK] = 1u;
+    S->me = 0x11F00000u;                       /* any params pointer */
+}
+static void fw_press(void) { ls_host[LS_PRESS]++; block(); }
+static void text(char *out) { memcpy(out, &ls_host[LS_TEXT], 8); out[8] = 0; }
 
 int main(void)
 {
@@ -290,29 +315,30 @@ int main(void)
     CHECK(S->st == LP_STOP, "footswitch stop: Start played the loop again");
     zt_host[2] = 0u; clk_per = 0.0;
 
-    /* 9: fit: stereo / mono / shorter in the 705 KB arena and in a 2.72 MB big buffer */
+    /* 9: fit: stereo / mono / shorter in the 705 KB arena and with the services' big buffer
+     * (3.3 MB with the arena) */
     {
-        static unsigned char big[2720000 + 1000];
         LpParams P; float bpm;
         struct { float bpm; int len; int bufbig; int want_st; int want_U; } c[] = {
             { 120, 1, 0, 1, 32 }, { 120, 2, 0, 1, 64 }, { 120, 4, 0, 0, 128 }, { 120, 8, 0, 0, 128 }, { 40, 8, 0, 0, 32 },
-            { 96, 8, 1, 1, 256 }, { 95, 8, 1, 0, 256 }, { 49, 8, 1, 0, 256 }, { 47, 8, 1, 0, 128 },
-            { 48, 4, 1, 1, 128 }, { 40, 4, 1, 0, 128 }, { 250, 8, 1, 1, 256 },
+            { 79, 8, 1, 1, 256 }, { 78, 8, 1, 0, 256 }, { 40, 8, 1, 0, 256 }, { 40, 4, 1, 1, 128 },
+            { 250, 8, 1, 1, 256 }, { 100, 8, 1, 1, 256 },
         };
         for (k = 0; k < (long)(sizeof c / sizeof c[0]); k++) {
             fresh();
-            if (c[k].bufbig) { S->rb[0] = (uintptr_t)big; S->rsz[0] = 1677952; S->rb[1] = (uintptr_t)(big + 1677952); S->rsz[1] = 337196; S->rb[2] = (uintptr_t)(big + 2015148); S->rsz[2] = 704800; S->nreg = 3; }
+            if (c[k].bufbig) { services(0); S->own = 1; }
             U[2] = (float)(c[k].len - 1); lp_prepare(&P, U); bpm = c[k].bpm;
             lp_record(S, &P, bpm, 0, 0.0f);
-            CHECK(S->stereo == c[k].want_st && S->U == c[k].want_U, "fit %.0f BPM %d bars %s: stereo %d bars %d, want %d %d",
+            CHECK(S->stereo == c[k].want_st && S->U == c[k].want_U && S->big == c[k].bufbig,
+                  "fit %.0f BPM %d bars %s: stereo %d bars %d, want %d %d",
                   c[k].bpm, c[k].len, c[k].bufbig ? "big" : "arena", S->stereo, S->U >> 5, c[k].want_st, c[k].want_U >> 5);
         }
-        /* the big buffer across its three regions: record and read back 8 bars stereo at 130 */
-        fresh(); S->rb[0] = (uintptr_t)big; S->rsz[0] = 1677952; S->rb[1] = (uintptr_t)(big + 1677952); S->rsz[1] = 337196; S->rb[2] = (uintptr_t)(big + 2015148); S->rsz[2] = 704800; S->nreg = 3;
-        U[2] = 7; U[1] = 0; tempo_word(130);
-        run(800); press(); rec_start = t - 8;
+        /* the big buffer across its four regions: record and read back 8 bars stereo at 80 */
+        fresh(); services(0);
+        U[2] = 7; U[1] = 0; tempo_word(80);
+        run(800); fw_press(); rec_start = t - 8;
         while (S->st != LP_PLAY) block();
-        CHECK(S->stereo == 1 && S->U == 256, "big buffer 130 BPM: want 8 bars stereo");
+        CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 80 BPM: want 8 bars stereo in 4 regions");
         worst = 0.0f;
         for (i = 0; i < S->L / 8; i++) {
             block();
@@ -323,8 +349,75 @@ int main(void)
                 if (e > worst) worst = e;
             }
         }
-        printf("big buffer, 8 bars stereo at 130 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
+        printf("big buffer, 8 bars stereo at 80 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
         CHECK(worst < 2e-3f, "big buffer loop does not match (%.2e)", worst);
+    }
+
+    /* 9b: services: claim and heartbeat, presses from the firmware's counter (flips
+     * ignored), flips while the slot is not found, status text, LED, losing the claim */
+    {
+        char tx[9]; unsigned int hb; long on_writes = 0, n = 0; int lit, last = -1;
+        fresh(); services(2); tempo_word(120); U[2] = 1; U[3] = 2;   /* 2 bars, BAR */
+        block();
+        CHECK(ls_host[LS_CLAIM] == S->me && S->own, "no claim");
+        hb = ls_host[LS_HB]; run(80);
+        CHECK(ls_host[LS_HB] == hb + 10, "heartbeat %u, want %u", ls_host[LS_HB], hb + 10);
+        text(tx); CHECK(!strcmp(tx, "EMPTY   "), "text '%s'", tx);
+        press(); run(4000);
+        CHECK(S->st == LP_EMPTY && !S->pend, "a flip counted while the firmware counts presses");
+        fw_press(); text(tx);
+        CHECK(S->st == LP_REC, "firmware press did not record (st %d)", S->st);
+        run(97020); text(tx);                  /* 2.2 s: bar 2 */
+        CHECK(!strcmp(tx, "REC     ") && ls_host[LS_PROG] > 128 && ls_host[LS_PROG] < 256, "recording text '%s' progress %u", tx, ls_host[LS_PROG]);
+        CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
+        while (S->st != LP_PLAY) block();
+        run(400); text(tx);
+        CHECK(!strcmp(tx, "PLAY    ") && ls_host[LS_PROG] < 16 && ls_host[LS_INV] == 0, "playing text '%s' progress %u", tx, ls_host[LS_PROG]);
+        /* LED: only while under the cursor; the duty follows the level */
+        CHECK(led_writes == 0 && gpio_clr == 0 && gpio_set == 0, "LED written while not under the cursor");
+        ls_host[LS_MINE] = 1u;
+        for (i = 0; i < 22050; i++) {          /* one beat at 120: about 2756 blocks */
+            gpio_clr = gpio_set = 0; block();
+            if (gpio_clr) { lit = 1; on_writes++; } else if (gpio_set) lit = 0; else lit = last;
+            if (lit == 1) n++;
+            last = lit;
+        }
+        printf("LED, playing: lit %.0f %% of the blocks, %ld switch-ons\n", 100.0 * n / 22050, on_writes);
+        CHECK(n == 22050 && on_writes == 1, "LED not solid while playing: %ld / 22050, %ld switch-ons", n, on_writes);
+        fw_press(); text(tx);
+        CHECK(!strcmp(tx, "STOP    ") && ls_host[LS_LEVEL] <= 32, "waiting to stop: '%s'", tx);
+        {   /* countdown blink: on/off changes of the level come faster near the stop */
+            long ch1 = 0, ch2 = 0, blk = 0; unsigned int lv = ls_host[LS_LEVEL];
+            while (S->st != LP_STOP) {
+                block(); blk++;
+                if (ls_host[LS_LEVEL] != lv) { if (S->pu - S->gu >= 8) ch1++; else ch2++; }
+                lv = ls_host[LS_LEVEL];
+                CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
+            }
+            printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
+            CHECK(ch2 >= 6 && ch2 <= 9, "last beat: %ld changes, want 1/16 blinks (8)", ch2);
+        }
+        text(tx); CHECK(!strcmp(tx, "STOP    "), "stopped text '%s'", tx);
+        block(); CHECK(ls_host[LS_LEVEL] == 0, "stopped level %u", ls_host[LS_LEVEL]);
+        fw_press(); run(8); fw_press();       /* double press: delete, at once when stopped */
+        { long n2 = 0; while (S->st != LP_EMPTY && n2 < 100000) { block(); n2++; }
+          CHECK(n2 < 20, "stopped loop not deleted at once (%ld blocks)", n2); }
+        CHECK(S->ev_del == 1, "double press did not delete");
+        /* slot not found: on/off flips are presses again */
+        ls_host[LS_SLOT] = 0xFFFFFFFFu; run(80);
+        press(); run(80);
+        CHECK(S->pend == LP_A_REC || S->st == LP_REC, "flip ignored while the firmware has no slot");
+        /* someone else's claim (we were freed and another looper took it): a big loop is gone */
+        ls_host[LS_SLOT] = 2u; while (S->st != LP_PLAY) block();
+        CHECK(S->big, "loop not in the big buffer");
+        ls_host[LS_CLAIM] = 0x22F00000u; block();
+        CHECK(S->st == LP_EMPTY && !S->own, "lost claim: loop still playing from the big buffer");
+        /* a second looper with a loop of its own in the arena never takes the claim */
+        ls_host[LS_CLAIM] = 0u; S->st = LP_PLAY; S->big = 0; block();
+        CHECK(ls_host[LS_CLAIM] == 0u, "claimed while a loop was in the arena");
+        /* no services block: flips as before */
+        fresh(); tempo_word(120); run(80); press(); run(80);
+        CHECK(S->pend == LP_A_REC || S->st == LP_REC, "no services: flip not counted");
     }
 
     /* 10: labels */
