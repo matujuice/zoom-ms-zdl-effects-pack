@@ -229,7 +229,7 @@ int main(void)
     /* 8b: MIDI Stop stops a playing loop at once, the next Start plays it from bar 1;
      * a loop stopped from the footswitch stays stopped */
     U[3] = 1;                                             /* BEAT */
-    clock_start(100.0); run(4000); press();
+    clock_start(100.0); run(20000); press();               /* past the double-press window */
     while (S->st != LP_PLAY) block();
     run(20000);
     zt_host[2] = 0u; clk_per = 0.0; block();
