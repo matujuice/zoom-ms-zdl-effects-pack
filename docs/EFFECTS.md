@@ -211,7 +211,7 @@ Every action waits for the When line. MIDI Start moves a waiting action to the d
 | Knob | Range | What it does |
 |---|---|---|
 | Mix | 0..100 | Live and loop, DJ crossfade: live full up to 50, loop full from 50. With no loop playing only the live part is heard (100 = silence). |
-| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat. It starts on the next bar line and repeats the last 1/2 .. 1/32 of the bar that was playing. A new rate takes over on its next line (1/4 to 1/8 doubles the repeats). OFF lands on the next line, where the loop would have been. |
+| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat. It starts on the next bar line and repeats the first 1/2 .. 1/32 of that bar. A new rate takes over on its next line (1/4 to 1/8 doubles the repeats). OFF lands on the next line, where the loop would have been. |
 | Length | 1BAR..8BAR | Loop length. Stereo if it fits, else mono, else halved (8, 4, 2, 1). |
 | When | IMMED, BEAT, BAR, CYCLE | When record, stop, play and delete happen: at once (a single press waits 300 ms in case it is a double), on the next beat, the next bar, or the next Amount-bar line counted from bar 1. |
 | Amount | 1BAR..16BAR | The cycle for When CYCLE. Length 4 with CYCLE 8 records the first 4 bars of the next 8-bar phrase. |

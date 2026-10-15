@@ -179,7 +179,7 @@ int main(void)
     while (S->st != LP_PLAY) block();
     CHECK(S->gu == 256 + 128, "recording ended at unit %d, want 384", S->gu);
 
-    /* 6: Roll 1/4: starts on the next bar line, repeats the last beat of the bar before */
+    /* 6: Roll 1/4: starts on the next bar line, repeats the first beat of that bar */
     {
         int bar_line, len = S->L, q = len / 16, u0, ok = 1;
         float ref[64];
@@ -188,8 +188,8 @@ int main(void)
         while ((S->gu & 31) != 0) block();
         bar_line = S->gu;
         CHECK(S->roll == 8 && S->ru0 == bar_line, "Roll did not start on the bar line (roll %d ru0 %d gu %d)", S->roll, S->ru0, S->gu);
-        /* the slice: the loop's last beat of the bar before bar_line */
-        u0 = lp_imod(bar_line - 8 - S->lu0, S->U);
+        /* the slice: the loop's first beat of the bar from bar_line */
+        u0 = lp_imod(bar_line - S->lu0, S->U);
         for (j = 0; j < 64; j++) { LpVoice v = { (int)(u0 * S->spu + 0.5f) + 400 + j, -1 }; float l, r; lp_read(S, &v, &l, &r); ref[j] = l; }
         for (k = 0; k < 3; k++) {                          /* three repeats: same audio each beat */
             long beat_start = t;

@@ -36,9 +36,9 @@
  *                    full at 50. With no loop (empty, recording, stopped) only the live part
  *                    is heard. Gains glide ~5 ms.
  *   1 Roll   0..5    OFF, 1/2, 1/4, 1/8, 1/16, 1/32 (of a bar). Latched beat repeat: it starts
- *                    on the next bar line and repeats the last 1/2 .. 1/32 of the bar that was
- *                    playing; a new rate takes over on that rate's next line (same end point:
- *                    1/4 -> 1/8 doubles the repeats); OFF lands on the next line of the
+ *                    on the next bar line and repeats the first 1/2 .. 1/32 of that bar; a
+ *                    new rate takes over on that rate's next line (same start point: 1/4 ->
+ *                    1/8 doubles the repeats); OFF lands on the next line of the
  *                    running rate, where the loop would have been (the loop never moves).
  *   2 Length 0..7    1..8 bars recorded. If they don't fit at the tempo when recording starts,
  *                    stereo falls back to mono, then the length halves (8 -> 4 -> 2 -> 1).
@@ -452,7 +452,7 @@ static inline int lp_target(const LpState *s, int u)
     float x = (float)(u - s->lu0) - s->lu0f;
     int t;
     if (s->roll > 0)
-        x = (float)(s->ru0 - s->roll - s->lu0) - s->lu0f + (float)((u - s->ru0) & (s->roll - 1));
+        x = (float)(s->ru0 - s->lu0) - s->lu0f + (float)((u - s->ru0) & (s->roll - 1));   /* the bar's first slice (Luca) */
     x = lp_fmod(x, (float)s->U);
     t = (int)(x * s->spu + 0.5f);
     if (t >= s->L) t = s->L - 1;
