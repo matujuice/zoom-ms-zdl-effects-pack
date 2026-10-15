@@ -368,11 +368,11 @@ int main(void)
         fw_press(); text(tx);
         CHECK(S->st == LP_REC, "firmware press did not record (st %d)", S->st);
         run(97020); text(tx);                  /* 2.2 s: bar 2 */
-        CHECK(!strcmp(tx, "REC  2/2"), "recording text '%s'", tx);
+        CHECK(!strcmp(tx, "REC     ") && ls_host[LS_PROG] > 128 && ls_host[LS_PROG] < 256, "recording text '%s' progress %u", tx, ls_host[LS_PROG]);
         CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
         while (S->st != LP_PLAY) block();
         run(400); text(tx);
-        CHECK(!strcmp(tx, "PLAY 1/2"), "playing text '%s'", tx);
+        CHECK(!strcmp(tx, "PLAY    ") && ls_host[LS_PROG] < 16 && ls_host[LS_INV] == 0, "playing text '%s' progress %u", tx, ls_host[LS_PROG]);
         /* LED: only while under the cursor; the duty follows the level */
         CHECK(led_writes == 0 && gpio_clr == 0 && gpio_set == 0, "LED written while not under the cursor");
         ls_host[LS_MINE] = 1u;
@@ -385,7 +385,7 @@ int main(void)
         printf("LED, playing: lit %.0f %% of the blocks, %ld switch-ons\n", 100.0 * n / 22050, on_writes);
         CHECK(n == 22050 && on_writes == 1, "LED not solid while playing: %ld / 22050, %ld switch-ons", n, on_writes);
         fw_press(); text(tx);
-        CHECK(!strncmp(tx, "PLAY", 4) && ls_host[LS_LEVEL] <= 32, "waiting to stop: '%s'", tx);
+        CHECK(!strcmp(tx, "STOP    ") && ls_host[LS_LEVEL] <= 32, "waiting to stop: '%s'", tx);
         {   /* countdown blink: on/off changes of the level come faster near the stop */
             long ch1 = 0, ch2 = 0, blk = 0; unsigned int lv = ls_host[LS_LEVEL];
             while (S->st != LP_STOP) {
@@ -395,12 +395,13 @@ int main(void)
                 CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
             }
             printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
-            CHECK(ch2 >= 8, "no fast blink in the last beat (%ld)", ch2);
+            CHECK(ch2 >= 6 && ch2 <= 9, "last beat: %ld changes, want 1/16 blinks (8)", ch2);
         }
         text(tx); CHECK(!strcmp(tx, "STOP    "), "stopped text '%s'", tx);
         block(); CHECK(ls_host[LS_LEVEL] == 0, "stopped level %u", ls_host[LS_LEVEL]);
-        fw_press(); run(8); fw_press();       /* double press: delete */
-        while (S->st != LP_EMPTY) block();
+        fw_press(); run(8); fw_press();       /* double press: delete, at once when stopped */
+        { long n2 = 0; while (S->st != LP_EMPTY && n2 < 100000) { block(); n2++; }
+          CHECK(n2 < 20, "stopped loop not deleted at once (%ld blocks)", n2); }
         CHECK(S->ev_del == 1, "double press did not delete");
         /* slot not found: on/off flips are presses again */
         ls_host[LS_SLOT] = 0xFFFFFFFFu; run(80);

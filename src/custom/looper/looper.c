@@ -73,14 +73,16 @@
  * LOOPER SERVICES (zoom-ms-midistomp docs/looper-services.md, block at 0xC00F3000): the
  *   looper claims the block with its params pointer (ctx[1]) while it has no loop of its
  *   own in the arena, beats a heartbeat every block (the firmware frees a silent claim after
- *   ~48 ms), and writes 8 status characters (EMPTY, WAIT, REC 3/8, PLAY 5/8, STOP; MONO on
- *   beats 3-4 of a mono recording) and a pulse level 0..32 for the firmware's status box.
- *   While the firmware says the looper is under the cursor it drives the LED with that
- *   level (PWM, 32 steps of one block: 172 Hz), as the v2.0 brief's LED table: off when
- *   empty or stopped, a slow pulse (one per bar) while recording, on while playing or
- *   rolling, and while an action waits a countdown blink whose rate doubles as the time
- *   left halves (one per bar 8 bars out, down to 32nds in the last beat). Losing the
- *   claim with a loop in the big buffer empties the looper.
+ *   ~48 ms), and writes the firmware's status box: 8 characters (EMPTY, REC WAIT, REC or
+ *   REC MONO, PLAY, STOP, DEL WAIT; STOP or PLAY while waiting to stop or play), the loop
+ *   progress 0..256 (recording: time recorded / Length; playing: place in the loop) and an
+ *   inverted flag (an 1/8 pulse every 2 beats while recording, the countdown blink while
+ *   waiting). While the firmware says the looper is under the cursor it drives the LED
+ *   (PWM, 32 steps of one block: 172 Hz), as the v2.0 brief's LED table: off when empty or
+ *   stopped, a fade every 2 beats while recording, on while playing or rolling, and while
+ *   an action waits a countdown blink whose rate doubles as the time left halves (one per
+ *   bar 8 bars out, down to 1/16 notes). Losing the claim with a loop in the big buffer
+ *   empties the looper. A double press while stopped deletes at once, whatever When says.
  *   Counters ev_rec, ev_stop, ev_del are kept for Perform mode's events.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -139,8 +141,10 @@ static unsigned int ls_host[32];         /* host tests: no firmware; tests fill 
 #define LS_LEDON   13                    /* firmware: GPIO register that lights the LED    */
 #define LS_LEDOFF  14                    /* firmware: GPIO register that darkens it        */
 #define LS_LEDMASK 15
-#define LS_LEVEL   16                    /* ours: pulse level 0..32 (LED duty, box fill)   */
+#define LS_LEVEL   16                    /* ours: LED level 0..32 (PWM duty)                */
 #define LS_TEXT    17                    /* ours: 8 status characters (words 17, 18)       */
+#define LS_PROG    19                    /* ours: loop progress 0..256 (status box fill)    */
+#define LS_INV     20                    /* ours: 1 = status box inverted (pulse, blink)    */
 #define LP_PWM     32                    /* LED PWM steps (one per block: 172 Hz)          */
 
 #define LP_EMPTY 0                       /* st */
@@ -613,6 +617,7 @@ static inline void lp_press(LpState *s, const LpParams *P, int run, float *du)
         s->pwait = -1;
         if (P->when == 0) s->pwait = (act == LP_A_DEL) ? 1 : LP_DBL;
         if (act == LP_A_DEL && s->st == LP_REC) s->pwait = 1;   /* nothing heard yet: at once */
+        if (act == LP_A_DEL && s->st == LP_STOP) s->pwait = 1;  /* silent anyway: at once */
         if (act == LP_A_REC && !run) {       /* no clock: this press is bar 1, record now */
             s->gu = 0; s->gf = -*du;         /* the first sample lands on 0 */
             s->pwait = 1;
@@ -759,64 +764,63 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
 /* ---- state out: the status text, the pulse level and the LED ------------------- */
 
 /* "b/L" into t[k..k+2] (bars 1..8) */
-LP_ALWAYS_INLINE(lp_put_bar)
-static inline void lp_put_bar(char *t, int k, int b, int len)
-{
-    if (b < 1) b = 1;
-    if (b > len) b = len;
-    t[k] = (char)('0' + b); t[k + 1] = '/'; t[k + 2] = (char)('0' + len);
-}
-
-/* once per block while we hold the claim: 8 characters and a level 0..32 for the
- * firmware's status box; the LED pulses with the level while the firmware says the looper
- * is under the cursor */
+/* once per block while we hold the claim: 8 characters, the loop progress and the box's
+ * inverted flag for the firmware's status box, and a level 0..32 that the LED shows (PWM)
+ * while the firmware says the looper is under the cursor */
 LP_ALWAYS_INLINE(lp_out)
 static inline void lp_out(LpState *s)
 {
     volatile unsigned int *b = LS;
     char t[8];
-    int k, len = s->U >> 5, bar, lev = 0, u, lit;
+    int k, lev = 0, u, lit, inv = 0, prog = 0;
     float p;
     unsigned int w0, w1;
     if (!s->own) return;
     for (k = 0; k < 8; k++) t[k] = ' ';
-    p = ((float)(s->gu & 7) + s->gf) * 0.125f;          /* phase in the beat */
-    if (p < 0.0f) p = 0.0f;
-    if (p > 1.0f) p = 1.0f;
     if (s->st == LP_EMPTY) {
         t[0] = 'E'; t[1] = 'M'; t[2] = 'P'; t[3] = 'T'; t[4] = 'Y';
-        if (s->pend) { t[0] = 'W'; t[1] = 'A'; t[2] = 'I'; t[3] = 'T'; t[4] = ' '; }
+        if (s->pend) { t[0] = 'R'; t[1] = 'E'; t[2] = 'C'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T'; }
     } else if (s->st == LP_REC) {
-        bar = ((s->gu - s->lu0) >> 5) + 1;
         t[0] = 'R'; t[1] = 'E'; t[2] = 'C';
-        if (!s->stereo && (s->gu & 31) >= 16) { t[0] = 'M'; t[1] = 'O'; t[2] = 'N'; t[3] = 'O'; }
-        lp_put_bar(t, 5, bar, len);
-        p = ((float)(s->gu & 31) + s->gf) * (1.0f / 16.0f);   /* slow pulse: one per bar */
+        if (!s->stereo) { t[4] = 'M'; t[5] = 'O'; t[6] = 'N'; t[7] = 'O'; }
+        prog = (int)(((float)(s->gu - s->lu0) + s->gf) * 256.0f * lp_recip((float)s->U));
+        p = ((float)(s->gu & 15) + s->gf) * 0.125f;   /* a fade every 2 beats, on the grid */
         if (p > 1.0f) p = 2.0f - p;
         lev = 4 + (int)(28.0f * p * p);
+        inv = (s->gu & 15) < 4;                         /* the box: an 1/8 pulse every 2 beats */
     } else if (s->st == LP_PLAY) {
         u = lp_imod(s->gu - s->lu0, s->U);
         t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y';
-        lp_put_bar(t, 5, (u >> 5) + 1, len);
+        if (s->pend == LP_A_STOP) { t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P'; }
+        prog = (int)(((float)u + s->gf) * 256.0f * lp_recip((float)s->U));
         lev = LP_PWM;                                   /* on (rolling too) */
     } else {
         t[0] = 'S'; t[1] = 'T'; t[2] = 'O'; t[3] = 'P';  /* off */
+        if (s->pend == LP_A_PLAY) { t[0] = 'P'; t[1] = 'L'; t[2] = 'A'; t[3] = 'Y'; }
+    }
+    if (s->pend == LP_A_DEL) {
+        t[0] = 'D'; t[1] = 'E'; t[2] = 'L'; t[3] = ' '; t[4] = 'W'; t[5] = 'A'; t[6] = 'I'; t[7] = 'T';
     }
     if (s->pend) {
         /* countdown blink: the period (1/8-beat units) is the remaining time / 8 as a power
-         * of 2, from a bar down to a 32nd in the last beat, so it doubles as the time halves */
+         * of 2, from a bar down to a 1/16 note, so it doubles as the time halves */
         u = s->pu - s->gu;
-        k = 1;
+        k = 2;
         while (k < 32 && k + k <= (u >> 3)) k += k;
-        if (s->pwait >= 0) k = 1;                       /* IMMED: about to happen */
+        if (s->pwait >= 0) k = 2;                       /* IMMED: about to happen */
         lev = ((float)(s->gu & (k - 1)) + s->gf < 0.5f * (float)k) ? LP_PWM : 0;
+        inv = (lev != 0);
     }
+    if (prog < 0) prog = 0;
+    if (prog > 256) prog = 256;
     w0 = (unsigned int)(unsigned char)t[0] | ((unsigned int)(unsigned char)t[1] << 8)
        | ((unsigned int)(unsigned char)t[2] << 16) | ((unsigned int)(unsigned char)t[3] << 24);
     w1 = (unsigned int)(unsigned char)t[4] | ((unsigned int)(unsigned char)t[5] << 8)
        | ((unsigned int)(unsigned char)t[6] << 16) | ((unsigned int)(unsigned char)t[7] << 24);
     b[LS_TEXT] = w0; b[LS_TEXT + 1] = w1;
     b[LS_LEVEL] = (unsigned int)lev;
+    b[LS_PROG] = (unsigned int)prog;
+    b[LS_INV] = (unsigned int)inv;
     if (!b[LS_MINE] || b[LS_LEDON] == 0u || b[LS_LEDOFF] == 0u) { s->led = -1; return; }
     s->pwm++;
     if (s->pwm >= LP_PWM) s->pwm = 0;
