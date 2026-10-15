@@ -194,9 +194,10 @@ int main(void)
         clk_per = 44100.0 * 60.0 / (100.0 * 24.0); clk_t0 = (double)t - cnt * clk_per;
         zt_host[5] = 10000u;
     }
-    jumps = 0; worst = 0.0f;
+    jumps = 0; worst = 0.0f; maxstep = 0.0f; a = lastout[7];
     for (i = 0; i < 4 * 105840 / 8; i++) {
         block();
+        for (j = 0; j < 8; j++) { d = fabsf(lastout[j] - a); if (d > maxstep) maxstep = d; a = lastout[j]; }
         {   /* never past the end of the slice of the last 1/16 line: no next attack early */
             n = S->v[S->mi].pos - lp_target(S, S->gu & ~1);
             if (n < -S->L / 2) n += S->L;
@@ -205,8 +206,28 @@ int main(void)
         }
     }
     printf("100 BPM on a 120 loop: %ld seams in 4 bars, playhead at most %.0f samples past its 1/16 line (slice %d)\n", jumps, worst, S->slice);
+    printf("100 BPM: largest output step %.3f (input sine: about 0.01)\n", maxstep);
+    CHECK(maxstep < 0.06f, "click while stretching (step %.3f)", maxstep);
     CHECK(jumps > 60 && jumps < 140, "100 BPM: %ld seams in 4 bars (want about two per 1/16)", jumps);
     CHECK(worst <= S->slice + 24, "playhead ran into the next slice (%.0f samples)", worst);
+    {   /* much slower: 100 -> 80 BPM: grains fill the gaps, no clicks, never past the slice end */
+        double cnt = (t - clk_t0) / clk_per;
+        clk_per = 44100.0 * 60.0 / (80.0 * 24.0); clk_t0 = (double)t - cnt * clk_per;
+        zt_host[5] = 8000u;
+    }
+    run(8000); jumps = 0; maxstep = 0.0f; a = lastout[7]; worst = 0.0f;
+    for (i = 0; i < 4 * 132300 / 8; i++) {
+        block();
+        for (j = 0; j < 8; j++) { d = fabsf(lastout[j] - a); if (d > maxstep) maxstep = d; a = lastout[j]; }
+        n = S->v[S->mi].pos - lp_target(S, S->gu & ~1);
+        if (n < -S->L / 2) n += S->L;
+        if (n > S->L / 2) n -= S->L;
+        if (n > worst) worst = (float)n;
+    }
+    printf("80 BPM on a 120 loop: %ld seams in 4 bars, largest step %.3f, playhead at most %.0f past its line (slice %d)\n", jumps, maxstep, worst, S->slice);
+    CHECK(maxstep < 0.06f, "80 BPM: click while stretching (step %.3f)", maxstep);
+    CHECK(worst <= S->slice + 24, "80 BPM: playhead ran into the next slice (%.0f)", worst);
+    CHECK(jumps > 128, "80 BPM: %ld seams, grains did not run", jumps);
     {   /* faster: 100 -> 140 BPM, one cut per 1/16 line */
         double cnt = (t - clk_t0) / clk_per;
         clk_per = 44100.0 * 60.0 / (140.0 * 24.0); clk_t0 = (double)t - cnt * clk_per;

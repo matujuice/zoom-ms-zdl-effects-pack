@@ -59,9 +59,10 @@
  *   against where the grid says it should be, and only if it is more than LP_SNAP samples
  *   (1.45 ms) off it jumps there. At the recording tempo nothing ever jumps. Faster, each
  *   1/16 slice is cut short at the next line. Slower, a slice that runs out before its line
- *   repeats its own second half (the decay) until the line, so the next slice's attack is
- *   never heard twice (no flams) and there are no gaps. Pitch never changes. Every jump, the loop end, start and stop are a
- *   128-sample (2.9 ms) crossfade; at the loop end the old voice reads on into 128 samples
+ *   is filled by overlapping grains of its own tail (a granular stretch: 15 ms crossfades,
+ *   one every 30 ms, LP_GX) until the line, so the next slice's attack is never heard twice
+ *   (no flams) and there are no gaps. Pitch never changes. Every other jump, the loop end,
+ *   start and stop are a 128-sample (2.9 ms) crossfade; at the loop end the old voice reads on into 128 samples
  *   recorded just after the loop (the tail), so the end flows into the start like a splice.
  *
  * STATE OUT (for the firmware's looper services, step 2): st (empty / recording / playing /
@@ -88,6 +89,8 @@
 #define LP_MAGIC   0x4C4F4F32u           /* "LOO2": change whenever LpState changes        */
 #define LP_X       128                   /* seam crossfade, samples (2.9 ms)               */
 #define LP_XINV    0.0078125f
+#define LP_GX      661                   /* grain crossfade, samples (15 ms): tune by ear   */
+#define LP_GXINV   0.0015128593f         /* 1 / LP_GX                                       */
 #define LP_SNAP    64                    /* re-sync only when this many samples off        */
 #define LP_DBL     13230                 /* double press window: 300 ms                    */
 #define LP_GLIDE   0.005f                /* gain glide per sample: ~5 ms                   */
@@ -150,6 +153,7 @@ typedef struct {
     LpVoice v[2];
     int   mi;              /* v[mi] is heard, v[mi ^ 1] fades out                */
     int   fade;            /* samples of the fade left                           */
+    float fi;              /* 1 / the length of this fade                        */
     int   slice;           /* frames from one 1/16 line to the next in the loop  */
     int   nrun;            /* frames played since the last 1/16 line             */
     int   roll;            /* Roll slice in units (0 = off)                      */
@@ -372,14 +376,20 @@ static inline void lp_read(const LpState *s, LpVoice *v, float *l, float *r)
 /* ---- the loop ---------------------------------------------------------------- */
 
 /* the heard voice jumps to 'to' (-1 = silence); the voice it leaves fades out */
-LP_ALWAYS_INLINE(lp_jump)
-static inline void lp_jump(LpState *s, int to)
+LP_ALWAYS_INLINE(lp_jumpx)
+static inline void lp_jumpx(LpState *s, int to, int len, float inv)
 {
     LP_ON_JUMP();
     s->mi ^= 1;
     s->v[s->mi].pos = to;
     s->v[s->mi].blk = -1;
-    s->fade = LP_X;
+    s->fade = len; s->fi = inv;
+}
+
+LP_ALWAYS_INLINE(lp_jump)
+static inline void lp_jump(LpState *s, int to)
+{
+    lp_jumpx(s, to, LP_X, LP_XINV);
 }
 
 /* where the loop should be (frame) at grid unit u, Roll included */
@@ -407,7 +417,7 @@ static inline void lp_init(LpState *s, uintptr_t buf, int bytes)
     s->eu = 0; s->ef = 0.0f; s->wi = 0; s->capf = 0; s->L = 1; s->spu = 1.0f; s->tail = 0;
     for (k = 0; k < 16; k++) { s->stl[k] = 0.0f; s->str[k] = 0.0f; }
     for (k = 0; k < 2; k++) { s->v[k].pos = -1; s->v[k].blk = -1; }
-    s->mi = 0; s->fade = 0; s->roll = 0; s->ru0 = 0; s->slice = 0; s->nrun = 0;
+    s->mi = 0; s->fade = 0; s->fi = LP_XINV; s->roll = 0; s->ru0 = 0; s->slice = 0; s->nrun = 0;
     s->gd = 1.0f; s->gw = 1.0f;
     s->ev_rec = 0; s->ev_stop = 0; s->ev_del = 0;
     /* ponytail: one region (the arena) until the firmware's looper services (step 2) add
@@ -584,6 +594,7 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
 {
     int i;
     float gd = s->gd, gw = s->gw, inl, inr, ml, mr, fl, fr, g, left;
+    int gx, hop;
     float idu = (du > 1e-6f) ? lp_recip(du) : 1e9f;   /* samples per grid unit */
     for (i = 0; i < 8; i++) {
         inl = buf[i]; inr = buf[i + 8];
@@ -603,20 +614,25 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
 
         lp_read(s, &s->v[s->mi], &ml, &mr);
         if (s->fade > 0) {
-            g = (float)s->fade * LP_XINV;
+            g = (float)s->fade * s->fi;
             lp_read(s, &s->v[s->mi ^ 1], &fl, &fr);
             ml += g * (fl - ml); mr += g * (fr - mr);
             if (--s->fade == 0) s->v[s->mi ^ 1].pos = -1;
         }
         if (s->st == LP_PLAY) {
-            /* slower than recorded: the slice will run out before its line comes. Repeat its
-             * second half (the decay) until the line; the jump's fade ends on the slice end,
-             * so the next slice's attack is never heard early. */
-            if (s->slice > 0 && ++s->nrun >= s->slice - LP_X) {
+            /* slower than recorded: the slice will run out before its line comes. A slice of
+             * 4 grains or more is filled by grains: the last LP_GX samples before its end
+             * crossfade back by two grains, again and again until the line (a granular
+             * stretch of the slice's tail; the next slice's attack is never heard early, its
+             * line cuts in on time). Shorter slices (1/32 Roll at a fast tempo) just repeat
+             * their second half with the short crossfade. */
+            gx = (s->slice >= 4 * LP_GX);
+            if (s->slice > 0 && ++s->nrun >= s->slice - (gx ? LP_GX : LP_X)) {
                 left = (float)((s->roll == 1 ? 1 : 2) - (s->gu & (s->roll == 1 ? 0 : 1))) - s->gf;
                 if (left * idu > (float)(s->slice - s->nrun + LP_SNAP)) {   /* the line is late */
-                    lp_jump(s, s->v[s->mi].pos - (s->slice >> 1));
-                    s->nrun -= s->slice >> 1;
+                    hop = gx ? 2 * LP_GX : (s->slice >> 1);
+                    lp_jumpx(s, s->v[s->mi].pos - hop, gx ? LP_GX : LP_X, gx ? LP_GXINV : LP_XINV);
+                    s->nrun -= hop;
                 }
             }
             if (s->v[s->mi].pos >= s->L) lp_jump(s, s->v[s->mi].pos - s->L);
