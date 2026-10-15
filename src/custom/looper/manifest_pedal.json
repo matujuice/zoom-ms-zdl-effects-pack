@@ -1,0 +1,46 @@
+{
+  "effect_name": "Looper",
+  "comment": "Looper - a bar-synced stereo looper on the MOD firmware's song grid (bar 1 = MIDI Start, or the press that records when no clock runs). Footswitch (until the firmware's looper services exist every on/off flip is a press; the LED means nothing): press records Length bars when empty, then stops / plays the loop; a double press deletes it. Every action waits for When (IMMED, BEAT, BAR, or CYCLE = the next Amount-bar line). Roll repeats the last 1/2..1/32 of a bar from the next bar line, latched. Mix crossfades live and loop. 12-bit block floating point; stereo whenever Length fits, else mono, else shorter. Tempo changes: the loop stays on the grid (re-synced on 1/32 lines, pitch unchanged).",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 497,
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep, 497 Looper (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "audio_func_name": "Fx_DLY_Looper",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "params": [
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 50,
+      "comment": "Crossfade live <-> loop, DJ style: live full up to 50, loop full from 50, both full at 50. With no loop playing only the live part is heard (Mix 100 = silence). In Mixer Mode's Parallel mode keep it at 100 and use [MIX]'s Crossfade. Default 50."
+    },
+    {
+      "name": "Roll",
+      "max": 5,
+      "default": 0,
+      "comment": "OFF, 1/2, 1/4, 1/8, 1/16, 1/32 of a bar (no triplets). Latched beat repeat: starts on the next bar line and repeats the last slice of the bar that was playing; a new rate takes over on its next line; OFF lands on the running rate's next line, where the loop would have been. Default OFF."
+    },
+    {
+      "name": "Length",
+      "max": 7,
+      "default": 7,
+      "comment": "Loop length, shown as 1 to 8 bars. Picked when recording starts: stereo if it fits, else mono, else halved (8 -> 4 -> 2 -> 1). Default 8 bars.",
+      "flags": 40
+    },
+    {
+      "name": "When",
+      "max": 3,
+      "default": 3,
+      "comment": "When record, stop, play and delete happen (Perform mode's When): IMMED (now; a single press waits 300 ms for a possible double press), BEAT, BAR, CYCLE (the next Amount-bar line counted from bar 1). Default CYCLE."
+    },
+    {
+      "name": "Amount",
+      "max": 15,
+      "default": 7,
+      "comment": "Cycle length for When CYCLE, shown as 1 to 16 bars. Length 4 with CYCLE 8 records bars 1-4 of the next 8-bar phrase. Default 8 bars."
+    }
+  ]
+}
