@@ -160,11 +160,19 @@
 #define SR_CODE_SECTION(fn) SR_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #define SR_NOUNROLL _Pragma("UNROLL(1)")
 #define SR_ITER(n) SR_EXPAND_PRAGMA(MUST_ITERATE(n, n))
+/* A real (not inlined) .audio function built at -O1, i.e. without software pipelining, for
+ * setup and label code: CGT 8.5 has no per-loop NOSWP and refuses -mu in FUNCTION_OPTIONS. */
+#define SR_SMALL_FUNC(fn) SR_EXPAND_PRAGMA(FUNC_CANNOT_INLINE(fn)) SR_EXPAND_PRAGMA(FUNCTION_OPTIONS(fn, "--opt_level=1")) SR_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+/* Inside a loop body: an asm statement keeps that one loop from being software-pipelined
+ * (1 cycle per pass; for the per-block setup loops, whose pipelined prologs cost bytes). */
+#define SR_NOSWP __asm(" NOP");
 #else
 #define SR_ALWAYS_INLINE(fn)
 #define SR_CODE_SECTION(fn)
 #define SR_NOUNROLL
 #define SR_ITER(n)
+#define SR_SMALL_FUNC(fn)
+#define SR_NOSWP
 #endif
 
 #define CH_MAGIC      0x43483043u          /* "CH0C" */
@@ -447,8 +455,8 @@ static inline unsigned int chord_word(int c)
 }
 
 /* Clear what sounds: filters, singers, tracker. The movement keeps its phase. */
-SR_ALWAYS_INLINE(ch_clear)
-static inline void ch_clear(ChState *s)
+SR_SMALL_FUNC(ch_clear)
+static void ch_clear(ChState *s)
 {
     unsigned int *p = (unsigned int *)&s->hpx;   /* every field is 4 bytes */
     SR_NOUNROLL
@@ -456,8 +464,8 @@ static inline void ch_clear(ChState *s)
     s->wsm = -1.0f; s->gn = 1.0f;
 }
 
-SR_ALWAYS_INLINE(ch_init)
-static inline void ch_init(ChState *s)
+SR_SMALL_FUNC(ch_init)
+static void ch_init(ChState *s)
 {
     int i;
     ch_clear(s);
@@ -499,7 +507,7 @@ static inline void ch_prepare(ChParams *P, const float *k, float bpm)
         float e[3];
         int   i;
         SR_NOUNROLL
-        for (i = 0; i < 3; i++) e[i] = ch_exp2((i == 0) ? 4.9f * f : (i == 1) ? 3.3f * f : -7.6f * k[6]);
+        for (i = 0; i < 3; i++) { SR_NOSWP e[i] = ch_exp2((i == 0) ? 4.9f * f : (i == 1) ? 3.3f * f : -7.6f * k[6]); }
         P->att     = 0.0030f * e[0];                  /* 0.003 .. 0.09 per block */
         P->rel     = 0.0006f * e[1];                  /* 0.0006 .. 0.006 per block */
         P->glide_c = 0.06f * e[2];                    /* ~3 ms .. ~0.6 s */
@@ -804,7 +812,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         s->vta = va; s->vtb = vb;
     }
     SR_NOUNROLL
-    for (j = 0; j < 6; j++) vt[j] = s->vtab[j] + wv * (s->vtab[j + 6] - s->vtab[j]);
+    for (j = 0; j < 6; j++) { SR_NOSWP vt[j] = s->vtab[j] + wv * (s->vtab[j + 6] - s->vtab[j]); }
     s->rr = (s->rr + 1) & 3;
     am = 0u;
     SR_NOUNROLL
@@ -812,7 +820,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         float th, wd, f0, lo;
         if (!act[b]) {
             SR_NOUNROLL
-            for (j = 0; j < 3; j++) { s->ic1[b * 3 + j] = 0.0f; s->ic2[b * 3 + j] = 0.0f; }
+            for (j = 0; j < 3; j++) { SR_NOSWP s->ic1[b * 3 + j] = 0.0f; s->ic2[b * 3 + j] = 0.0f; }
             s->tilt[b] = 0.0f; s->nlp[b] = 0.0f;
             continue;
         }
@@ -833,7 +841,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
             s->tl[b] = P->bright * ((b == 0) ? 0.3f : (b == 1) ? 0.4f : (b == 2) ? 0.5f : 0.55f);
             lo = 1.1f * f0;
             SR_NOUNROLL
-            for (j = 0; j < 3; j++) {
+            for (j = 0; j < 3; j++) { SR_NOSWP
                 float hz = vt[j] * th, kk, g, t2, aa;
                 float bw = ((j == 0) ? 70.0f : (j == 1) ? 90.0f : 120.0f) * wd;
                 /* a high voice lifts its formants above its note and opens them up, as a soprano
@@ -864,7 +872,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         h = s->tilt[0] * s->tilt[0] + s->tilt[1] * s->tilt[1] + s->tilt[2] * s->tilt[2] + s->tilt[3] * s->tilt[3];
         SR_NOUNROLL
         SR_ITER(12)
-        for (j = 0; j < 12; j++) h += s->ic1[j] * s->ic1[j] + s->ic2[j] * s->ic2[j];
+        for (j = 0; j < 12; j++) { SR_NOSWP h += s->ic1[j] * s->ic1[j] + s->ic2[j] * s->ic2[j]; }
         quiet = (h < 1e-14f);
     }
 
@@ -883,7 +891,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     }
     if (quiet) {
         SR_NOUNROLL
-        for (j = 0; j < 12; j++) { s->ic1[j] = 0.0f; s->ic2[j] = 0.0f; }
+        for (j = 0; j < 12; j++) { SR_NOSWP s->ic1[j] = 0.0f; s->ic2[j] = 0.0f; }
         s->tilt[0] = 0.0f; s->tilt[1] = 0.0f; s->tilt[2] = 0.0f; s->tilt[3] = 0.0f;
         SR_NOUNROLL
         for (b = 0; b < 4; b++) {                    /* the breath low-pass runs on: same noise later */
@@ -891,11 +899,11 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
             if (!act[b]) continue;
             SR_NOUNROLL
             SR_ITER(8)
-            for (n = 0; n < 8; n++) nl += cl * (nz8[n] - nl);
+            for (n = 0; n < 8; n++) { SR_NOSWP nl += cl * (nz8[n] - nl); }
             s->nlp[b] = nl;
         }
         SR_NOUNROLL
-        for (i = 0; i < CH_NS; i++) {
+        for (i = 0; i < CH_NS; i++) { SR_NOSWP
             if (sec[i] < 0) continue;
             h = s->sph[i] + 8.0f * inc[i];           /* inc < 0.1: one wrap at most */
             s->sph[i] = (h >= 1.0f) ? h - 1.0f : h;
@@ -985,7 +993,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
      * dynamics). ~50 ms, held while the choir is silent, limited to +-14 dB. */
     pa = 0.0f;                                         /* what the singers were asked for */
     SR_NOUNROLL
-    for (i = 0; i < P->size; i++) {
+    for (i = 0; i < P->size; i++) { SR_NOSWP
         h = s->amp[i] * s->env;
         pa += h * h;
     }
@@ -1005,8 +1013,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 /* ---- on-screen text (knob index = ZDL_GetLabel_<index>) ------------------ */
 /* Upper-case words packed 6 bits per letter, first letter in the low bits, letter = value
  * + 32 (so digits, '+', '/', '.' and A..Z), 0 = end. */
-SR_ALWAYS_INLINE(ch_word_text)
-static inline int ch_word_text(unsigned int w, char *out)
+SR_SMALL_FUNC(ch_word_text)
+static int ch_word_text(unsigned int w, char *out)
 {
     int len;
     SR_NOUNROLL
@@ -1025,7 +1033,7 @@ static inline int fm_word_text(unsigned int w, char *out)
 {
     int len, v;
     SR_NOUNROLL
-    for (len = 0; w != 0u; len++) {
+    for (len = 0; w != 0u; len++) { SR_NOSWP
         v = (int)(w & 63u);
         out[len] = (v == 63) ? 'T' : (char)((v > 26) ? v + 8 : v + 96);
         w >>= 6;
@@ -1199,7 +1207,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     s = (ChState *)stateBase;
 
     SR_NOUNROLL
-    for (i = 0; i < 8; i++) {                    /* knobs in a row */
+    for (i = 0; i < 8; i++) { SR_NOSWP                    /* knobs in a row */
         k[i] = sr_knob(params[FORMANT_CHOIR_SLOT + i],
                        (float)((i == 0) ? FORMANT_CHOIR_UI_DEFAULT : (i == 1) ? FORMANT_SIZE_UI_DEFAULT
                              : (i == 2) ? FORMANT_CHORD_UI_DEFAULT : (i == 3) ? FORMANT_SING_UI_DEFAULT

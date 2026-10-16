@@ -108,13 +108,17 @@
 #define AB_CODE_SECTION(fn) AB_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #define AB_NO_UNROLL AB_DO_PRAGMA(UNROLL(1))
 /* 8-sample block loops: no unrolling; if the .ZDL grows too much from software-pipelined
- * prologs/epilogs, add AB_DO_PRAGMA(NOSWP) here (costs speed, not sound). */
+ * prologs/epilogs, move the loop into an AB_SMALL_FUNC function (below). */
 #define AB_LOOP8 AB_DO_PRAGMA(MUST_ITERATE(8,8,8)) AB_DO_PRAGMA(UNROLL(1))
+/* A real (not inlined) .audio function built at -O1, i.e. without software pipelining:
+ * CGT 8.5 has no per-loop NOSWP and refuses -mu in FUNCTION_OPTIONS. */
+#define AB_SMALL_FUNC(fn) AB_EXPAND_PRAGMA(FUNC_CANNOT_INLINE(fn)) AB_EXPAND_PRAGMA(FUNCTION_OPTIONS(fn, "--opt_level=1")) AB_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
 #define AB_ALWAYS_INLINE(fn)
 #define AB_CODE_SECTION(fn)
 #define AB_NO_UNROLL
 #define AB_LOOP8
+#define AB_SMALL_FUNC(fn)
 #endif
 
 #define AB_MAGIC        0x41423032u          /* "AB02" */
@@ -409,8 +413,8 @@ static inline void ab_init(AbState *s, const AbParams *P)
 }
 
 /* k[] = 0..1 by each knob's own maximum, in manifest order */
-AB_ALWAYS_INLINE(ab_prepare)
-static inline void ab_prepare(AbParams *P, const float *k)
+AB_SMALL_FUNC(ab_prepare)         /* one copy for both call sites; runs only when a knob moved */
+static void ab_prepare(AbParams *P, const float *k)
 {
     float d = k[1], t = k[2], gpk, ceil, trim, fl, rd, ea = 0.0f, eb = 0.0f, e1, e2, au, gdb;
     int b, eqon = 0;
@@ -565,30 +569,17 @@ static inline void ab_prepare(AbParams *P, const float *k)
 
 #define AB_FLUSH(v) if ((v) < 1e-15f && (v) > -1e-15f) (v) = 0.0f
 
-/* One 8-sample block, in stages. Each stage is its own branch-free loop over the
- * block (the model is chosen once, outside the loops), so the compiler can
- * software-pipeline them; all filter states live in locals and are stored once.
- * n is always 8 (the pedal's block). Same maths as before, in the same order. */
-AB_ALWAYS_INLINE(ab_process)
-static inline void ab_process(AbState *s, const AbParams *restrict P, float *restrict buf, int n)
+/* Stages 1 and 3 run one model branch per block, so they are not software-pipelined
+ * (AB_SMALL_FUNC): seven pipelined copies each grew the .ZDL past what the pedal boots.
+ * Each loads and stores only its own filter states. */
+AB_SMALL_FUNC(ab_pre)
+static void ab_pre(AbState *restrict s, const AbParams *restrict P, const float *restrict buf,
+                   float *restrict zv)
 {
-    int i, hold, eqh = s->eqh, m = P->model, tsm = (m == M_TS9);
-    float h1, h2, fb, lc, dcx, dcy, t1, t2, fade, env, nf, gz, invThr;
-    float qa1, qa2, qb1, qb2, qc1, qc2, qd1, qd2, qe1, qe2;
-    float el1, el2, em1, em2, eh1, eh2;
-    float zv[8], dv[8];
-    (void)n;
+    int i, m = P->model;
+    float h1 = s->h1, h2 = s->h2, fb = s->fb, lc = s->lc;
+    float qa1 = s->qa1, qa2 = s->qa2, qb1 = s->qb1, qb2 = s->qb2, qc1 = s->qc1, qc2 = s->qc2;
 
-    if (m != s->model) { s->model = m; ab_clear(s); }
-    h1 = s->h1; h2 = s->h2; fb = s->fb; lc = s->lc; dcx = s->dcx; dcy = s->dcy;
-    t1 = s->t1; t2 = s->t2; fade = s->fade;
-    env = s->env; nf = s->nf; gz = s->gz; hold = s->hold;
-    qa1 = s->qa1; qa2 = s->qa2; qb1 = s->qb1; qb2 = s->qb2; qc1 = s->qc1;
-    qc2 = s->qc2; qd1 = s->qd1; qd2 = s->qd2; qe1 = s->qe1; qe2 = s->qe2;
-    el1 = s->el1; el2 = s->el2; em1 = s->em1; em2 = s->em2; eh1 = s->eh1; eh2 = s->eh2;
-    invThr = ab_inv(nf * P->margin);
-
-    /* 1. before the clipper: zv[] = what the clipper sees */
     if (m == M_TS9) {                                    /* feedback clipper: x + clip(gain part) */
         AB_LOOP8
         for (i = 0; i < 8; i++) {
@@ -653,16 +644,19 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
         }
     }
 
-    /* 2. the clipper, one copy for all models, and the DC blocker */
-    AB_LOOP8
-    for (i = 0; i < 8; i++) {
-        float y = (tsm ? buf[i] : 0.0f) + ab_diode(zv[i], P);
-        float d = y - dcx + AB_DC_R * dcy;
-        dcx = y; dcy = d;
-        dv[i] = d;
-    }
+    AB_FLUSH(h1); AB_FLUSH(h2); AB_FLUSH(fb); AB_FLUSH(lc);    /* denormals */
+    AB_FLUSH(qa1); AB_FLUSH(qa2); AB_FLUSH(qb1); AB_FLUSH(qb2); AB_FLUSH(qc1); AB_FLUSH(qc2);
+    s->h1 = h1; s->h2 = h2; s->fb = fb; s->lc = lc;
+    s->qa1 = qa1; s->qa2 = qa2; s->qb1 = qb1; s->qb2 = qb2; s->qc1 = qc1; s->qc2 = qc2;
+}
 
-    /* 3. the pedal's tone control */
+AB_SMALL_FUNC(ab_tone)
+static void ab_tone(AbState *restrict s, const AbParams *restrict P, float *restrict dv)
+{
+    int i, m = P->model;
+    float t1 = s->t1, t2 = s->t2;
+    float qc1 = s->qc1, qc2 = s->qc2, qd1 = s->qd1, qd2 = s->qd2, qe1 = s->qe1, qe2 = s->qe2;
+
     if (m == M_TS9) {                                    /* 723 Hz LP + treble */
         AB_LOOP8
         for (i = 0; i < 8; i++) {
@@ -709,6 +703,46 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
         }
     }
 
+    AB_FLUSH(t1); AB_FLUSH(t2);                                /* denormals */
+    AB_FLUSH(qc1); AB_FLUSH(qc2); AB_FLUSH(qd1); AB_FLUSH(qd2); AB_FLUSH(qe1); AB_FLUSH(qe2);
+    s->t1 = t1; s->t2 = t2;
+    s->qc1 = qc1; s->qc2 = qc2; s->qd1 = qd1; s->qd2 = qd2; s->qe1 = qe1; s->qe2 = qe2;
+}
+
+/* One 8-sample block, in stages. Each stage is its own branch-free loop over the
+ * block (the model is chosen once, outside the loops), so the compiler can
+ * software-pipeline them; all filter states live in locals and are stored once.
+ * n is always 8 (the pedal's block). Same maths as before, in the same order. */
+AB_ALWAYS_INLINE(ab_process)
+static inline void ab_process(AbState *s, const AbParams *restrict P, float *restrict buf, int n)
+{
+    int i, hold, eqh = s->eqh, m = P->model, tsm = (m == M_TS9);
+    float dcx, dcy, fade, env, nf, gz, invThr;
+    float el1, el2, em1, em2, eh1, eh2;
+    float zv[8], dv[8];
+    (void)n;
+
+    if (m != s->model) { s->model = m; ab_clear(s); }
+    dcx = s->dcx; dcy = s->dcy; fade = s->fade;
+    env = s->env; nf = s->nf; gz = s->gz; hold = s->hold;
+    el1 = s->el1; el2 = s->el2; em1 = s->em1; em2 = s->em2; eh1 = s->eh1; eh2 = s->eh2;
+    invThr = ab_inv(nf * P->margin);
+
+    /* 1. before the clipper: zv[] = what the clipper sees */
+    ab_pre(s, P, buf, zv);
+
+    /* 2. the clipper, one copy for all models, and the DC blocker */
+    AB_LOOP8
+    for (i = 0; i < 8; i++) {
+        float y = (tsm ? buf[i] : 0.0f) + ab_diode(zv[i], P);
+        float d = y - dcx + AB_DC_R * dcy;
+        dcx = y; dcy = d;
+        dv[i] = d;
+    }
+
+    /* 3. the pedal's tone control */
+    ab_tone(s, P, dv);
+
     /* 4. acid EQ. With all three bands at 0 dB the filters are the identity and their
      * states die away (110 Hz shelf: well under 1e-7 in 192 blocks), so after that long
      * the EQ is skipped and its states are zero. */
@@ -750,20 +784,13 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
     if (nf < AB_NF_MIN) nf = AB_NF_MIN;
     if (nf > AB_NF_MAX) nf = AB_NF_MAX;
 
-    AB_FLUSH(h1); AB_FLUSH(h2); AB_FLUSH(fb); AB_FLUSH(lc);    /* denormals */
-    AB_FLUSH(dcy); AB_FLUSH(t1); AB_FLUSH(t2);
-    AB_FLUSH(qa1); AB_FLUSH(qa2); AB_FLUSH(qb1); AB_FLUSH(qb2);
-    AB_FLUSH(qc1); AB_FLUSH(qc2); AB_FLUSH(qd1); AB_FLUSH(qd2);
-    AB_FLUSH(qe1); AB_FLUSH(qe2);
+    AB_FLUSH(dcy);                                             /* denormals */
     AB_FLUSH(el1); AB_FLUSH(el2); AB_FLUSH(em1); AB_FLUSH(em2);
     AB_FLUSH(eh1); AB_FLUSH(eh2);
     if (env < 1e-15f) env = 0.0f;
     if (gz < 1e-15f) gz = 0.0f;
-    s->h1 = h1; s->h2 = h2; s->fb = fb; s->lc = lc; s->dcx = dcx; s->dcy = dcy;
-    s->t1 = t1; s->t2 = t2; s->fade = fade;
+    s->dcx = dcx; s->dcy = dcy; s->fade = fade;
     s->env = env; s->nf = nf; s->gz = gz; s->hold = hold; s->eqh = eqh;
-    s->qa1 = qa1; s->qa2 = qa2; s->qb1 = qb1; s->qb2 = qb2; s->qc1 = qc1;
-    s->qc2 = qc2; s->qd1 = qd1; s->qd2 = qd2; s->qe1 = qe1; s->qe2 = qe2;
     s->el1 = el1; s->el2 = el2; s->em1 = em1; s->em2 = em2; s->eh1 = eh1; s->eh2 = eh2;
 }
 
