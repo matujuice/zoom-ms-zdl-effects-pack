@@ -120,9 +120,11 @@
 #define SC_DO_PRAGMA(x) _Pragma(#x)
 #define SC_EXPAND_PRAGMA(x) SC_DO_PRAGMA(x)
 #define SC_ALWAYS_INLINE(fn) SC_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
+#define SC_EIGHT SC_DO_PRAGMA(MUST_ITERATE(8, 8, 8))
 #define SC_CODE_SECTION(fn) SC_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
 #define SC_ALWAYS_INLINE(fn)
+#define SC_EIGHT
 #define SC_CODE_SECTION(fn)
 #endif
 
@@ -246,23 +248,22 @@ static inline float sc_read(const short *b, int wp, float age)
     int a0 = (int)age, j, j1;
     float fr = age - (float)a0, x0, x1;
     j = wp - a0;
-    if (j < 0) j += SC_N;
+    j = (j < 0) ? j + SC_N : j;
     j1 = j - 1;
-    if (j1 < 0) j1 += SC_N;
+    j1 = (j1 < 0) ? j1 + SC_N : j1;
     x0 = (float)b[j];
     x1 = (float)b[j1];
     return (x0 + fr * (x1 - x0)) * SC_FROM16;
 }
 
-SC_ALWAYS_INLINE(sc_write)
-static inline void sc_write(ScState *s, float in)
+/* record one sample at wp (a local index; the caller advances it) */
+SC_ALWAYS_INLINE(sc_put)
+static inline void sc_put(short *b, int wp, float in)
 {
     float v = in * SC_TO16;
-    if (v > 32767.0f) v = 32767.0f;
-    if (v < -32767.0f) v = -32767.0f;
-    s->buf[s->wp] = (short)(int)v;
-    s->wp++;
-    if (s->wp >= SC_N) s->wp = 0;
+    v = (v > 32767.0f) ? 32767.0f : v;
+    v = (v < -32767.0f) ? -32767.0f : v;
+    b[wp] = (short)(int)v;
 }
 
 /* random number 0..1 */
@@ -276,9 +277,8 @@ static inline float sc_rand(ScState *s)
 SC_ALWAYS_INLINE(sc_clamp_age)
 static inline float sc_clamp_age(float a)
 {
-    if (a < 1.0f) a = 1.0f;
-    if (a > SC_AGE_MAX) a = SC_AGE_MAX;
-    return a;
+    a = (a < 1.0f) ? 1.0f : a;
+    return (a > SC_AGE_MAX) ? SC_AGE_MAX : a;
 }
 
 /* Grain 0..100 -> length in samples, 10 ms * 100^(g/100) */
@@ -393,41 +393,74 @@ static inline int sc_clearing(ScState *s)
 SC_ALWAYS_INLINE(sc_bypassed)
 static inline void sc_bypassed(ScState *s, int mode, const float *buf, int n)
 {
-    int i;
+    int i, wp = s->wp;
+    short * restrict sb = s->buf;
     if (mode == SC_MODE_HOLD) return;
-    for (i = 0; i < n; i++) sc_write(s, buf[i]);
+    SC_EIGHT
+    for (i = 0; i < n; i++) {
+        sc_put(sb, wp, buf[i]);
+        wp++;
+        wp = (wp >= SC_N) ? 0 : wp;
+    }
+    s->wp = wp;
 }
 
 SC_ALWAYS_INLINE(sc_process)
 static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
 {
-    int i, rec = (P->mode == SC_MODE_LIVE);
-    float daF, daB, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin;
+    int i, rec = (P->mode == SC_MODE_LIVE), bC, bO, wp, wi = 8, nvB = 0;
+    float daF, daB, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin, nvA = 0.0f;
+    const float inc = P->inc, xf = P->xf, xft = P->xft, dryG = P->dryG, wetG = P->wetG;
+    short * restrict sb = s->buf;
+    (void)n;                                     /* always 8 */
 
     if (!s->started) { s->D = P->Dt; s->started = 1; s->bC = 0; aC = sc_new_voice(s, P); aO = aC; s->bO = s->bC; }
     s->D += P->c * (P->Dt - s->D);               /* the head glides; new voices start there */
     if (s->D > P->Dmax) s->D = P->Dmax;          /* a longer grain or Spray: pull it in now  */
     daF = rec ? 0.0f : -1.0f;                    /* age change of a forward voice  */
     daB = rec ? 2.0f : 1.0f;                     /* and of a backward one          */
+    bC = s->bC; bO = s->bO; wp = s->wp;
 
-    for (i = 0; i < n; i++) {
-        float in = buf[i], q, g, wet;
-        if (rec) sc_write(s, in);
-        p += P->inc;
-        aO = sc_clamp_age(aO + (s->bO ? daB : daF));
-        if (p >= 1.0f) { p -= 1.0f; aO = aC; s->bO = s->bC; aC = sc_new_voice(s, P); }
-        else aC = sc_clamp_age(aC + (s->bC ? daB : daF));
-        q = p * ((s->bC != s->bO) ? P->xft : P->xf);
-        wet = sc_read(s->buf, s->wp, aC);
-        if (q < 0.5f) {                          /* seam: old voice fades out */
-            g = sc_hann(q);
-            wet = g * wet + (1.0f - g) * sc_read(s->buf, s->wp, aO);
+    /* A grain is at least 441 samples, so a block holds at most one grain end. Find it with
+     * the loop's own phase sums; the new voice is drawn here (D and bC do not change before
+     * it) so the sample loop below has no branch or call. */
+    if (p + 8.0f * inc * 1.01f >= 1.0f) {
+        float pp = p;
+        for (i = 0; i < 8; i++) {
+            pp += inc;
+            if (pp >= 1.0f) { pp -= 1.0f; if (wi == 8) wi = i; }
         }
-        fin += SC_FIN_STEP;
-        if (fin > 1.0f) fin = 1.0f;
-        buf[i] = P->dryG * in + P->wetG * fin * wet;
     }
-    s->p = p; s->aC = aC; s->aO = aO; s->fin = fin;
+    if (wi < 8) { nvA = sc_new_voice(s, P); nvB = s->bC; }
+
+    SC_EIGHT
+    for (i = 0; i < 8; i++) {
+        float in = buf[i], q, g, wet, aOn, aCn;
+        int wf, bOn;
+        if (rec) {
+            sc_put(sb, wp, in);
+            wp++;
+            wp = (wp >= SC_N) ? 0 : wp;
+        }
+        p += inc;
+        wf = (p >= 1.0f);
+        p = wf ? p - 1.0f : p;
+        aOn = sc_clamp_age(aO + (bO ? daB : daF));
+        aCn = sc_clamp_age(aC + (bC ? daB : daF));
+        aO = wf ? aC : aOn;                      /* grain end: the old voice is the one that was current */
+        bOn = wf ? bC : bO;
+        aC = wf ? nvA : aCn;
+        bC = wf ? nvB : bC;
+        bO = bOn;
+        q = p * ((bC != bO) ? xft : xf);
+        wet = sc_read(sb, wp, aC);
+        g = (q < 0.5f) ? sc_hann(q) : 1.0f;      /* seam: old voice fades out */
+        wet = g * wet + (1.0f - g) * sc_read(sb, wp, aO);
+        fin += SC_FIN_STEP;
+        fin = (fin > 1.0f) ? 1.0f : fin;
+        buf[i] = dryG * in + wetG * fin * wet;
+    }
+    s->p = p; s->aC = aC; s->aO = aO; s->fin = fin; s->bC = bC; s->bO = bO; s->wp = wp;
 }
 
 /* switched back on: in STOMP the buffer now holds what was played while off; start a
