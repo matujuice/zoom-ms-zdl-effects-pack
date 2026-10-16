@@ -53,9 +53,11 @@
 #define WF_EXPAND_PRAGMA(x) WF_DO_PRAGMA(x)
 #define WF_ALWAYS_INLINE(fn) WF_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define WF_CODE_SECTION(fn) WF_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define WF_BLOCK_LOOP() WF_DO_PRAGMA(MUST_ITERATE(8, 8, 8))
 #else
 #define WF_ALWAYS_INLINE(fn)
 #define WF_CODE_SECTION(fn)
+#define WF_BLOCK_LOOP()
 #endif
 
 #define WF_MAGIC        0x57463034u          /* "WF04" */
@@ -96,7 +98,8 @@ static inline float clamp01(float x)
 }
 
 /* 1 / sqrt(x) without libm and without a divide (x > 0): the classic exponent trick for a
- * first guess, then three Newton steps  y = y * (1.5 - 0.5 * x * y * y). */
+ * first guess, then two Newton steps  y = y * (1.5 - 0.5 * x * y * y)  (error about 4e-6,
+ * it only feeds a smoothed gain). */
 WF_ALWAYS_INLINE(wf_rsqrt)
 static inline float wf_rsqrt(float x)
 {
@@ -105,7 +108,6 @@ static inline float wf_rsqrt(float x)
     c.f = x;
     c.u = 0x5f3759dfu - (c.u >> 1);
     y = c.f;
-    y = y * (1.5f - h * y * y);
     y = y * (1.5f - h * y * y);
     y = y * (1.5f - h * y * y);
     return y;
@@ -137,15 +139,16 @@ static inline float wf_knob(float raw, float def_ui, float inv_max)
 WF_ALWAYS_INLINE(wf_fold)
 static inline float wf_fold(float v)
 {
-    float a = v, s = 1.0f, y;
-    if (v < 0.0f) { a = -v; s = -1.0f; }
-    y = 5.0f * v;
-    if (a > 0.6f)   y += -9.9996f  * v + 6.0000f  * s;
-    if (a > 1.8f)   y +=  10.1347f * v - 18.2435f * s;
-    if (a > 2.994f) y += -10.4664f * v + 31.3352f * s;
-    if (a > 4.08f)  y +=  9.7198f  * v - 39.6611f * s;
-    if (a > 5.46f)  y += -6.0620f  * v + 33.0977f * s;
-    return y;
+    /* odd function: fold |v| (stage k adds  w*m*a + w*c  once a > t_k), restore the sign.
+     * Written as selects so the sample loop has no branches. */
+    float a = (v < 0.0f) ? -v : v;
+    float y = 5.0f * a;
+    y += (a > 0.6f)   ? (  6.0000f - 9.9996f  * a) : 0.0f;
+    y += (a > 1.8f)   ? (-18.2435f + 10.1347f * a) : 0.0f;
+    y += (a > 2.994f) ? ( 31.3352f - 10.4664f * a) : 0.0f;
+    y += (a > 4.08f)  ? (-39.6611f + 9.7198f  * a) : 0.0f;
+    y += (a > 5.46f)  ? ( 33.0977f - 6.0620f  * a) : 0.0f;
+    return (v < 0.0f) ? -y : y;
 }
 
 WF_ALWAYS_INLINE(wf_init)
@@ -173,38 +176,42 @@ static inline void wf_prepare(WfParams *P, const float *k)
 }
 
 WF_ALWAYS_INLINE(wf_process)
-static inline void wf_process(WfState *s, const WfParams *P, float *buf, int n)
+static inline void wf_process(WfState *s, const WfParams *P, float *restrict buf, int n)
 {
     int i;
     float g = s->g_s, b = s->b_s, lp = s->lp, dcx = s->dcx, dcy = s->dcy;
     float ein = s->ein, elp = s->elp, comp = s->comp, gate = s->gate;
+    /* the block's constants in locals: the compiler can't keep P-> in registers across the
+     * stores to buf, and a branch-free loop with restrict buf can be software-pipelined */
+    const float gain = P->gain, bias = P->bias, a = P->a, oma = 1.0f - P->a;
+    const float dryG = P->dryG, wetLv = P->wetG * P->level;
+    WF_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], v, y, d, w;
-        g += WF_SMOOTH * (P->gain - g);
-        b += WF_SMOOTH * (P->bias - b);
+        float in = buf[i], v, y, d, w, t, kc;
+        g += WF_SMOOTH * (gain - g);
+        b += WF_SMOOTH * (bias - b);
         v = in * g + b;
-        if (v > WF_VMAX) v = WF_VMAX;
-        if (v < -WF_VMAX) v = -WF_VMAX;
+        v = (v > WF_VMAX) ? WF_VMAX : v;
+        v = (v < -WF_VMAX) ? -WF_VMAX : v;
         y = wf_fold(v);
         d = y - dcx + WF_DC_R * dcy;                     /* DC blocker */
         dcx = y; dcy = d;
-        lp += P->a * (d - lp);                           /* one-pole low-pass */
+        lp = oma * lp + a * d;                           /* one-pole low-pass */
         /* auto-level: the gain is the ratio of the two loudness meters, so it
          * follows the input at once instead of creeping toward it note after note */
         ein += WF_ENV * (in * in - ein);
         elp += WF_ENV * (lp * lp - elp);
-        if (ein > 1e-9f && elp > 1e-12f) {               /* hold the gain in silence */
-            float t = ein * wf_rsqrt(ein * elp);        /* = sqrt(ein / elp), no divide */
-            if (t < 0.002f) t = 0.002f;
-            if (t > 8.0f)   t = 8.0f;
-            comp += WF_LVL * (t - comp);
-        }
+        t = ein * wf_rsqrt(ein * elp);                  /* = sqrt(ein / elp), no divide */
+        t = (t < 0.002f) ? 0.002f : t;
+        t = (t > 8.0f) ? 8.0f : t;
+        kc = (ein > 1e-9f && elp > 1e-12f) ? WF_LVL : 0.0f;   /* hold the gain in silence */
+        comp += kc * (t - comp);
         w = lp * comp;
-        if (w > 1.5f) w = 1.0f;                          /* soft ceiling at +-1 (cubic) */
-        else if (w < -1.5f) w = -1.0f;
-        else w = w - 0.148148f * w * w * w;
-        gate += 0.01f * ((ein > 1e-7f ? 1.0f : 0.0f) - gate);
-        buf[i] = P->dryG * in + P->wetG * (w * gate * P->level);
+        w = (w > 1.5f) ? 1.5f : w;                       /* soft ceiling at +-1 (cubic; exactly 1.0 at 1.5) */
+        w = (w < -1.5f) ? -1.5f : w;
+        w = w - 0.148148f * w * w * w;
+        gate += 0.01f * (((ein > 1e-7f) ? 1.0f : 0.0f) - gate);
+        buf[i] = dryG * in + wetLv * (w * gate);
     }
     if (lp < 1e-15f && lp > -1e-15f) lp = 0.0f;          /* denormals */
     if (dcy < 1e-15f && dcy > -1e-15f) dcy = 0.0f;

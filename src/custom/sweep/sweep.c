@@ -66,12 +66,16 @@
 #define SW_EXPAND_PRAGMA(x) SW_DO_PRAGMA(x)
 #define SW_ALWAYS_INLINE(fn) SW_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define SW_CODE_SECTION(fn) SW_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define SW_BLOCK_LOOP() SW_DO_PRAGMA(MUST_ITERATE(8, 8, 8))
+#define SW_STAGE_LOOP() SW_DO_PRAGMA(MUST_ITERATE(4, 8, 4))
 #else
 #define SW_ALWAYS_INLINE(fn)
 #define SW_CODE_SECTION(fn)
+#define SW_BLOCK_LOOP()
+#define SW_STAGE_LOOP()
 #endif
 
-#define SW_MAGIC        0x53573033u          /* "SW03" */
+#define SW_MAGIC        0x53573034u          /* "SW04" */
 #define SW_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define SW_HZ_TO_INC    2.2675737e-5f        /* 1 / 44100                       */
 #define SW_RING         1024u                /* flanger ring, a power of two    */
@@ -92,6 +96,7 @@ typedef struct {
     float fbs;             /* damped feedback signal                                  */
     float ic1, ic2;        /* state variable filter memory                            */
     float ap[8];           /* all-pass memory                                         */
+    unsigned int cr, cL, cclk;   /* clock phase cache: (cclk - 1) mod cL = cr, cL = 0: none */
     ZtSync zt;             /* MIDI transport (zmt.h)                                  */
     float ring[SW_RING];
 } SwState;
@@ -101,10 +106,13 @@ typedef struct {
     float G;               /* all-pass coefficient g / (1 + g)                         */
     float fb, cd;          /* feedback gain (signed), feedback damping coefficient    */
     float d_new;           /* flanger delay at the end of the block, samples          */
-    float a1, a2, a3, k;   /* state variable filter                                    */
-    float cx, cb, cl;      /* filter output mix: cx * in + cb * k * bp + cl * lp       */
+    float k;               /* filter damping (1/Q)                                     */
+    float m11, m12, m21, m22, b1, b2;   /* SVF state update ic' = M ic + b x (the block's coefficients) */
+    float cx, cbk, cl;     /* filter output mix: cx * x + cbk * v1 + cl * v2  (cbk = cb * k) */
+    float ncd, wg;         /* 1 - cd; wetG * 0.5 * gain                                */
     float dg, mk;          /* filter drive and its level make-up                       */
     float gain;            /* phaser/flanger wet gain at high feedback                 */
+    float c1, c2;          /* phaser stage: y' = c1 * y + c2 * ap                      */
     float dryG, wetG;
     unsigned int stages, bt_len;
     float inv_len;
@@ -167,13 +175,14 @@ static inline float sw_tan(float f)
     return w * (1.0f + w2 * (0.33333334f + w2 * (0.13333334f + w2 * 0.053968254f)));
 }
 
-/* Cubic soft clip: flat at +-1.5 -> +-1.0, almost linear below ~0.6. */
+/* Cubic soft clip: flat at +-1.5 -> +-1.0, almost linear below ~0.6. (Clamping to +-1.5 first
+ * gives 1.0000000 there: 1.5 - 1.5^3 * 0.148148 = 1.0 within 1e-8.) */
 SW_ALWAYS_INLINE(sw_clip)
 static inline float sw_clip(float x)
 {
-    if (x > 1.5f) return 1.0f;
-    if (x < -1.5f) return -1.0f;
-    return x - x * x * x * 0.14814815f;
+    x = (x > 1.5f) ? 1.5f : x;
+    x = (x < -1.5f) ? -1.5f : x;
+    return x - (x * x) * (x * 0.14814815f);
 }
 
 /* Triangle starting at 0 and rising: ph in [0,1) -> [-1,+1]. */
@@ -221,15 +230,22 @@ static inline unsigned int sw_len(unsigned int r, float *inv)
  * next clock) / (3 x len). Counted from the raw clock count, not zmt's 96-beat beats, because
  * 96 beats are not a whole number of 5 or 7 bar sweeps. The mod is a shifted subtraction. */
 SW_ALWAYS_INLINE(sw_clock_phase)
-static inline float sw_clock_phase(const ZtSync *z, unsigned int len, float inv_len)
+static inline float sw_clock_phase(SwState *s, unsigned int len, float inv_len)
 {
+    const ZtSync *z = &s->zt;
     unsigned int r, L = 3u * len, mk, k;
-    if (z->clk == 0u) return 0.0f;                  /* Start, waiting for clock 1 */
+    if (z->clk == 0u) { s->cL = 0u; return 0.0f; }                  /* Start, waiting for clock 1 */
     r = z->clk - 1u;
-    for (k = 32u; k-- > 0u; ) {                     /* largest shift that fits first: */
-        mk = L << k;                                /* then at most one step per shift */
-        if ((mk >> k) == L && r >= mk) r -= mk;
+    if (s->cL == L && z->clk >= s->cclk && z->clk - s->cclk <= 24u && s->cclk != 0u) {
+        r = s->cr + (z->clk - s->cclk);             /* a few clocks since last block: */
+        while (r >= L) r -= L;                      /* subtract instead of the long loop */
+    } else {
+        for (k = 32u; k-- > 0u; ) {                 /* largest shift that fits first: */
+            mk = L << k;                            /* then at most one step per shift */
+            if ((mk >> k) == L && r >= mk) r -= mk;
+        }
     }
+    s->cr = r; s->cL = L; s->cclk = z->clk;
     return ((float)(int)r + z->sub) * inv_len * 0.33333334f;
 }
 
@@ -238,7 +254,7 @@ static inline void sw_init(SwState *s)
 {
     unsigned int i;
     s->ph = 0.0f; s->rp = 0.0f; s->r0 = 0.0f; s->r1 = 0.7f; s->lfo = 0.0f;
-    s->rng = 0x2545F491u; s->was_off = 0u;
+    s->rng = 0x2545F491u; s->was_off = 0u; s->cL = 0u; s->cr = 0u; s->cclk = 0u;
     s->w = 0u; s->d = 100.0f; s->fbs = 0.0f; s->ic1 = 0.0f; s->ic2 = 0.0f;
     for (i = 0u; i < 8u; i++) s->ap[i] = 0.0f;
     for (i = 0u; i < SW_RING; i++) s->ring[i] = 0.0f;
@@ -289,14 +305,14 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
     unsigned int type = (unsigned int)(int)u[0], rate = (unsigned int)(int)u[1];
     float depth = u[2] * 0.025f, cntr = u[3];
     float r = u[4] * 0.01f, t = u[6] * 0.01f, m = u[8] * 0.01f;
-    float lfo, f, g;
+    float lfo, f, g, x, ex;
 
     P->type = type;
     P->bt_len = 1u; P->inv_len = 1.0f;
     if (rate >= 101u) {
         P->bt_len = sw_len(rate, &P->inv_len);
         P->inc = bpm * SW_INC_PER_BPM * 8.0f * P->inv_len;   /* a length is len / 8 beats */
-        if (run) s->ph = sw_clock_phase(&s->zt, P->bt_len, P->inv_len);
+        if (run) s->ph = sw_clock_phase(s, P->bt_len, P->inv_len);
     } else {
         P->inc = 0.05f * sw_exp2((float)rate * 0.0732f) * SW_HZ_TO_INC;
     }
@@ -306,21 +322,28 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
     P->dryG = 2.0f - 2.0f * m; if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
     P->cd = 0.05f + 0.95f * t * t;
+    P->ncd = 1.0f - P->cd;
     P->gain = 1.0f;
 
-    /* phaser / filter share the cutoff: 80 Hz at Cntr 0, 10 kHz at 100, swept in octaves */
-    f = 80.0f * sw_exp2(cntr * 0.0697f + depth * lfo);
+    /* one 2^x for all types: the flanger delay (352.8 samples at Cntr 0, shorter upward) or the
+     * phaser / filter cutoff (80 Hz at Cntr 0, 10 kHz at 100), swept in octaves */
+    x = (type - 2u < 2u) ? -(0.0474f * cntr + depth * lfo) : (cntr * 0.0697f + depth * lfo);
+    ex = sw_exp2(x);
+    f = 80.0f * ex;
     if (f < 30.0f) f = 30.0f;
     if (f > 10000.0f) f = 10000.0f;
-    g = sw_tan(f);
+    g = sw_tan(f);          /* (the flanger doesn't use g or f) */
 
     if (type < 2u) {                            /* phaser */
+        float G = g * sw_recip(1.0f + g);
         P->stages = (type == 0u) ? 4u : 8u;
-        P->G = g * sw_recip(1.0f + g);
+        P->G = G;
+        P->c1 = 2.0f * G - 1.0f;                /* y' = 2 lp - y  with  lp = v + ap, v = (y - ap) G */
+        P->c2 = 2.0f - 2.0f * G;                /*    = c1 y + c2 ap;  new ap = ap + 2 G (y - ap)   */
         P->fb = 0.85f * r;
         P->gain = 1.0f - 0.5f * P->fb;
     } else if (type < 4u) {                     /* flanger */
-        float d = 352.8f * sw_exp2(-0.0474f * cntr - depth * lfo);
+        float d = 352.8f * ex;
         if (d < SW_FLG_MIN) d = SW_FLG_MIN;
         if (d > SW_FLG_MAX) d = SW_FLG_MAX;
         P->d_new = d;
@@ -328,44 +351,56 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
         P->gain = 1.0f - 0.5f * ((P->fb < 0.0f) ? -P->fb : P->fb);
     } else {                                    /* filter */
         P->k = 1.4f - 1.3f * r;
-        P->a1 = sw_recip(1.0f + g * (g + P->k));
-        P->a2 = g * P->a1;
-        P->a3 = g * P->a2;
+        float a1 = sw_recip(1.0f + g * (g + P->k)), a2 = g * a1, a3 = g * a2;
+        P->m11 = 2.0f * a1 - 1.0f; P->m12 = -2.0f * a2; P->b1 = 2.0f * a2;     /* ic1' = 2 v1 - ic1 */
+        P->m21 = 2.0f * a2;        P->m22 = 1.0f - 2.0f * a3; P->b2 = 2.0f * a3; /* ic2' = 2 v2 - ic2 */
         P->dg = 1.0f + 5.0f * t * t;
         P->mk = sw_recip(1.0f + 0.4f * (P->dg - 1.0f));
-        if (type == 4u)      { P->cx = 0.0f; P->cb = 0.0f;  P->cl = 0.3f + 0.7f * P->k * 0.71428573f; }
-        else if (type == 5u) { P->cx = 0.0f; P->cb = 1.0f;  P->cl = 0.0f; }
-        else if (type == 6u) { P->cx = 1.0f; P->cb = -1.0f; P->cl = -1.0f; }
-        else                 { P->cx = 1.0f; P->cb = -1.0f; P->cl = 0.0f; }
+        if (type == 4u)      { P->cx = 0.0f; P->cbk = 0.0f;  P->cl = 0.3f + 0.7f * P->k * 0.71428573f; }
+        else if (type == 5u) { P->cx = 0.0f; P->cbk = P->k;  P->cl = 0.0f; }
+        else if (type == 6u) { P->cx = 1.0f; P->cbk = -P->k; P->cl = -1.0f; }
+        else                 { P->cx = 1.0f; P->cbk = -P->k; P->cl = 0.0f; }
     }
+    P->wg = P->wetG * (0.5f * P->gain);
 }
 
 SW_ALWAYS_INLINE(sw_phaser)
-static inline void sw_phaser(SwState *s, const SwParams *P, float *buf, int n)
+static inline void sw_phaser(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
     int i;
     unsigned int k;
+    float *restrict ap = s->ap;                    /* restrict: buf can't alias the state */
+    const float fb = P->fb, c1 = P->c1, c2 = P->c2, G2 = 2.0f * P->G, cd = P->cd, ncd = P->ncd;
+    const float dryG = P->dryG, wg = P->wg;
+    const unsigned int stages = P->stages;
     float fbs = s->fbs;
+    SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], y = in + P->fb * fbs, v, lp;
-        for (k = 0u; k < P->stages; k++) {
-            v = (y - s->ap[k]) * P->G;
-            lp = v + s->ap[k];
-            s->ap[k] = lp + v;
-            y = 2.0f * lp - y;
+        float in = buf[i], y = in + fb * fbs;
+        SW_STAGE_LOOP()
+        for (k = 0u; k < stages; k++) {
+            float a = ap[k];
+            ap[k] = a + G2 * (y - a);              /* ap + 2 v */
+            y = c1 * y + c2 * a;                   /* 2 lp - y */
         }
-        fbs += P->cd * (sw_clip(y) - fbs);
-        buf[i] = P->dryG * in + P->wetG * (0.5f * P->gain * (in + y));
+        fbs = ncd * fbs + cd * sw_clip(y);
+        buf[i] = dryG * in + wg * (in + y);
     }
     s->fbs = fbs;
 }
 
 SW_ALWAYS_INLINE(sw_flanger)
-static inline void sw_flanger(SwState *s, const SwParams *P, float *buf, int n)
+static inline void sw_flanger(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
     int i;
+    /* the write slot w and the two read slots are never the same (the delay is >= 2 samples),
+     * so the ring can be read and written through two restrict pointers */
+    float *restrict rd = s->ring;
+    float *restrict wr = s->ring;
+    const float fb = P->fb, cd = P->cd, ncd = P->ncd, dryG = P->dryG, wg = P->wg;
     float fbs = s->fbs, d = s->d, dd = (P->d_new - s->d) * 0.125f;
     unsigned int w = s->w;
+    SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
         float in = buf[i], pos, fr, a, b, dl;
         unsigned int i0, i1;
@@ -375,30 +410,35 @@ static inline void sw_flanger(SwState *s, const SwParams *P, float *buf, int n)
         fr = pos - (float)(int)i0;
         i0 &= SW_RING_MASK;
         i1 = (i0 + 1u) & SW_RING_MASK;
-        a = s->ring[i0]; b = s->ring[i1];
+        a = rd[i0]; b = rd[i1];
         dl = a + fr * (b - a);
-        fbs += P->cd * (sw_clip(dl) - fbs);
-        s->ring[w] = in + P->fb * fbs;
+        fbs = ncd * fbs + cd * sw_clip(dl);
+        wr[w] = in + fb * fbs;
         w = (w + 1u) & SW_RING_MASK;
-        buf[i] = P->dryG * in + P->wetG * (0.5f * P->gain * (in + dl));
+        buf[i] = dryG * in + wg * (in + dl);
     }
     s->fbs = fbs; s->d = d; s->w = w;
 }
 
 SW_ALWAYS_INLINE(sw_filter)
-static inline void sw_filter(SwState *s, const SwParams *P, float *buf, int n)
+static inline void sw_filter(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
     int i;
+    const float m11 = P->m11, m12 = P->m12, m21 = P->m21, m22 = P->m22, b1 = P->b1, b2 = P->b2;
+    const float dg = P->dg, mk = P->mk, cx = P->cx, cbk = 0.5f * P->cbk, cl = 0.5f * P->cl;
+    const float dryG = P->dryG, wetG = P->wetG;
     float ic1 = s->ic1, ic2 = s->ic2;
+    SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], x, v1, v2, y;
-        x = sw_clip(in * P->dg) * P->mk;
-        v1 = P->a1 * ic1 + P->a2 * (x - ic2);
-        v2 = ic2 + P->a2 * ic1 + P->a3 * (x - ic2);
-        ic1 = 2.0f * v1 - ic1;
-        ic2 = 2.0f * v2 - ic2;
-        y = P->cx * x + P->cb * (P->k * v1) + P->cl * v2;
-        buf[i] = P->dryG * in + P->wetG * sw_clip(y);
+        float in = buf[i], x, n1, n2, y;
+        x = sw_clip(in * dg) * mk;
+        /* trapezoidal SVF as a plain 2x2 state update (ic' = M ic + b x); the outputs v1, v2
+         * are the mean of old and new state */
+        n1 = (m11 * ic1 + m12 * ic2) + b1 * x;
+        n2 = (m21 * ic1 + m22 * ic2) + b2 * x;
+        y = (cx * x + cbk * (ic1 + n1)) + cl * (ic2 + n2);
+        ic1 = n1; ic2 = n2;
+        buf[i] = dryG * in + wetG * sw_clip(y);
     }
     if (ic1 < 1e-15f && ic1 > -1e-15f) ic1 = 0.0f;
     if (ic2 < 1e-15f && ic2 > -1e-15f) ic2 = 0.0f;

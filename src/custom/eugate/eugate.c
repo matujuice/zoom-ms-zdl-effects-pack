@@ -77,12 +77,14 @@
 #define CH_EXPAND_PRAGMA(x) CH_DO_PRAGMA(x)
 #define CH_ALWAYS_INLINE(fn) CH_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define CH_CODE_SECTION(fn) CH_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define CH_BLOCK_LOOP() CH_DO_PRAGMA(MUST_ITERATE(8, 8, 8))
 #else
 #define CH_ALWAYS_INLINE(fn)
 #define CH_CODE_SECTION(fn)
+#define CH_BLOCK_LOOP()
 #endif
 
-#define CH_MAGIC        0x43483038u          /* "CH08" */
+#define CH_MAGIC        0x43483039u          /* "CH09" */
 #define CH_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define CH_QUIET_LEN    2000                 /* samples of silence before a new note counts */
 #define CH_QUIET_LVL    0.002f               /* below this the input counts as silent */
@@ -97,6 +99,9 @@ typedef struct {
     unsigned int quiet;    /* consecutive quiet samples              */
     unsigned int was_off;  /* set while the footswitch is off (for Reset = PEDAL) */
     unsigned int clk;      /* transport clocks seen last block */
+    unsigned int cr, cm;   /* (clk - 1) mod cm, cm = 12 * steps; cm = 0: not valid */
+    unsigned int pk_steps, pk_hits;   /* the pattern in lo / hi was built for these (0 = none) */
+    unsigned int lo, hi;   /* the Euclid pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
     ZtSync zt;             /* MIDI transport (zmt.h)          */
 } ChState;
 
@@ -108,6 +113,8 @@ typedef struct {
     float dryG, wetG;
     unsigned int steps, shift, sync;   /* pattern length 1..64, rotation (steps - Shift, already < steps) */
     unsigned int lo, hi;           /* the pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
+    float gapA, gapB;              /* gap * length of the first / second step of a pair */
+    unsigned int hits;             /* Notes, already <= steps */
 } ChParams;
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
@@ -128,36 +135,31 @@ static inline float ch_ui(float raw, float def_ui, float max_ui)
 CH_ALWAYS_INLINE(ch_init)
 static inline void ch_init(ChState *s)
 {
-    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->clk = 0u;
+    s->pp = 0.0f; s->pos = 0u; s->g = 1.0f; s->quiet = 0u; s->was_off = 0u; s->clk = 0u; s->cm = 0u;
+    s->pk_steps = 0u; s->pk_hits = 0u; s->lo = 0u; s->hi = 0u;
     zt_init(&s->zt);
     s->magic = CH_MAGIC;
 }
 
 /* u[] = screen values in manifest order */
-CH_ALWAYS_INLINE(ch_prepare)
-static inline void ch_prepare(ChParams *P, const float *u)
+CH_ALWAYS_INLINE(ch_prepare_core)
+static inline void ch_prepare_core(ChParams *P, const float *u)
 {
     float bpm, k, e;
     unsigned int steps = (unsigned int)(int)(u[1] + 0.5f) + 1u;      /* 1..64 */
     unsigned int hits  = (unsigned int)(int)(u[0] + 0.5f) + 1u;      /* 1..64 */
     unsigned int shift = (unsigned int)(int)(u[2] + 0.5f);           /* 0..63 */
-    unsigned int j, m = 0u, lo = 0u, hi = 0u;
     if (hits > steps) hits = steps;                      /* more notes than steps = every step */
     while (shift >= steps) shift -= steps;               /* rotation wraps inside the pattern */
     if (shift > 0u) shift = steps - shift;               /* played step = time step - Shift, so the
                                                           * pattern starts LATER by Shift steps */
-    /* Euclid without a division: step j is a note when (j * hits) mod steps < hits; m runs
-     * through (j * hits) mod steps by adding hits and taking steps away when it overflows. */
-    for (j = 0u; j < steps; j++) {
-        if (m < hits) { if (j < 32u) lo |= 1u << j; else hi |= 1u << (j - 32u); }
-        m += hits;
-        if (m >= steps) m -= steps;
-    }
-    P->steps = steps; P->shift = shift; P->lo = lo; P->hi = hi;
+    P->steps = steps; P->hits = hits; P->shift = shift;
     bpm = u[7];                                          /* the tempo (zmt.h)      */
     P->inc   = bpm * 4.0f * CH_INC_PER_BPM;
     P->swing = u[3] * 0.005f;                            /* 0..0.5 */
     P->gap   = u[5] * 0.01f;                             /* Gap 0..50 % of a step */
+    P->gapA  = P->gap * (1.0f + P->swing);               /* x the length of the 1st step of a pair */
+    P->gapB  = P->gap * (1.0f - P->swing);               /* ... and of the 2nd */
     k = 1.0f - u[6] * 0.01f;                             /* 1 = hard, 0 = soft */
     e = 3.0f + 600.0f * k * k * k;                       /* slew rate in 1/steps */
     P->e = e;
@@ -171,6 +173,29 @@ static inline void ch_prepare(ChParams *P, const float *u)
     if (P->wetG > 1.0f) P->wetG = 1.0f;
 }
 
+/* The Euclid pattern into P->lo / P->hi, without a division: step j is a note when
+ * (j * hits) mod steps < hits; m runs through (j * hits) mod steps by adding hits and taking
+ * steps away when it overflows. */
+CH_ALWAYS_INLINE(ch_pattern)
+static inline void ch_pattern(ChParams *P)
+{
+    unsigned int j, m = 0u, lo = 0u, hi = 0u;
+    for (j = 0u; j < P->steps; j++) {
+        if (m < P->hits) { if (j < 32u) lo |= 1u << j; else hi |= 1u << (j - 32u); }
+        m += P->hits;
+        if (m >= P->steps) m -= P->steps;
+    }
+    P->lo = lo; P->hi = hi;
+}
+
+/* Everything for the block. (The tests call this one.) */
+CH_ALWAYS_INLINE(ch_prepare)
+static inline void ch_prepare(ChParams *P, const float *u)
+{
+    ch_prepare_core(P, u);
+    ch_pattern(P);
+}
+
 /* While the transport runs: put the pattern where the clock count says. 12 clocks = one
  * pair of 16ths. pos and the clock inside the pair come from (clocks - 1) mod (12 * steps)
  * by subtracting shifted copies (no division), so any count works, also mid-song. pp jumps
@@ -182,15 +207,21 @@ static inline void ch_clock_apply(ChState *s, ChParams *P, unsigned int clocks, 
     unsigned int r, m, mk, p = 0u, b, pos;
     P->sync = 0u;                                    /* the clock decides where the pattern is */
     if (clocks == 0u) {                              /* Start seen, first clock not yet: wait on step 1 */
-        s->pos = 0u; s->pp = 0.0f; P->ppmax = 0.0f; s->clk = 0u;
+        s->pos = 0u; s->pp = 0.0f; P->ppmax = 0.0f; s->clk = 0u; s->cm = 0u;
         return;
     }
     r = clocks - 1u;
     m = 12u * P->steps;
-    for (b = 28u; b-- > 0u; ) {
-        mk = m << b;
-        if ((mk >> b) == m && r >= mk) r -= mk;      /* r = (clocks - 1) mod (12 * steps) */
+    if (s->cm == m && clocks >= s->clk && clocks - s->clk <= 24u && s->clk != 0u) {
+        r = s->cr + (clocks - s->clk);               /* a few clocks since last block: one or two */
+        while (r >= m) r -= m;                       /* subtractions instead of the long loop    */
+    } else {
+        for (b = 28u; b-- > 0u; ) {
+            mk = m << b;
+            if ((mk >> b) == m && r >= mk) r -= mk;  /* r = (clocks - 1) mod (12 * steps) */
+        }
     }
+    s->cr = r; s->cm = m;
     for (b = 7u; b-- > 0u; ) {
         if (r >= (12u << b)) { r -= 12u << b; p += 1u << b; }   /* p = pairs, r = clock 0..11 */
     }
@@ -204,48 +235,54 @@ static inline void ch_clock_apply(ChState *s, ChParams *P, unsigned int clocks, 
 }
 
 CH_ALWAYS_INLINE(ch_process)
-static inline void ch_process(ChState *s, const ChParams *P, float *buf, int n)
+static inline void ch_process(ChState *s, const ChParams *P, float *restrict buf, int n)
 {
     int i;
     float pp = s->pp, g = s->g;
     unsigned int pos = s->pos, quiet = s->quiet;
+    /* the block's constants in locals (P-> can't stay in registers across stores to buf) */
+    const float inc = P->inc, swing = P->swing, ppmax = P->ppmax, c = P->c;
+    const float dryG = P->dryG, wetG = P->wetG, split = 1.0f + swing;
+    const float gapA = P->gapA, gapB = P->gapB;
+    const unsigned int steps = P->steps, shift = P->shift, lo = P->lo, hi = P->hi;
+    const unsigned int sync1 = (P->sync == 1u);
+    while (pos >= steps) pos -= steps;               /* a shorter Steps than last block: wrap once here, */
+    CH_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], a = in, target;
-        unsigned int j, jn, hit, hitn;
-        float end, len;
-        if (a < 0.0f) a = -a;
+        float in = buf[i], a = in, target, end, gl;
+        unsigned int j, jn, hit, hitn, low, note, rst;
+        a = (a < 0.0f) ? -a : a;
         /* sync: a note after silence restarts the pattern */
-        if (a < CH_QUIET_LVL) {
-            if (quiet < (unsigned int)CH_QUIET_LEN) quiet++;
-        } else {
-            if (quiet >= (unsigned int)CH_QUIET_LEN && a > CH_NOTE_LVL && P->sync == 1u) { pp = 0.0f; pos = 0u; }
-            if (a > CH_NOTE_LVL) quiet = 0u;
-        }
+        low  = (a < CH_QUIET_LVL);
+        note = (a > CH_NOTE_LVL);
+        rst  = (quiet >= (unsigned int)CH_QUIET_LEN) & note & sync1;
+        quiet = low ? ((quiet < (unsigned int)CH_QUIET_LEN) ? quiet + 1u : quiet) : (note ? 0u : quiet);
+        pp  = rst ? 0.0f : pp;
+        pos = rst ? 0u : pos;
         /* advance the pair phase (on the clock: never past the next clock) */
-        pp += P->inc;
-        if (pp > P->ppmax) pp = P->ppmax;
-        if (pp >= 2.0f) {                            /* next pair: two steps further in the pattern */
-            pp -= 2.0f; pos += 2u;
-            while (pos >= P->steps) pos -= P->steps;
-        }
-        j = pos;
-        if (pp >= 1.0f + P->swing) { j += 1u; end = 2.0f; len = 1.0f - P->swing; }
-        else                       { end = 1.0f + P->swing; len = end; }
-        j += P->shift;                               /* rotated; pos, 1 and shift are each < steps + 1 */
-        while (j >= P->steps) j -= P->steps;
-        jn = j + 1u;
-        if (jn >= P->steps) jn = 0u;
-        hit  = (j  < 32u) ? ((P->lo >> j)  & 1u) : ((P->hi >> (j  - 32u)) & 1u);
-        hitn = (jn < 32u) ? ((P->lo >> jn) & 1u) : ((P->hi >> (jn - 32u)) & 1u);
-        if (hit) {
-            target = 1.0f;
-            /* GAP: when the next step is a note too, the gate closes for the last part of this
-             * one (a share of the step, so it scales with the tempo), so the two are heard as
-             * two notes. The next note's own start is untouched. */
-            if (hitn && (end - pp) < P->gap * len) target = 0.0f;
-        } else target = 0.0f;
-        g += P->c * (target - g);
-        buf[i] = P->dryG * in + P->wetG * (in * g);
+        pp += inc;
+        pp = (pp > ppmax) ? ppmax : pp;
+        rst = (pp >= 2.0f);                          /* next pair: two steps further in the pattern */
+        pp  = rst ? pp - 2.0f : pp;
+        pos = rst ? pos + 2u : pos;
+        pos = (pos >= steps) ? pos - steps : pos;    /* pos < steps in the loop: + 2 needs twice at Steps = 1 */
+        pos = (pos >= steps) ? pos - steps : pos;
+        rst = (pp >= split);                         /* second step of the pair */
+        j   = pos + rst + shift;                     /* pos, 1 and shift are each < steps + 1 */
+        end = rst ? 2.0f : split;
+        gl  = rst ? gapB : gapA;
+        j   = (j >= steps) ? j - steps : j;
+        jn  = j + 1u;
+        jn  = (jn >= steps) ? 0u : jn;
+        hit  = ((((j  < 32u) ? lo : hi) >> (j  & 31u)) & 1u);
+        hitn = ((((jn < 32u) ? lo : hi) >> (jn & 31u)) & 1u);
+        /* GAP: when the next step is a note too, the gate closes for the last part of this
+         * one (a share of the step, so it scales with the tempo), so the two are heard as
+         * two notes. The next note's own start is untouched. */
+        hitn &= ((end - pp) < gl);
+        target = (hit && !hitn) ? 1.0f : 0.0f;
+        g += c * (target - g);
+        buf[i] = dryG * in + wetG * (in * g);
     }
     if (g < 1e-15f && g > -1e-15f) g = 0.0f;
     s->pp = pp; s->g = g; s->pos = pos; s->quiet = quiet;
@@ -351,7 +388,11 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
 
     if (s->magic != CH_MAGIC) ch_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);  /* the pedal's tempo, MIDI transport */
-    ch_prepare(&P, u);
+    ch_prepare_core(&P, u);
+    if (s->pk_steps != P.steps || s->pk_hits != P.hits) {      /* the pattern only depends on Steps and */
+        ch_pattern(&P);                                        /* Notes: rebuilt only when one changes  */
+        s->lo = P.lo; s->hi = P.hi; s->pk_steps = P.steps; s->pk_hits = P.hits;
+    } else { P.lo = s->lo; P.hi = s->hi; }
     if (run) ch_clock_apply(s, &P, s->zt.clk, start);
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
