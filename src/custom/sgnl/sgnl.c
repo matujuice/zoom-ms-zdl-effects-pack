@@ -69,12 +69,16 @@
 #define SG_EXPAND_PRAGMA(x) SG_DO_PRAGMA(x)
 #define SG_ALWAYS_INLINE(fn) SG_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define SG_CODE_SECTION(fn) SG_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+/* 8-sample block loops: no unrolling; if the .ZDL grows too much from software-pipelined
+ * prologs/epilogs, add SG_DO_PRAGMA(NOSWP) here (costs speed, not sound). */
+#define SG_LOOP8 SG_DO_PRAGMA(MUST_ITERATE(8,8,8)) SG_DO_PRAGMA(UNROLL(1))
 #else
 #define SG_ALWAYS_INLINE(fn)
 #define SG_CODE_SECTION(fn)
+#define SG_LOOP8
 #endif
 
-#define SG_MAGIC      0x53474E34u        /* "SGN4": change whenever SgState changes */
+#define SG_MAGIC      0x53474E35u        /* "SGN5": change whenever SgState changes */
 #define SG_PK_MAX     22056              /* samples: 500 ms rounded up to whole blocks */
 #define SG_PKB_MAX    2757               /* SG_PK_MAX / 8 */
 #define SG_MS_PER_BLK 0.18140590f        /* 8 / 44.1: one block in ms */
@@ -94,6 +98,18 @@
 #define SG_A_5000     0.509524f
 #define SG_A_7000     0.631180f
 #define SG_F_1500     0.213307f          /* 2 sin(pi 1500 / fs), SVF tuning     */
+
+typedef struct {
+    unsigned int pgb, pbg; /* GOOD->BAD and BAD->GOOD chances, 0..65536        */
+    unsigned int pj;       /* chance of a quality jump per packet, 0..65536    */
+    int   pkb;             /* packet length in blocks                          */
+    float q;               /* Codec 0..1                                       */
+    int   fill;            /* Fill knob 0..7                                   */
+    float lon, ah, al, lgain, drive;   /* Line                                 */
+    float voip;                        /* VOIP: second low-cut pole and bump   */
+    float c;               /* Edge crossfade coefficient                       */
+    float dryG, wetG;      /* Mix: DJ crossfade gains                          */
+} SgParams;
 
 typedef struct {
     unsigned int magic;
@@ -131,20 +147,11 @@ typedef struct {
     float qL, qiL, qon;    /* quantiser: levels, 1/levels, on                  */
     float hold;            /* sample-rate hold                                 */
     int   hn, hc;          /* hold length, counter                             */
+    float uc[9];           /* knobs the cached parameters were made from       */
+    SgParams pc;           /* cached parameters: prepare only when a knob moved */
     float buf[4][SG_PK_MAX];
 } SgState;
 
-typedef struct {
-    unsigned int pgb, pbg; /* GOOD->BAD and BAD->GOOD chances, 0..65536        */
-    unsigned int pj;       /* chance of a quality jump per packet, 0..65536    */
-    int   pkb;             /* packet length in blocks                          */
-    float q;               /* Codec 0..1                                       */
-    int   fill;            /* Fill knob 0..7                                   */
-    float lon, ah, al, lgain, drive;   /* Line                                 */
-    float voip;                        /* VOIP: second low-cut pole and bump   */
-    float c;               /* Edge crossfade coefficient                       */
-    float dryG, wetG;      /* Mix: DJ crossfade gains                          */
-} SgParams;
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
  * maximum. Convert back to the screen integer. */
@@ -358,17 +365,23 @@ static inline void sg_packet(SgState *s, const SgParams *P)
     s->left = P->pkb;
 }
 
+/* One 8-sample block, in stages: Line, then the codec, each a branch-free loop over the
+ * block (so the compiler can software-pipeline it) with its filter states in locals,
+ * then the packet recording or the fill. n is always 8 (the pedal's block). */
 SG_ALWAYS_INLINE(sg_process)
-static inline void sg_process(SgState *s, const SgParams *P, float *buf, int n)
+static inline void sg_process(SgState *s, const SgParams *restrict P, float *restrict buf, int n)
 {
     int i;
     float *rec, *last;
+    float xl[8], yv[8];
+    const float *src = buf;
+    (void)n;
 
     /* clip the start of a word: at Codec above 50, sound after 100 ms of silence
      * starts a new packet straight away, and that packet is lost */
     {
         float pk = 0.0f;
-        for (i = 0; i < n; i++) { float a = buf[i]; if (a < 0.0f) a = -a; if (a > pk) pk = a; }
+        for (i = 0; i < 8; i++) { float a = buf[i]; if (a < 0.0f) a = -a; if (a > pk) pk = a; }
         if (pk < SG_QUIET_LVL) { if (s->quiet < SG_QUIET_BLKS + 1) s->quiet++; }
         else {
             if (s->quiet > SG_QUIET_BLKS && P->q > 0.5f) { s->quiet = -1; s->left = 0; }
@@ -382,96 +395,125 @@ static inline void sg_process(SgState *s, const SgParams *P, float *buf, int n)
     rec  = s->buf[s->cur];
     last = s->buf[s->src];
 
-    for (i = 0; i < n; i++) {
-        float in = buf[i], x, y, f, a, lf, target;
-
-        /* Line */
-        s->lh  += P->ah * (in - s->lh);
-        x = in - s->lh;
-        s->lh2 += P->ah * (x - s->lh2);
-        x = x - P->voip * s->lh2;
-        s->ll1 += P->al * (x - s->ll1);
-        s->ll2 += P->al * (s->ll1 - s->ll2);
-        x = s->ll2 * P->lgain;
-        {   /* VOIP headset bump: band-pass at 1.5 kHz (Q 1.5) added on top */
-            float hp;
-            s->vl += SG_F_1500 * s->vb;
-            hp = x - s->vl - 0.6667f * s->vb;
-            s->vb += SG_F_1500 * hp;
-            x = x + P->voip * 0.7f * s->vb;
-        }
-        {
-            float d = x * (1.0f + 1.5f * P->drive);
-            if (d > 1.0f) d = 1.0f;
-            if (d < -1.0f) d = -1.0f;
+    /* 1. Line. HIFI (lon = 0) passes the input through untouched and its filters stand
+     * still (ah = al = 0), so the stage is skipped; the headset bump, which would have
+     * settled to the DC of the frozen low-pass, is parked there. */
+    if (P->lon > 0.0f) {
+        float lh = s->lh, lh2 = s->lh2, ll1 = s->ll1, ll2 = s->ll2, vb = s->vb, vl = s->vl;
+        SG_LOOP8
+        for (i = 0; i < 8; i++) {
+            float in = buf[i], x, hp, d;
+            lh += P->ah * (in - lh);
+            x = in - lh;
+            lh2 += P->ah * (x - lh2);
+            x = x - P->voip * lh2;
+            ll1 += P->al * (x - ll1);
+            ll2 += P->al * (ll1 - ll2);
+            x = ll2 * P->lgain;
+            /* VOIP headset bump: band-pass at 1.5 kHz (Q 1.5) added on top */
+            vl += SG_F_1500 * vb;
+            hp = x - vl - 0.6667f * vb;
+            vb += SG_F_1500 * hp;
+            x = x + P->voip * 0.7f * vb;
+            d = x * (1.0f + 1.5f * P->drive);
+            d = (d > 1.0f) ? 1.0f : d;
+            d = (d < -1.0f) ? -1.0f : d;
             d = 1.5f * d - 0.5f * d * d * d;
             x = x + P->drive * (0.55f * d - x);
+            xl[i] = in + P->lon * (x - in);
         }
-        x = in + P->lon * (x - in);
+        s->lh = lh; s->lh2 = lh2; s->ll1 = ll1; s->ll2 = ll2; s->vb = vb; s->vl = vl;
+        src = xl;
+    } else {
+        s->vb = 0.0f; s->vl = s->ll2;
+    }
 
-        /* codec: spectral holes (the four bands add back up to x when all are on) */
-        s->b1 += SG_A_300  * (x - s->b1);
-        s->b2 += SG_A_1200 * (x - s->b2);
-        s->b3 += SG_A_4000 * (x - s->b3);
-        s->g0 += 0.01f * (s->t0 - s->g0);
-        s->g1 += 0.01f * (s->t1 - s->g1);
-        s->g2 += 0.01f * (s->t2 - s->g2);
-        s->g3 += 0.01f * (s->t3 - s->g3);
-        y = s->g0 * s->b1 + s->g1 * (s->b2 - s->b1) + s->g2 * (s->b3 - s->b2) + s->g3 * (x - s->b3);
-        /* closing low-pass */
-        s->lp1 += s->alp * (y - s->lp1);
-        s->lp2 += s->alp * (s->lp1 - s->lp2);
-        y = s->lp2;
-        /* lower sample rate */
-        if (s->hc <= 0) { s->hold = y; s->hc = s->hn; }
-        s->hc--;
-        y = s->hold;
-        /* fewer bits */
-        {
-            float v = y * s->qL;
-            int iv = (int)(v + ((v >= 0.0f) ? 0.5f : -0.5f));
-            y = y + s->qon * ((float)iv * s->qiL - y);
+    /* 2. codec: spectral holes, closing low-pass, rate hold, bits */
+    {
+        float b1 = s->b1, b2 = s->b2, b3 = s->b3, g0 = s->g0, g1 = s->g1, g2 = s->g2, g3 = s->g3;
+        float lp1 = s->lp1, lp2 = s->lp2, hold = s->hold, alp = s->alp, qL = s->qL, qiL = s->qiL;
+        float t0 = s->t0, t1 = s->t1, t2 = s->t2, t3 = s->t3, qon = s->qon;
+        int hc = s->hc, hn = s->hn;
+        SG_LOOP8
+        for (i = 0; i < 8; i++) {
+            float x = src[i], y, v;
+            int iv, hz;
+            /* spectral holes (the four bands add back up to x when all are on) */
+            b1 += SG_A_300  * (x - b1);
+            b2 += SG_A_1200 * (x - b2);
+            b3 += SG_A_4000 * (x - b3);
+            g0 += 0.01f * (t0 - g0);
+            g1 += 0.01f * (t1 - g1);
+            g2 += 0.01f * (t2 - g2);
+            g3 += 0.01f * (t3 - g3);
+            y = g0 * b1 + g1 * (b2 - b1) + g2 * (b3 - b2) + g3 * (x - b3);
+            /* closing low-pass */
+            lp1 += alp * (y - lp1);
+            lp2 += alp * (lp1 - lp2);
+            /* lower sample rate */
+            hz = (hc <= 0);
+            hold = hz ? lp2 : hold;
+            hc = (hz ? hn : hc) - 1;
+            y = hold;
+            /* fewer bits */
+            v = y * qL;
+            iv = (int)(v + ((v >= 0.0f) ? 0.5f : -0.5f));
+            yv[i] = y + qon * ((float)iv * qiL - y);
         }
+        s->b1 = b1; s->b2 = b2; s->b3 = b3; s->g0 = g0; s->g1 = g1; s->g2 = g2; s->g3 = g3;
+        s->lp1 = lp1; s->lp2 = lp2; s->hold = hold; s->hc = hc;
+    }
 
-        a = (y < 0.0f) ? -y : y;
-        if (!s->lost) {
-            if (s->rec_n < SG_PK_MAX) { rec[s->rec_n] = y; s->rec_n++; }
-            s->env += 0.002f * (a - s->env);
-        } else s->env *= 0.99995f;
-
-        /* fill */
-        f = 0.0f;
-        if (s->lost) {
-            float r = 0.0f, nz;
+    /* 3. record the packet (kept) or fill the hole (lost), crossfade, mix */
+    if (!s->lost) {
+        float env = s->env, w = s->w;
+        int cnt = SG_PK_MAX - s->rec_n;
+        if (cnt > 8) cnt = 8;
+        if (cnt < 0) cnt = 0;
+        for (i = 0; i < cnt; i++) rec[s->rec_n + i] = yv[i];
+        s->rec_n += cnt;
+        SG_LOOP8
+        for (i = 0; i < 8; i++) {
+            float y = yv[i], a = (y < 0.0f) ? -y : y;
+            env += 0.002f * (a - env);
+            w += P->c * (1.0f - w);                      /* Edge: live packet in */
+            buf[i] = P->dryG * buf[i] + P->wetG * (w * y);
+        }
+        s->env = env; s->w = w;
+    } else {
+        float env = s->env, w = s->w, fg = s->fg, nlp = s->nlp, gv = s->gv;
+        float wrep = s->wrep, wfade = s->wfade, wnoise = s->wnoise, wgarb = s->wgarb;
+        int rp = s->rp, gc = s->gc, sn = s->sn, rev = s->rev;
+        for (i = 0; i < 8; i++) {
+            float y = yv[i], f, r = 0.0f, nz, lf;
+            env *= 0.99995f;
             nz = (float)((int)(sg_rand16(s)) - 32768) * (1.0f / 32768.0f);
-            if (s->sn > 0) {
-                r = last[s->rp + s->rev * (s->sn - 1 - 2 * s->rp)];   /* REVRS reads backwards */
-                s->rp++;
-                if (s->rp >= s->sn) s->rp = 0;
-                if (s->wgarb > 0.0f) {                     /* GARBL: boosted random slices */
-                    s->gc--;
-                    if (s->gc <= 0) {
-                        unsigned int j = (sg_rand16(s) * (unsigned int)s->sn) >> 16;
-                        float g = 3.0f * last[j] + nz * s->env;
+            if (sn > 0) {
+                r = last[rp + rev * (sn - 1 - 2 * rp)];       /* REVRS reads backwards */
+                rp++;
+                if (rp >= sn) rp = 0;
+                if (wgarb > 0.0f) {                           /* GARBL: boosted random slices */
+                    gc--;
+                    if (gc <= 0) {
+                        unsigned int j = (sg_rand16(s) * (unsigned int)sn) >> 16;
+                        float g = 3.0f * last[j] + nz * env;
                         if (g > 0.4f) g = 0.4f;
                         if (g < -0.4f) g = -0.4f;
-                        s->gv = g;
-                        s->gc = 1 + (int)(sg_rand16(s) >> 10);          /* 1..64 samples */
+                        gv = g;
+                        gc = 1 + (int)(sg_rand16(s) >> 10);   /* 1..64 samples */
                     }
                 }
             }
-            s->fg *= SG_FADE_K;
-            lf = 1.0f + s->wfade * (s->fg - 1.0f);       /* REPT: 1, FADE: dying */
-            s->nlp += 0.3f * (nz - s->nlp);
-            f = s->wrep * r * lf + s->wnoise * s->nlp * s->env * 1.5f + s->wgarb * s->gv;
+            fg *= SG_FADE_K;
+            lf = 1.0f + wfade * (fg - 1.0f);                  /* REPT: 1, FADE: dying */
+            nlp += 0.3f * (nz - nlp);
+            f = wrep * r * lf + wnoise * nlp * env * 1.5f + wgarb * gv;
+            w += P->c * (0.0f - w);                           /* Edge: fill in */
+            y = f + w * (y - f);
+            buf[i] = P->dryG * buf[i] + P->wetG * y;
         }
-
-        /* Edge: crossfade between the live packet and the fill */
-        target = s->lost ? 0.0f : 1.0f;
-        s->w += P->c * (target - s->w);
-        y = f + s->w * (y - f);
-
-        buf[i] = P->dryG * in + P->wetG * y;
+        s->env = env; s->w = w; s->fg = fg; s->nlp = nlp; s->gv = gv;
+        s->rp = rp; s->gc = gc;
     }
 }
 
@@ -557,7 +599,6 @@ void SGNL_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     SgState *s;
-    SgParams P;
     float u[9];
     int i;
 
@@ -590,9 +631,19 @@ void SGNL_AUDIO_FUNC(unsigned int *ctx)
     u[7] = sg_ui(params[SGNL_EDGE_SLOT],  (float)SGNL_EDGE_UI_DEFAULT,  100.0f);
     u[8] = sg_ui(params[SGNL_MIX_SLOT],   (float)SGNL_MIX_UI_DEFAULT,   100.0f);
 
-    sg_prepare(&P, u);
-    if (s->magic != SG_MAGIC) sg_init(s);
-    sg_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
+    /* the parameters depend on the knobs only: prepare when one moved, else reuse */
+    if (s->magic != SG_MAGIC) {
+        sg_prepare(&s->pc, u);
+        sg_init(s);
+        for (i = 0; i < 9; i++) s->uc[i] = u[i];
+    } else {
+        for (i = 0; i < 9; i++) if (s->uc[i] != u[i]) break;
+        if (i < 9) {
+            sg_prepare(&s->pc, u);
+            for (i = 0; i < 9; i++) s->uc[i] = u[i];
+        }
+    }
+    sg_process(s, &s->pc, fxBuf, 8);             /* mono: left half in place   */
 
     for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
 }
