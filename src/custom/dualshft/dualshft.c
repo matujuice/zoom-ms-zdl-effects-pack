@@ -107,7 +107,9 @@
 #define DS_EXPAND_PRAGMA(x) DS_DO_PRAGMA(x)
 #define DS_ALWAYS_INLINE(fn) DS_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define DS_CODE_SECTION(fn) DS_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define DS_ITER8 _Pragma("MUST_ITERATE(8,8,8)")
 #else
+#define DS_ITER8
 #define DS_ALWAYS_INLINE(fn)
 #define DS_CODE_SECTION(fn)
 #endif
@@ -528,7 +530,7 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
  * (<= 8 samples of jitter, ~0.2 ms). */
 DS_ALWAYS_INLINE(ds_process)
 static inline void ds_process(DualShift *s, const DualShiftParams *P,
-                       float *buf, int n)
+                       float *restrict buf, int n)
 {
     int   i;
     int   w;
@@ -536,7 +538,8 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
     unsigned int rng;
     float rfrom, rto;
     int rseg, rsign;
-    float *ring = s->ring;
+    float *restrict ring = s->ring;
+    float rtA[8], rtB[8], gnA[8], gnB[8], dlA[8], dlB[8];   /* per-sample controls of the block */
 
     ds_ensure_init(s);
 
@@ -569,18 +572,29 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
         rto = 0.3f + 0.35f * (next_rand(&rng) + 1.0f);
     }
 
-    for (i = 0; i < n; i++) {
-        float dry = buf[i];
-        float lfo, m, yA, yB, gainA, gainB;
+    /* Three short loops instead of one long one, so the compiler can pipeline the heavy one
+     * (same arithmetic, same order). Every tap reads at least 17 samples behind the newest
+     * sample, so this block's reads never see this block's writes: loop 1 writes the ring,
+     * loop 2 makes the per-sample controls, loop 3 reads the taps. n is always 8 (one block). */
+    {
+        int w1 = w;
+        DS_ITER8
+        for (i = 0; i < 8; i++) {
+            w1 = w1 + 1;
+            w1 = (w1 >= RING_SIZE) ? 0 : w1;
+            ring[w1] = buf[i];
+        }
+    }
 
-        /* write newest sample */
-        w = w + 1;
-        if (w >= RING_SIZE) w = 0;
-        ring[w] = dry;
+    /* loop 2: delay follow, LFO, pitch ratios */
+    for (i = 0; i < 8; i++) {
+        float lfo, m;
 
         /* follow the synced delay times (fade / jump / fade, see above) */
-        gainA = dly_follow(&dA, &gA, P->dlyA);
-        gainB = dly_follow(&dB, &gB, P->dlyB);
+        gnA[i] = dly_follow(&dA, &gA, P->dlyA);
+        gnB[i] = dly_follow(&dB, &gB, P->dlyB);
+        dlA[i] = dA;
+        dlB[i] = dB;
 
         /* tempo-synced LFO, updated every sample */
         ph += P->lfo_inc;
@@ -622,11 +636,24 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
          * The LFO factor is its own exact 2^(m/12)
          * polynomial (+-12 st, ~0.3 cent), multiplied onto the base
          * ratio, so the two errors never add up across a +-24 range. */
-        yA = voice_step(ring, w, &p1, P->ratioA * semis_to_ratio(m),  dA);
-        yB = voice_step(ring, w, &p2, P->ratioB * semis_to_ratio(-m), dB);
+        rtA[i] = P->ratioA * semis_to_ratio(m);
+        rtB[i] = P->ratioB * semis_to_ratio(-m);
+    }
 
-        /* mono: average the two voices, then dry/wet */
-        buf[i] = P->dryG * dry + P->wetG * (0.5f * (yA * gainA + yB * gainB));
+    /* loop 3: the two pitch-shift voices (four tap reads), then mono dry/wet */
+    {
+        const float *restrict rd = ring;
+        int w3 = w;
+        DS_ITER8
+        for (i = 0; i < 8; i++) {
+            float dry = buf[i], yA, yB;
+            w3 = w3 + 1;
+            w3 = (w3 >= RING_SIZE) ? 0 : w3;
+            yA = voice_step(rd, w3, &p1, rtA[i], dlA[i]);
+            yB = voice_step(rd, w3, &p2, rtB[i], dlB[i]);
+            buf[i] = P->dryG * dry + P->wetG * (0.5f * (yA * gnA[i] + yB * gnB[i]));
+        }
+        w = w3;
     }
 
     s->w = w;

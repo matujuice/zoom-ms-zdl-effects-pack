@@ -112,7 +112,9 @@
 #define SR_EXPAND_PRAGMA(x) SR_DO_PRAGMA(x)
 #define SR_ALWAYS_INLINE(fn) SR_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define SR_CODE_SECTION(fn) SR_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define SR_ITER8 _Pragma("MUST_ITERATE(8,8,8)")
 #else
+#define SR_ITER8
 #define SR_ALWAYS_INLINE(fn)
 #define SR_CODE_SECTION(fn)
 #endif
@@ -242,8 +244,8 @@ static inline float sine_of(float ph)
 SR_ALWAYS_INLINE(soft_clip)
 static inline float soft_clip(float x)
 {
-    if (x > 1.5f) x = 1.5f;
-    else if (x < -1.5f) x = -1.5f;
+    x = (x > 1.5f) ? 1.5f : x;
+    x = (x < -1.5f) ? -1.5f : x;
     return x - 0.14814815f * x * x * x;
 }
 
@@ -366,13 +368,14 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
 
 /* ---- the unified loop --------------------------------------------------- */
 SR_ALWAYS_INLINE(sr_process)
-static inline void sr_process(SirenState *s, const SirenParams *P, float *buf, int n)
+static inline void sr_process(SirenState *s, const SirenParams *P, float *restrict buf, int n)
 {
     int   i, w = s->w;
     float osc_ph = s->osc_ph, lfo_ph = s->lfo_ph, env = s->env, menv = s->menv;
     float y1 = s->y1, y2 = s->y2, wow_ph = s->wow_ph, flut_ph = s->flut_ph;
     float dly = s->dly, hpl = s->hpl, lp1 = s->lp1, lp2 = s->lp2;
-    float *ring = s->ring;
+    float *restrict ring = s->ring;
+    float dlb[8], sirb[8];                          /* echo tap and siren, per sample of the block */
 
     if (s->magic != SR_MAGIC) sr_init(s);
 
@@ -393,75 +396,92 @@ static inline void sr_process(SirenState *s, const SirenParams *P, float *buf, i
         menv = (P->mdir < 0) ? 1.0f : 0.0f;        /* manual envelope start   */
     }
 
-    for (i = 0; i < n; i++) {
-        float in = buf[i];                         /* clean input, never modified */
-        float u, inc, duty, p2, sq, siren, rd, dl, hp, e, x, dm;
-        int   wn, i0, i1;
+    /* Three short loops instead of one long one, so the compiler can pipeline each (same
+     * arithmetic, same results). The echo line is read 2000+ samples behind the write
+     * point, so this block's reads never see this block's writes: loop 1 reads, loop 3
+     * writes. n is always 8 (one block). */
 
-        /* --- pitch control value u (0..1): shaped LFO, square LFO, ramp or manual */
-        if (P->manual) {
-            menv += (float)P->mdir * MAN_STEP;
-            if (menv < 0.0f) menv = 0.0f;
-            if (menv > 1.0f) menv = 1.0f;
-            u = menv;
-        } else {
-            lfo_ph += P->lfo_inc;
-            if (lfo_ph >= 1.0f) lfo_ph -= 1.0f;
-            if (P->mode == 0) {                    /* uneven RC triangle: fast rise, slow fall */
-                if (lfo_ph < 0.35f) {
-                    u = 1.0f - lfo_ph * 2.857143f;       /* 1 - ph/0.35 */
-                    u = 1.0f - u * u;                    /* concave rise */
-                } else {
-                    u = 1.0f - (lfo_ph - 0.35f) * 1.538462f;   /* 1 - (ph-.35)/.65 */
-                    u = u * (0.3f + 0.7f * u);           /* convex fall */
-                }
-            }
-            else if (P->mode == 3) { u = 1.0f - lfo_ph; u = u * u; }   /* RC curved falling ramp */
-            else u = (lfo_ph < 0.5f) ? 0.0f : 1.0f;                     /* two-tone square */
+    /* loop 1: echo read (wow / flutter / time glide, interpolated tap) */
+    {
+        int w1 = w;
+        SR_ITER8
+        for (i = 0; i < 8; i++) {
+            float dm, rd, frac;
+            int   wn, i0, i1;
+            wow_ph += WOW_INC;  wow_ph -= (wow_ph >= 1.0f) ? 1.0f : 0.0f;
+            flut_ph += FLUT_INC; flut_ph -= (flut_ph >= 1.0f) ? 1.0f : 0.0f;
+            dly += (P->dlySamp - dly) * DLY_SLEW;  /* time changes glide      */
+            dm = dly + WOW_DEPTH * sine_of(wow_ph) + FLUT_DEPTH * sine_of(flut_ph);
+            wn = w1 + 1; wn = (wn >= RING_SIZE) ? 0 : wn;
+            w1 = wn;
+            rd = (float)wn - dm;
+            rd += (rd < 0.0f) ? (float)RING_SIZE : 0.0f;
+            i0 = (int)rd;
+            i1 = i0 + 1; i1 = (i1 >= RING_SIZE) ? 0 : i1;
+            frac = rd - (float)i0;
+            dlb[i] = ring[i0] + frac * (ring[i1] - ring[i0]);
         }
+    }
 
-        /* --- oscillator: linear FM (control voltage), square with changing pulse width */
-        inc = P->f0_inc * (1.0f + P->depth * u);
-        osc_ph += inc;
-        if (osc_ph >= 1.0f) osc_ph -= 1.0f;
-        duty = 0.5f - 0.12f * (u > 1.0f ? 1.0f : u);
-        p2 = osc_ph - 0.5f * inc;                   /* half-sample tap: 2x box filter */
-        if (p2 < 0.0f) p2 += 1.0f;
-        sq = 0.5f * (((osc_ph < duty) ? 1.0f : -1.0f) + ((p2 < duty) ? 1.0f : -1.0f));
+    /* loop 2: the siren (LFO / manual envelope, oscillator, RC stages, volume envelope) */
+    {
+        const float mstep = P->manual ? (float)P->mdir * MAN_STEP : 0.0f;   /* menv only moves in Man */
+        const float envup = P->gate ? ENV_ATTACK : -ENV_RELEASE;
+        const float envhi = P->gate ? 1.0f : 1.0e9f;
+        SR_ITER8
+        for (i = 0; i < 8; i++) {
+            float u, ul, inc, duty, p2, sq, um, a, b;
+            menv += mstep;
+            menv = (menv < 0.0f) ? 0.0f : menv;
+            menv = (menv > 1.0f) ? 1.0f : menv;
+            lfo_ph += P->lfo_inc;                  /* lfo_inc is 0 in Man */
+            lfo_ph -= (lfo_ph >= 1.0f) ? 1.0f : 0.0f;
+            a = 1.0f - lfo_ph * 2.857143f;         /* Wail: uneven RC triangle, fast rise, slow fall */
+            a = 1.0f - a * a;                      /* concave rise */
+            b = 1.0f - (lfo_ph - 0.35f) * 1.538462f;
+            b = b * (0.3f + 0.7f * b);             /* convex fall */
+            um = 1.0f - lfo_ph; um = um * um;      /* Laser: RC curved falling ramp */
+            ul = (P->mode == 0) ? ((lfo_ph < 0.35f) ? a : b)
+               : (P->mode == 3) ? um
+               : (lfo_ph < 0.5f) ? 0.0f : 1.0f;    /* two-tone square */
+            u = P->manual ? menv : ul;
 
-        /* --- the RC low-pass stages that round the square off */
-        y1 += OSC_LP_A * (sq - y1);
-        y2 += OSC_LP_A * (y1 - y2);
+            /* oscillator: linear FM (control voltage), square with changing pulse width */
+            inc = P->f0_inc * (1.0f + P->depth * u);
+            osc_ph += inc;
+            osc_ph -= (osc_ph >= 1.0f) ? 1.0f : 0.0f;
+            duty = 0.5f - 0.12f * (u > 1.0f ? 1.0f : u);
+            p2 = osc_ph - 0.5f * inc;              /* half-sample tap: 2x box filter */
+            p2 += (p2 < 0.0f) ? 1.0f : 0.0f;
+            sq = 0.5f * (((osc_ph < duty) ? 1.0f : -1.0f) + ((p2 < duty) ? 1.0f : -1.0f));
 
-        /* --- volume envelope: attack while the gate is on, release after */
-        if (P->gate) { env += ENV_ATTACK;  if (env > 1.0f) env = 1.0f; }
-        else         { env -= ENV_RELEASE; if (env < 0.0f) env = 0.0f; }
+            /* the RC low-pass stages that round the square off */
+            y1 += OSC_LP_A * (sq - y1);
+            y2 += OSC_LP_A * (y1 - y2);
 
-        siren = 0.3f * y2 * env * P->volume;
+            /* volume envelope: attack while the gate is on, release after */
+            env += envup;
+            env = (env > envhi) ? 1.0f : env;
+            env = (env < 0.0f) ? 0.0f : env;
+            sirb[i] = 0.3f * y2 * env * P->volume;
+        }
+    }
 
-        /* --- tape-style dub echo, fed by the siren only */
-        wow_ph += WOW_INC;  if (wow_ph >= 1.0f)  wow_ph -= 1.0f;
-        flut_ph += FLUT_INC; if (flut_ph >= 1.0f) flut_ph -= 1.0f;
-        dly += (P->dlySamp - dly) * DLY_SLEW;      /* time changes glide      */
-        dm = dly + WOW_DEPTH * sine_of(wow_ph) + FLUT_DEPTH * sine_of(flut_ph);
-        wn = w + 1; if (wn >= RING_SIZE) wn = 0;
-        rd = (float)wn - dm;
-        if (rd < 0.0f) rd += (float)RING_SIZE;
-        i0 = (int)rd;
-        i1 = i0 + 1; if (i1 >= RING_SIZE) i1 = 0;
-        dl = ring[i0] + (rd - (float)i0) * (ring[i1] - ring[i0]);
-
-        hpl += HP_A * (dl - hpl);                  /* high-pass: dl - low part */
-        hp = dl - hpl;
+    /* loop 3: echo filters, write back, parallel mix */
+    SR_ITER8
+    for (i = 0; i < 8; i++) {
+        float siren = sirb[i], hp, e, x;
+        int   wn = w + 1;
+        wn = (wn >= RING_SIZE) ? 0 : wn;
+        hpl += HP_A * (dlb[i] - hpl);              /* high-pass: dl - low part */
+        hp = dlb[i] - hpl;
         lp1 += P->lpA * (hp - lp1);                /* two low-pass poles       */
         lp2 += P->lpA * (lp1 - lp2);
         e = lp2;
         x = siren * 0.9f + e * P->fb;              /* feedback may exceed 1.0  */
         ring[wn] = soft_clip(x);
         w = wn;
-
-        /* --- parallel mix */
-        buf[i] = in + siren + e * P->echoLvl;
+        buf[i] = buf[i] + siren + e * P->echoLvl;
     }
 
     s->w = w; s->osc_ph = osc_ph; s->lfo_ph = lfo_ph; s->env = env; s->menv = menv;
