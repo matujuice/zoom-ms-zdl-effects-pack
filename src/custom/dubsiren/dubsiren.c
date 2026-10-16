@@ -112,7 +112,7 @@
 #define SR_EXPAND_PRAGMA(x) SR_DO_PRAGMA(x)
 #define SR_ALWAYS_INLINE(fn) SR_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define SR_CODE_SECTION(fn) SR_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
-#define SR_ITER8 _Pragma("MUST_ITERATE(8,8,8)")
+#define SR_ITER8 _Pragma("MUST_ITERATE(8,8,8)") _Pragma("UNROLL(1)")
 #else
 #define SR_ITER8
 #define SR_ALWAYS_INLINE(fn)

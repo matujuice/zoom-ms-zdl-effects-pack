@@ -107,7 +107,7 @@
 #define DS_EXPAND_PRAGMA(x) DS_DO_PRAGMA(x)
 #define DS_ALWAYS_INLINE(fn) DS_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define DS_CODE_SECTION(fn) DS_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
-#define DS_ITER8 _Pragma("MUST_ITERATE(8,8,8)")
+#define DS_ITER8 _Pragma("MUST_ITERATE(8,8,8)") _Pragma("UNROLL(1)")
 #else
 #define DS_ITER8
 #define DS_ALWAYS_INLINE(fn)
