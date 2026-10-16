@@ -296,6 +296,9 @@ class LinkerConfig:
     # linking. Useful as a smoke test: lets the firmware exercise the UI
     # without running the plugin's DSP.
     audio_nop: bool = False
+    # Descriptor +0x28: the DSP cost the firmware adds up against its "DSP Full" limit (225).
+    # Stock effects measure about 100 cycles per unit (M0 probe, docs/STEREO.md).
+    dsp_cost: float = 20.0
 
     # Diagnostic override. Normal builds prefer object-defined edit
     # handlers when present, because those are the only way knobs 3..9
@@ -557,6 +560,7 @@ def _build_descriptor(
     onf_func_va: int,
     knob_edit_vas: list[int],
     params: list[Param],
+    dsp_cost: float = 20.0,
 ) -> tuple[bytes, list[tuple[int, int]]]:
     """Returns (descriptor_bytes, [(offset_in_desc, target_va), ...])."""
     assert len(knob_edit_vas) == len(params), (
@@ -589,7 +593,7 @@ def _build_descriptor(
     # imageInfo declare them. See docs/3-PARAM-LINKER-BUG.md.
     # 20.0f (0x41a00000) is in the typical range for simple effects
     # (Exciter=19.51, OptComp=30.76, BitCrush=14.88, AutoPan=13.89).
-    entry[0x28:0x2C] = struct.pack('<f', 20.0)
+    entry[0x28:0x2C] = struct.pack('<f', dsp_cost)
     relocs.append((len(desc) + 0x1C, init_func_va))
     relocs.append((len(desc) + 0x20, audio_func_va))
     desc.extend(entry)
@@ -1245,6 +1249,7 @@ def link(cfg: LinkerConfig) -> None:
         onf_func_va=onf_va,
         knob_edit_vas=knob_edit_vas,
         params=cfg.params,
+        dsp_cost=cfg.dsp_cost,
     )
     # Stock RNDMFLTR descriptor +0x24 holds GetString(value, destination).
     # Object-defined callbacks are opt-in via generated parameter headers.

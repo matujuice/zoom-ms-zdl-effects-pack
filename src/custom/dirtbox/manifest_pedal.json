@@ -65,5 +65,6 @@
   ],
   "audio_func_name": "Fx_DLY_DirtBox",
   "audio_nop": false,
-  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 68.0
 }

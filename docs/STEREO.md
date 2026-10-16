@@ -69,6 +69,13 @@ of that, and its real cost exceeds the whole stock DSP limit (225). The
 numbers depend on settings (engine, model, voices); these are one setting
 each.
 
+**Declared costs set 2026-10-16** (`dsp_cost` in each `manifest_pedal.json`, written to
+the descriptor by `build/linker.py`): average / 100 rounded up plus about 25 % for heavier
+settings. WaveFold 18, EuGate 29, Sweep 32, GridDly 33, Scrub 35, Breather 36,
+DualShft 46, DubSiren 48, S.GN_L 59, DirtBox 68. **Choral 150 for now**: its honest 240 is
+over the firmware's 225 limit and it could not load at all; it gets optimized, then
+re-measured. The Looper is not measured yet and keeps 20.
+
 ## Per effect: first pass (for Luca to confirm)
 
 | Effect | Today | Suggested | Notes |
