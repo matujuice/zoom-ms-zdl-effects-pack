@@ -77,7 +77,9 @@
  *   ago, from a 3 s history (one cycle at most 1 s). The voice gain
  *   compares the choir with the singers' level x envelope, so the envelopes are not undone.
  *
- * FORMANTS (per section, coefficients once per block)
+ * FORMANTS (per section; one section's coefficients per block in turn, so each is at most
+ *   3 blocks (0.5 ms) late; a section that just came in, or whose note moved more than a
+ *   semitone, at once)
  *   Three band-passes (Simper's state-variable filter, which stays clean while the vowel
  *   moves) at the vowel's F1 F2 F3 (adult male table, x the section's throat size), widths
  *   70 / 90 / 120 Hz x the section's width, peak levels F1 1, F2 and F3 from the vowel table.
@@ -135,8 +137,17 @@
  *   the filters, singers and tracker start clean and the choir fades in on the next note.
  *
  * SIZE: must stay well under the ~31 KB the pedal boots with (docs/SAFE-DSP-RULES.md, Size);
- *   not measured yet. Helpers are inlined, so code shared by several paths runs through one
- *   loop (singers, sections, bands). CPU not measured yet either.
+ *   Choral.ZDL was 27.5 KB before the CPU rework below (not measured since). Helpers are
+ *   inlined, so code shared by several paths runs through one loop (singers, sections, bands).
+ * CPU: measured on the pedal at ~24,100 cycles per 8-sample block (max 29,700) of ~54,000,
+ *   before the rework of 2026-10-16 (not measured since): the tracker's lag search is two
+ *   branch-free loops the compiler can software-pipeline (a doubled ring, so no wrap); each
+ *   singer renders its 8 samples, then each section runs its 3 formants over them with the
+ *   filter state in registers; formant coefficients one section per block; a silent choir
+ *   (every singer under -140 dB, filters rung out) skips the voices. No denormal flushes:
+ *   the C674x FPU treats denormals as zero. Host A/B against the old code: the same output
+ *   but for the formants' up to 0.5 ms lag (as if the vowel moved ~0.3 ms later), 1/x with two
+ *   Newton steps (within 7e-6: tiny pitch reading changes) and the saws' phase after a silence.
  */
 
 #include <stdint.h>
@@ -148,13 +159,15 @@
 #define SR_ALWAYS_INLINE(fn) SR_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define SR_CODE_SECTION(fn) SR_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #define SR_NOUNROLL _Pragma("UNROLL(1)")
+#define SR_ITER(n) SR_EXPAND_PRAGMA(MUST_ITERATE(n, n))
 #else
 #define SR_ALWAYS_INLINE(fn)
 #define SR_CODE_SECTION(fn)
 #define SR_NOUNROLL
+#define SR_ITER(n)
 #endif
 
-#define CH_MAGIC      0x43483042u          /* "CH0B" */
+#define CH_MAGIC      0x43483043u          /* "CH0C" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -192,8 +205,8 @@ typedef struct {
     float hpx, hpy, l1, l2, m1, m2;        /* DC blocker, 2-pole low-pass (TDF-II)    */
     float e2, ef;                          /* input power followers, ~9 ms and ~0.5 ms */
     int   onset;                           /* blocks left since a fast attack         */
-    int   wp;
-    float ring[CH_RING];
+    int   wp;                              /* newest sample; it is also at wp + CH_RING */
+    float ring[2 * CH_RING];               /* doubled, so t blocks ago is ring[wp + t], no wrap */
     float dm[CH_MAXLAG + 2];               /* running mean of the squared difference per lag */
     float cand;                            /* candidate note, octaves                 */
     int   stable, hold;                    /* blocks the candidate held; left to sing */
@@ -215,17 +228,23 @@ typedef struct {
     float tilt[4];
     float nlp[4];                          /* breath noise low-pass per section       */
     float ic1[12], ic2[12];                /* 4 sections x 3 formants                 */
+    float a1[12], a2[12], a3[12], gk[12];  /* their coefficients (one section per block) */
+    float nc[4], tl[4], nr[4];             /* breath low-pass, darkness, 1 / sqrt(nc) */
+    float fb[4];                           /* note (base) they were computed for      */
+    unsigned int actm;                     /* sections that sang last block           */
     float pw, pa;                          /* choir power, asked power                */
     float wsm;                             /* smoothed vowel blend (-1 after a clear) */
     float gn;                              /* voice gain (1 after a clear)            */
     /* ---- kept by ch_clear ---- */
     float cc[CH_MAXLAG + 2];               /* running mean's coefficient, 1 / (2 lag) */
+    float vtab[12];                        /* vowel_par of vowels vta, vtb            */
+    int   vta, vtb;                        /* -1 after ch_init: none yet              */
+    int   rr;                              /* section whose formants are due          */
     float note;                            /* accepted note, octaves (log2 Hz)        */
     float base;                            /* note after Glide                        */
     float drone;                           /* first note of the phrase (Chord DRONE)  */
     int   vw;                              /* VOWL: vowel being sung, 0..4            */
     float lph;                             /* movement phase at the last block        */
-    float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block         */
     /* singers */
     float sph[CH_NS], vph[CH_NS], drift[CH_NS];
     unsigned int rng;
@@ -233,6 +252,7 @@ typedef struct {
     float lfo_ph;                          /* movement phase, 0..1                    */
     ZtSync zt;                             /* MIDI transport (zmt.h)                  */
     int   was_off;
+    float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block (last: cold) */
 } ChState;
 
 typedef struct {
@@ -263,7 +283,7 @@ static inline float sr_knob(float raw, float def_ui, float inv_max)
     return clamp01(ui * inv_max);
 }
 
-/* 1/x for x > 0: exponent trick, then three Newton steps (no divide) */
+/* 1/x for x > 0: exponent trick, then two Newton steps (no divide; error < 7e-6) */
 SR_ALWAYS_INLINE(ch_recip)
 static inline float ch_recip(float x)
 {
@@ -272,7 +292,6 @@ static inline float ch_recip(float x)
     c.f = x;
     c.u = 0x7EF311C3u - c.u;
     y = c.f;
-    y = y * (2.0f - x * y);
     y = y * (2.0f - x * y);
     y = y * (2.0f - x * y);
     return y;
@@ -431,9 +450,9 @@ static inline unsigned int chord_word(int c)
 SR_ALWAYS_INLINE(ch_clear)
 static inline void ch_clear(ChState *s)
 {
-    unsigned char *p = (unsigned char *)&s->hpx;
+    unsigned int *p = (unsigned int *)&s->hpx;   /* every field is 4 bytes */
     SR_NOUNROLL
-    while (p < (unsigned char *)&s->wsm) *p++ = 0;
+    while (p < (unsigned int *)&s->wsm) *p++ = 0u;
     s->wsm = -1.0f; s->gn = 1.0f;
 }
 
@@ -444,6 +463,7 @@ static inline void ch_init(ChState *s)
     ch_clear(s);
     s->note = 7.78f; s->base = 7.78f; s->drone = 7.78f;  /* 220 Hz until a note is heard */
     s->vw = 0; s->lph = 0.0f;
+    s->vta = -1; s->vtb = -1; s->rr = 0;
     SR_NOUNROLL
     for (i = 0; i < CH_MAXLAG + 2; i++) {
         float w = 2.0f * (float)i;
@@ -525,28 +545,33 @@ static inline float ch_dip(float y0, float y1, float y2)
 SR_ALWAYS_INLINE(ch_process)
 static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 {
-    float inc[CH_NS], iinc[CH_NS], sg[CH_NS], ka[CH_NS], sa[CH_NS];
+    float inc[CH_NS], iinc[CH_NS], sa[CH_NS];
     int   sec[CH_NS];
-    float a1[12], a2[12], a3[12], gk[12];
-    float tl[4], ns[4], nc[4], vt[12];
+    float ns[4], vt[6], nz8[8], sx[8], wet8[8];
     int   act[4];
-    unsigned int cw, tw;
-    int   i, j, n, b, nsec, best, ln, lh, va, vb, cd, tail;
-    float v, h, y, cum, cn, qb, qn, tgt, w, wv, nrm, lvl, p1, p2, pw = 0.0f, pa, uu, ve;
+    unsigned int cw, tw, am;
+    int   i, j, n, b, nsec, best, ln, lh, va, vb, cd, tail, quiet;
+    float v, h, y, cum, cn, qb, qn, tgt, w, wv, nrm, lvl, pw, pa, uu, ve, amax;
 
     /* ---- tracker: this block's input, low-passed and averaged to one sample ---- */
-    v = 0.0f;
-    SR_NOUNROLL
-    for (i = 0; i < 8; i++) {
-        float in = buf[i];
-        h = in - s->hpx + 0.995f * s->hpy;           /* DC blocker */
-        s->hpx = in; s->hpy = h;
-        y = 0.004603998f * h + s->l1;                /* 2-pole low-pass at 1 kHz (TDF-II) */
-        s->l1 = 0.009207997f * h + 1.7990964f * y + s->l2;
-        s->l2 = 0.004603998f * h - 0.8175124f * y;
-        v += y;
-        s->e2 += 0.0025f * (in * in - s->e2);         /* ~9 ms power follower */
-        s->ef += 0.05f * (in * in - s->ef);           /* ~0.5 ms */
+    {
+        float hx = s->hpx, hy = s->hpy, l1 = s->l1, l2 = s->l2, e2 = s->e2, ef = s->ef;
+        v = 0.0f;
+        SR_NOUNROLL
+        SR_ITER(8)
+        for (i = 0; i < 8; i++) {
+            float in = buf[i];
+            h = in - hx + 0.995f * hy;               /* DC blocker */
+            hx = in; hy = h;
+            y = 0.004603998f * h + l1;               /* 2-pole low-pass at 1 kHz (TDF-II) */
+            l1 = 0.009207997f * h + 1.7990964f * y + l2;
+            l2 = 0.004603998f * h - 0.8175124f * y;
+            v += y;
+            e2 += 0.0025f * (in * in - e2);          /* ~9 ms power follower */
+            ef += 0.05f * (in * in - ef);            /* ~0.5 ms */
+        }
+        /* no denormal flush: the C674x FPU reads and writes denormals as zero */
+        s->hpx = hx; s->hpy = hy; s->l1 = l1; s->l2 = l2; s->e2 = e2; s->ef = ef;
     }
     if (s->age < CH_YOUNG) s->age++;
     if (s->ef > 4.0f * s->e2 && s->ef > 1e-6f) { s->onset = CH_ONSET; s->fresh = CH_ONSET; s->age = 0; s->kept = 0; s->syl = 0; }   /* a fast attack: a new note */
@@ -555,28 +580,43 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     /* a decay tail: 15 dB under the note's peak with no new attack. The input's own noise
      * and hum take over down there, so the note sung is kept (no note changes) */
     tail = (s->e2 < CH_TAIL * s->epk && s->fresh <= 0);
-    if (s->hpy < 1e-20f && s->hpy > -1e-20f) s->hpy = 0.0f;
-    if (s->l1 < 1e-20f && s->l1 > -1e-20f) s->l1 = 0.0f;
-    if (s->l2 < 1e-20f && s->l2 > -1e-20f) s->l2 = 0.0f;
     v *= 0.125f;
-    s->wp = (s->wp + 1) & CH_RMASK;
+    s->wp = (s->wp - 1) & CH_RMASK;                  /* newest first */
     s->ring[s->wp] = v;
-    cum = 0.0f; best = 0; p1 = 1e30f; p2 = 1e30f; cn = 0.0f; qb = 1.0f;
+    s->ring[s->wp + CH_RING] = v;
     ln = (int)(ch_exp2(CH_LOG2_FD - s->note) + 0.5f);    /* lag of the note being sung */
-    SR_NOUNROLL
-    for (n = 1; n <= CH_MAXLAG; n++) {
-        float e = v - s->ring[(s->wp - n) & CH_RMASK], d, c = s->cc[n];
-        if (s->onset > 0) c += c;                    /* a new note: forget the old one twice as fast */
-        d = s->dm[n] + c * (e * e - s->dm[n]);
-        s->dm[n] = d;
-        /* lag n-1 is a dip: is its bottom (by a parabola) under the threshold? */
-        if (best == 0 && n > CH_MINLAG && p1 <= p2 && p1 <= d) {
-            h = ch_dip(p2, p1, d);
-            if (h * (float)(n - 1) < CH_THR * cum) { best = n - 1; qb = h * (float)best * ch_recip(cum); }
+    /* Two branch-free loops the compiler can software-pipeline: the running means, then
+     * the search (the first dip under the threshold, by selects) and their sums */
+    {
+        float *restrict dm = s->dm;
+        const float *restrict cc = s->cc;
+        const float *restrict x = s->ring + s->wp;   /* x[t]: t blocks ago */
+        float ck = (s->onset > 0) ? 2.0f : 1.0f;     /* a new note: forget the old one twice as fast */
+        SR_NOUNROLL
+        SR_ITER(CH_MAXLAG)
+        for (n = 1; n <= CH_MAXLAG; n++) {
+            float e = v - x[n], c = cc[n] * ck;
+            dm[n] += c * (e * e - dm[n]);
         }
-        cum += d;
-        if (n == ln) cn = cum;
-        p2 = p1; p1 = d;
+    }
+    {
+        const float *restrict dm = s->dm;
+        float p1 = 1e30f, p2 = 1e30f, fn = 0.0f, hb = 0.0f, cb = 1.0f;
+        cum = 0.0f; best = 0; cn = 0.0f;
+        SR_NOUNROLL
+        SR_ITER(CH_MAXLAG)
+        for (n = 1; n <= CH_MAXLAG; n++) {
+            /* lag n-1 is a dip: is its bottom (by a parabola) under the threshold? */
+            float d = dm[n], hh = ch_dip(p2, p1, d);
+            int   ok = (best == 0) & (n > CH_MINLAG) & (p1 <= p2) & (p1 <= d) & (hh * fn < CH_THR * cum);
+            best = ok ? n - 1 : best;
+            hb = ok ? hh : hb;
+            cb = ok ? cum : cb;
+            cum += d;
+            cn = (n == ln) ? cum : cn;
+            p2 = p1; p1 = d; fn += 1.0f;
+        }
+        qb = best ? hb * (float)best * ch_recip(cb) : 1.0f;
     }
     /* the note being sung no longer fits the input at all: a new note played legato (no
      * attack in the level). Treat it as an attack, and hush the voice until the new note is
@@ -709,12 +749,16 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     nsec = (int)((cw >> 12) & 7u);
     nrm  = ch_rsqrt((float)P->size);
     tw   = chord_word(P->chord);
-    cd   = (int)ch_recip(P->lfo_inc);                  /* CANON: blocks per Pace cycle */
+    h    = ch_recip(P->lfo_inc);                       /* CANON: blocks per Pace cycle */
+    cd   = (int)(h * (2.0f - P->lfo_inc * h));         /* (a third Newton step: whole blocks) */
     if (cd > CH_CMASK / 3) cd = CH_CMASK / 3;
+    act[0] = 0; act[1] = 0; act[2] = 0; act[3] = 0;
+    ns[0] = 0.0f; ns[1] = 0.0f; ns[2] = 0.0f; ns[3] = 0.0f;
+    amax = 0.0f;
     j = 0;
     SR_NOUNROLL
     for (i = 0; i < CH_NS; i++) {
-        float det, oc, vib, hz, sp, bse, lv;
+        float det, oc, vib, hz, sp, bse, lv, sg, ka;
         int   q = (int)((cw >> (j + j)) & 3u), r = (nsec > 1) ? j : i;
         j++; if (j >= nsec) j = 0;
         sec[i] = (i < P->size) ? q : -1;
@@ -733,32 +777,39 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         oc  = (float)(q - 1) + (float)((tw >> (5 * i)) & 31u) * 0.083333336f;
         s->vph[i] += ((q == 0) ? 4.6f : (q == 1) ? 5.2f : (q == 2) ? 5.6f : 6.0f) * (1.0f + 0.03f * (float)i) * CH_BLK_HZ;
         if (s->vph[i] >= 1.0f) s->vph[i] -= 1.0f;
-        vib = P->vibc * s->vibon * sine_of(s->vph[i]);
+        vib = 0.0f;                                  /* MONKS: no vibrato, no sine */
+        if (P->vibc != 0.0f) vib = P->vibc * s->vibon * sine_of(s->vph[i]);
         w   = bse + oc + (det * sp + 3.0f * s->drift[i]) * 0.00083333f + vib;
         if (w > 12.1f) w = 12.1f;                    /* 4.4 kHz */
         hz  = ch_exp2(w);
         inc[i]  = hz * CH_INC_HZ;
         iinc[i] = ch_recip(inc[i]);
-        sg[i] = ch_exp2(CH_TILT * (7.78136f - w));      /* equal loudness over the range */
-        ka[i] = (i == 0) ? 1.0f : 0.25f - 0.03f * (float)i;   /* the extra singers come in a little late */
-        s->amp[i] += ka[i] * (lv - s->amp[i]);
-        sa[i] = sg[i] * s->amp[i] * s->env;
+        sg  = ch_exp2(CH_TILT * (7.78136f - w));       /* equal loudness over the range */
+        ka  = (i == 0) ? 1.0f : 0.25f - 0.03f * (float)i;   /* the extra singers come in a little late */
+        s->amp[i] += ka * (lv - s->amp[i]);
+        sa[i] = sg * s->amp[i] * s->env;
+        act[q]++;
+        ns[q] += sg * s->amp[i];                     /* breath follows the singers' level */
+        if (s->amp[i] > amax) amax = s->amp[i];
     }
 
-    /* ---- formants, once per block for the sections that sing ---- */
-    SR_NOUNROLL
-    for (j = 0; j < 12; j++) {                         /* vowel va then vb: 3 Hz, 3 levels */
-        n = (j < 6) ? j : j - 6;
-        vt[j] = vowel_par(n, (j < 6) ? va : vb);
+    /* ---- formants: one section's coefficients per block in turn (each every 4 blocks,
+     * ~0.7 ms), a section that just came in at once; the vowel table only on a change ---- */
+    if (va != s->vta || vb != s->vtb) {
+        SR_NOUNROLL
+        for (j = 0; j < 12; j++) {                     /* vowel va then vb: 3 Hz, 3 levels */
+            n = (j < 6) ? j : j - 6;
+            s->vtab[j] = vowel_par(n, (j < 6) ? va : vb);
+        }
+        s->vta = va; s->vtb = vb;
     }
     SR_NOUNROLL
-    for (j = 0; j < 6; j++) vt[j] += wv * (vt[j + 6] - vt[j]);
+    for (j = 0; j < 6; j++) vt[j] = s->vtab[j] + wv * (s->vtab[j + 6] - s->vtab[j]);
+    s->rr = (s->rr + 1) & 3;
+    am = 0u;
     SR_NOUNROLL
     for (b = 0; b < 4; b++) {
         float th, wd, f0, lo;
-        act[b] = 0; ns[b] = 0.0f;
-        SR_NOUNROLL
-        for (i = 0; i < P->size; i++) if (sec[i] == b) { act[b]++; ns[b] += sg[i] * s->amp[i]; }
         if (!act[b]) {
             SR_NOUNROLL
             for (j = 0; j < 3; j++) { s->ic1[b * 3 + j] = 0.0f; s->ic2[b * 3 + j] = 0.0f; }
@@ -768,80 +819,165 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         /* breath: follows the singers' own level (pitch scaling included), so it sits at the
          * same depth under the voice on every note; summed singers grow by sqrt(count) */
         ns[b] *= P->breath * ch_rsqrt((float)act[b]) * ((b == 0) ? 0.6f : (b == 1) ? 0.8f : (b == 2) ? 1.0f : 1.1f);
-        f0 = ch_exp2(s->base + (float)(b - 1));          /* the section's fundamental */
-        nc[b] = 2.0f * 6.2831853f * CH_INC_HZ * f0;   /* noise low-pass at 2 x f0 */
-        if (nc[b] > 0.9f) nc[b] = 0.9f;
-        ns[b] *= ch_rsqrt(nc[b]);                    /* the low-pass takes ~sqrt(nc) of the power */
-        th = (b == 0) ? 0.78f : (b == 1) ? 1.0f : (b == 2) ? 1.17f : 1.35f;
-        wd = (b == 0) ? 0.8f : (b == 1) ? 1.0f : (b == 2) ? 1.15f : 1.3f;
-        tl[b] = P->bright * ((b == 0) ? 0.3f : (b == 1) ? 0.4f : (b == 2) ? 0.5f : 0.55f);
-        lo = 1.1f * f0;
-        SR_NOUNROLL
-        for (j = 0; j < 3; j++) {
-            float hz = vt[j] * th, kk, g, t2, aa;
-            float bw = ((j == 0) ? 70.0f : (j == 1) ? 90.0f : 120.0f) * wd;
-            /* a high voice lifts its formants above its note and opens them up, as a soprano
-             * does: otherwise the bands fall between its few harmonics and the voice fades */
-            if (hz < lo) hz = lo;
-            lo = 1.4f * hz;
-            if (bw < 0.5f * f0) bw = 0.5f * f0;
-            if (hz > 5000.0f) hz = 5000.0f;
-            kk = bw * ch_recip(hz);
-            g  = hz * CH_PI_FS;
-            t2 = g * g;
-            g  = g * (1.0f + t2 * (0.33333334f + t2 * (0.13333334f + t2 * 0.053968254f)));
-            aa = ch_recip(1.0f + g * (g + kk));
-            a1[b * 3 + j] = aa;
-            a2[b * 3 + j] = g * aa;
-            a3[b * 3 + j] = g * g * aa;
-            gk[b * 3 + j] = kk * vt[j + 3] * hz * 0.002f * CH_LEVEL * nrm;
-        }
-    }
-
-    /* ---- the sample loop ---- */
-    SR_NOUNROLL
-    for (n = 0; n < 8; n++) {
-        float in = buf[n], wet = 0.0f, sum[4], nz;
-        sum[0] = 0.0f; sum[1] = 0.0f; sum[2] = 0.0f; sum[3] = 0.0f;
-        s->rng = s->rng * 1664525u + 1013904223u;
-        nz = (float)(int)(s->rng >> 9) * 2.3841858e-7f - 1.0f;   /* white noise -1..1 */
-        SR_NOUNROLL
-        for (i = 0; i < CH_NS; i++) {
-            float p, sw, t;
-            if (sec[i] < 0) continue;
-            p = s->sph[i] + inc[i];
-            if (p >= 1.0f) p -= 1.0f;
-            s->sph[i] = p;
-            sw = p + p - 1.0f;                       /* saw, minus PolyBLEP at the wrap */
-            if (p < inc[i]) { t = p * iinc[i]; sw -= t + t - t * t - 1.0f; }
-            else if (p > 1.0f - inc[i]) { t = (p - 1.0f) * iinc[i]; sw -= t * t + t + t + 1.0f; }
-            sum[sec[i]] += sw * sa[i];
-        }
-        SR_NOUNROLL
-        for (b = 0; b < 4; b++) {
-            float u;
-            if (!act[b]) continue;
-            s->nlp[b] += nc[b] * (nz - s->nlp[b]);    /* noise falling like a saw above 2 f0 */
-            u = sum[b] + s->nlp[b] * ns[b];
-            s->tilt[b] += tl[b] * (u - s->tilt[b]);  /* darker for the big singers */
-            u = s->tilt[b];
+        am |= 1u << b;
+        h = s->base - s->fb[b];
+        if (b == s->rr || !(s->actm & (1u << b)) || h * h > 0.0069f) {   /* due, new, or the note moved > 1 semitone */
+            s->fb[b] = s->base;
+            f0 = ch_exp2(s->base + (float)(b - 1));      /* the section's fundamental */
+            h  = 2.0f * 6.2831853f * CH_INC_HZ * f0;     /* noise low-pass at 2 x f0 */
+            if (h > 0.9f) h = 0.9f;
+            s->nc[b] = h;
+            s->nr[b] = ch_rsqrt(h);                      /* the low-pass takes ~sqrt(nc) of the power */
+            th = (b == 0) ? 0.78f : (b == 1) ? 1.0f : (b == 2) ? 1.17f : 1.35f;
+            wd = (b == 0) ? 0.8f : (b == 1) ? 1.0f : (b == 2) ? 1.15f : 1.3f;
+            s->tl[b] = P->bright * ((b == 0) ? 0.3f : (b == 1) ? 0.4f : (b == 2) ? 0.5f : 0.55f);
+            lo = 1.1f * f0;
             SR_NOUNROLL
             for (j = 0; j < 3; j++) {
-                int   q = b * 3 + j;
-                float v3 = u - s->ic2[q];
-                float v1 = a1[q] * s->ic1[q] + a2[q] * v3;
-                float v2 = s->ic2[q] + a2[q] * s->ic1[q] + a3[q] * v3;
-                s->ic1[q] = v1 + v1 - s->ic1[q];
-                s->ic2[q] = v2 + v2 - s->ic2[q];
-                wet += gk[q] * v1;
+                float hz = vt[j] * th, kk, g, t2, aa;
+                float bw = ((j == 0) ? 70.0f : (j == 1) ? 90.0f : 120.0f) * wd;
+                /* a high voice lifts its formants above its note and opens them up, as a soprano
+                 * does: otherwise the bands fall between its few harmonics and the voice fades */
+                if (hz < lo) hz = lo;
+                lo = 1.4f * hz;
+                if (bw < 0.5f * f0) bw = 0.5f * f0;
+                if (hz > 5000.0f) hz = 5000.0f;
+                kk = bw * ch_recip(hz);
+                g  = hz * CH_PI_FS;
+                t2 = g * g;
+                g  = g * (1.0f + t2 * (0.33333334f + t2 * (0.13333334f + t2 * 0.053968254f)));
+                aa = ch_recip(1.0f + g * (g + kk));
+                s->a1[b * 3 + j] = aa;
+                s->a2[b * 3 + j] = g * aa;
+                s->a3[b * 3 + j] = g * g * aa;
+                s->gk[b * 3 + j] = kk * vt[j + 3] * hz * 0.002f * CH_LEVEL * nrm;
             }
         }
-        pw += wet * wet;
-        wet *= s->gn;
-        if (wet > 1.5f) wet = 1.0f;                    /* soft ceiling at +-1 (cubic) */
-        else if (wet < -1.5f) wet = -1.0f;
-        else wet = wet - 0.14814815f * wet * wet * wet;
-        buf[n] = P->dryG * in + P->wetG * wet;
+        ns[b] *= s->nr[b];
+    }
+    s->actm = am;
+
+    /* ---- a silent choir (every singer under -140 dB, the filters rung out): no voice work.
+     * The filters are cleared (a step under -140 dB) and the saws keep their phase ---- */
+    quiet = 0;
+    if (amax < 1e-7f) {
+        h = s->tilt[0] * s->tilt[0] + s->tilt[1] * s->tilt[1] + s->tilt[2] * s->tilt[2] + s->tilt[3] * s->tilt[3];
+        SR_NOUNROLL
+        SR_ITER(12)
+        for (j = 0; j < 12; j++) h += s->ic1[j] * s->ic1[j] + s->ic2[j] * s->ic2[j];
+        quiet = (h < 1e-14f);
+    }
+
+    /* ---- the sample loops: the noise; each section's singers into sx, then its noise,
+     * darkness and 3 formants over the 8 samples into wet8; then clipper and Mix ---- */
+    {
+        unsigned int rg = s->rng;
+        SR_NOUNROLL
+        SR_ITER(8)
+        for (n = 0; n < 8; n++) {
+            rg = rg * 1664525u + 1013904223u;
+            nz8[n] = (float)(int)(rg >> 9) * 2.3841858e-7f - 1.0f;   /* white noise -1..1 */
+            wet8[n] = 0.0f;
+        }
+        s->rng = rg;
+    }
+    if (quiet) {
+        SR_NOUNROLL
+        for (j = 0; j < 12; j++) { s->ic1[j] = 0.0f; s->ic2[j] = 0.0f; }
+        s->tilt[0] = 0.0f; s->tilt[1] = 0.0f; s->tilt[2] = 0.0f; s->tilt[3] = 0.0f;
+        SR_NOUNROLL
+        for (b = 0; b < 4; b++) {                    /* the breath low-pass runs on: same noise later */
+            float nl = s->nlp[b], cl = s->nc[b];
+            if (!act[b]) continue;
+            SR_NOUNROLL
+            SR_ITER(8)
+            for (n = 0; n < 8; n++) nl += cl * (nz8[n] - nl);
+            s->nlp[b] = nl;
+        }
+        SR_NOUNROLL
+        for (i = 0; i < CH_NS; i++) {
+            if (sec[i] < 0) continue;
+            h = s->sph[i] + 8.0f * inc[i];           /* inc < 0.1: one wrap at most */
+            s->sph[i] = (h >= 1.0f) ? h - 1.0f : h;
+        }
+    } else {
+        SR_NOUNROLL
+        for (b = 0; b < 4; b++) {
+            if (!act[b]) continue;
+            SR_NOUNROLL
+            SR_ITER(8)
+            for (n = 0; n < 8; n++) sx[n] = 0.0f;
+            SR_NOUNROLL
+            for (i = 0; i < CH_NS; i++) {
+                float p, ic, ii, ga, top;
+                if (sec[i] != b) continue;
+                p = s->sph[i]; ic = inc[i]; ii = iinc[i]; ga = sa[i]; top = 1.0f - ic;
+                SR_NOUNROLL
+                SR_ITER(8)
+                for (n = 0; n < 8; n++) {
+                    float sw, t, bl;
+                    p += ic;
+                    p = (p >= 1.0f) ? p - 1.0f : p;
+                    sw = p + p - 1.0f;                   /* saw, minus PolyBLEP at the wrap */
+                    t  = (p < ic) ? p * ii : (p - 1.0f) * ii;
+                    bl = (p < ic) ? t + t - t * t - 1.0f : (p > top) ? t * t + t + t + 1.0f : 0.0f;
+                    sx[n] += (sw - bl) * ga;
+                }
+                s->sph[i] = p;
+            }
+            {
+                int   q = b * 3;
+                float nl = s->nlp[b], tt = s->tilt[b], cl = s->nc[b], cs = ns[b], ct = s->tl[b];
+                float x0 = s->ic1[q], x1 = s->ic1[q + 1], x2 = s->ic1[q + 2];
+                float z0 = s->ic2[q], z1 = s->ic2[q + 1], z2 = s->ic2[q + 2];
+                float a10 = s->a1[q], a11 = s->a1[q + 1], a12 = s->a1[q + 2];
+                float a20 = s->a2[q], a21 = s->a2[q + 1], a22 = s->a2[q + 2];
+                float a30 = s->a3[q], a31 = s->a3[q + 1], a32 = s->a3[q + 2];
+                float g0 = s->gk[q], g1 = s->gk[q + 1], g2 = s->gk[q + 2];
+                SR_NOUNROLL
+                SR_ITER(8)
+                for (n = 0; n < 8; n++) {
+                    float u, v1, v2, v3, o;
+                    nl += cl * (nz8[n] - nl);            /* noise falling like a saw above 2 f0 */
+                    u = sx[n] + nl * cs;
+                    tt += ct * (u - tt);                 /* darker for the big singers */
+                    v3 = tt - z0;                        /* band 0 (state-variable band-pass) */
+                    v1 = a10 * x0 + a20 * v3;
+                    v2 = z0 + a20 * x0 + a30 * v3;
+                    x0 = v1 + v1 - x0;
+                    z0 = v2 + v2 - z0;
+                    o  = wet8[n] + g0 * v1;
+                    v3 = tt - z1;                        /* band 1 */
+                    v1 = a11 * x1 + a21 * v3;
+                    v2 = z1 + a21 * x1 + a31 * v3;
+                    x1 = v1 + v1 - x1;
+                    z1 = v2 + v2 - z1;
+                    o += g1 * v1;
+                    v3 = tt - z2;                        /* band 2 */
+                    v1 = a12 * x2 + a22 * v3;
+                    v2 = z2 + a22 * x2 + a32 * v3;
+                    x2 = v1 + v1 - x2;
+                    z2 = v2 + v2 - z2;
+                    wet8[n] = o + g2 * v1;
+                }
+                s->nlp[b] = nl; s->tilt[b] = tt;
+                s->ic1[q] = x0; s->ic1[q + 1] = x1; s->ic1[q + 2] = x2;
+                s->ic2[q] = z0; s->ic2[q + 1] = z1; s->ic2[q + 2] = z2;
+            }
+        }
+    }
+    {
+        float gn = s->gn, dg = P->dryG, wg = P->wetG;
+        pw = 0.0f;
+        SR_NOUNROLL
+        SR_ITER(8)
+        for (n = 0; n < 8; n++) {
+            float o = wet8[n];
+            pw += o * o;
+            o *= gn;
+            o = (o > 1.5f) ? 1.0f : (o < -1.5f) ? -1.0f : o - 0.14814815f * o * o * o;   /* soft ceiling at +-1 (cubic) */
+            buf[n] = dg * buf[n] + wg * o;
+        }
     }
     /* Voice gain: how loud the formants make our own saw at this pitch and vowel, measured as
      * choir power over the power the singers were asked for. Both follow the input's envelope
@@ -863,11 +999,6 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
             if (h < 0.2f) h = 0.2f;
             s->gn += 0.01f * (h - s->gn);
         }
-    }
-    SR_NOUNROLL
-    for (j = 0; j < 12; j++) {                         /* denormals */
-        if (s->ic1[j] < 1e-20f && s->ic1[j] > -1e-20f) s->ic1[j] = 0.0f;
-        if (s->ic2[j] < 1e-20f && s->ic2[j] > -1e-20f) s->ic2[j] = 0.0f;
     }
 }
 
