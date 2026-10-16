@@ -44,6 +44,31 @@ Measured on Luca's MS-70CDR with the M0 probe firmware (zoom-ms-midistomp
 - **Declared DSP cost.** Raise each effect's cost to match what it really uses,
   measured with the probe. Choral declares 20, but measures like about 140.
 
+## Measured cost (M0 probe, MS-70CDR, Luca's settings, 2026-10-16)
+
+Cycles per 8-sample block, all effects on, playing. Every pack effect declares
+a DSP cost of 20 today. Stock effects measure about 100 cycles per cost unit,
+so the real cost is about the average divided by 100.
+
+| Effect | Average | Max | Real cost |
+|---|---|---|---|
+| WaveFold | 1,399 | 4,009 | ~14 |
+| EuGate | 2,284 | 4,845 | ~23 |
+| Sweep | 2,459 | 6,732 | ~25 |
+| GridDly | 2,643 | 5,081 | ~26 |
+| Scrub | 2,765 | 5,589 | ~28 |
+| Breather | 2,863 | 6,353 | ~29 |
+| DualShft | 3,672 | 8,148 | ~37 |
+| DubSiren | 3,807 | 6,958 | ~38 |
+| S.GN_L | 4,705 | 10,050 | ~47 |
+| DirtBox | 5,421 | 10,643 | ~54 |
+| **Choral** | **24,100** | **29,702** | **~240** (15,494 in an earlier patch) |
+
+A block has about 54,000 cycles at most. Choral alone can take more than half
+of that, and its real cost exceeds the whole stock DSP limit (225). The
+numbers depend on settings (engine, model, voices); these are one setting
+each.
+
 ## Per effect: first pass (for Luca to confirm)
 
 | Effect | Today | Suggested | Notes |
