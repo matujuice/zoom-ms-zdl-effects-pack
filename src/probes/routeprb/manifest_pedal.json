@@ -1,0 +1,44 @@
+{
+  "effect_name": "RoutePrb",
+  "comment": "RoutePrb - hardware probe for MIDISTOMP Mixer Mode (firmware M2), not a release effect. Its Bus knob tells the mixer which bus its slot runs on (PRE, A, B, POST). Each copy can add its own test sound and colour (filter, short delay) so the buses can be told apart by ear, with or without a guitar.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_, same as the other probes.",
+  "fxid": 500,
+  "fxid_comment": "Probe id, after DryPrb (498) and TempoPrb (499); the pack uses 480..497.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Bus",
+      "max": 3,
+      "default": 0,
+      "comment": "Which mixer bus this slot runs on: PRE, A, B, POST. Only does something on the MIDISTOMP Mixer Mode firmware, in Parallel mode."
+    },
+    {
+      "name": "Src",
+      "max": 2,
+      "default": 0,
+      "comment": "Test sound added to the input: OFF, SAW (110 Hz) or NOISE (a burst every second). For testing without a guitar."
+    },
+    {
+      "name": "Tone",
+      "max": 100,
+      "default": 100,
+      "comment": "Low-pass filter on the whole signal. 100 = open, lower = darker."
+    },
+    {
+      "name": "Delay",
+      "max": 100,
+      "default": 0,
+      "comment": "Short delay mixed in at half level, 0 to 100 ms. 0 = off."
+    },
+    {
+      "name": "Level",
+      "max": 100,
+      "default": 50,
+      "comment": "Level of the test sound."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_RoutePrb",
+  "audio_nop": false
+}
