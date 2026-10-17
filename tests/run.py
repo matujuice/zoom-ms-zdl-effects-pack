@@ -15,6 +15,16 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT / "build"))
 sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
 from manifest_params import write_param_header  # noqa: E402
+from linker import RT_PCR_S21, _patch_pcr_s21, _reloc_addend  # noqa: E402
+
+# Linker checks (both froze the pedal when wrong). Branches count from the 32-byte fetch packet:
+code = bytearray(4)
+_patch_pcr_s21(code, 0, 0x100, 0x1C)
+assert int.from_bytes(code, "little") >> 7 == 0x40, "PCR_S21 not counted from the fetch packet"
+# A call from .text (sec 2) into .audio (sec 1) targets the symbol itself; within .text it adds the offset.
+rel = {'type': RT_PCR_S21, 'offset': 0x48, 'addend': 0x48}
+assert _reloc_addend(rel, 1, 2) == 0 and _reloc_addend(rel, 2, 2) == 0x48 and _reloc_addend(rel, 0, 2) == 0
+print("linker checks: ok")
 
 GEN = HERE / "_gen"
 GEN.mkdir(exist_ok=True)

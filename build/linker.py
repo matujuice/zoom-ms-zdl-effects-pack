@@ -517,6 +517,26 @@ def _patch_pcr_s21(code: bytearray, offset: int, target_addr: int, instr_addr: i
     struct.pack_into('<I', code, offset, instr)
 
 
+def _reloc_addend(rel: dict, sym_shndx: int, sec_idx: int) -> int:
+    """Addend to add to the symbol's final address for one .obj relocation."""
+    # cl6x's intra-section CALLP placeholders encode a displacement
+    # measured from the SECTION START, not from the instruction. We
+    # compensate by adding the instruction's section offset (stored
+    # in rel['addend'] for PCR_S21). For externally-resolved symbols
+    # like __c6xabi_call_stub, sym_addr is the final VA and no such
+    # compensation is needed — applying it lands the call past the
+    # real target by exactly the instruction's section offset, which
+    # froze the pedal on InitProbe stage 2.
+    if sym_shndx == 0:
+        return 0
+    if rel['type'] == RT_PCR_S21 and sym_shndx != sec_idx:
+        # Call into the other section (Choral's .text labels -> ch_word_text in .audio):
+        # cl6x's addend is the instruction offset again (displacement 0), so the
+        # target is the symbol itself. Adding it froze the pedal on the edit screen.
+        return rel['addend'] - rel['offset']
+    return rel['addend']
+
+
 # ---------------------------------------------------------------------------
 # String table builder
 # ---------------------------------------------------------------------------
@@ -1440,20 +1460,7 @@ def link(cfg: LinkerConfig) -> None:
                 )
             if rel['sym_idx'] not in sym_addr:
                 raise RuntimeError(f"unresolved relocation for {sym['name']!r} at {sec['name']}+0x{offset:X}")
-            # cl6x's intra-section CALLP placeholders encode a displacement
-            # measured from the SECTION START, not from the instruction. We
-            # compensate by adding the instruction's section offset (stored
-            # in rel['addend'] for PCR_S21). For externally-resolved symbols
-            # like __c6xabi_call_stub, sym_addr is the final VA and no such
-            # compensation is needed — applying it lands the call past the
-            # real target by exactly the instruction's section offset, which
-            # froze the pedal on InitProbe stage 2.
-            addend = rel['addend'] if sym['shndx'] != 0 else 0
-            if rtype == RT_PCR_S21 and sym['shndx'] not in (0, sec['idx']):
-                # Call into the other section (Choral's .text labels -> ch_word_text in .audio):
-                # cl6x's addend is the instruction offset again (displacement 0), so the
-                # target is the symbol itself. Adding it froze the pedal on the edit screen.
-                addend = rel['addend'] - offset
+            addend = _reloc_addend(rel, sym['shndx'], sec['idx'])
             target = sym_addr[rel['sym_idx']] + addend
             file_off = base_off + offset
             if rtype == RT_ABS_L16:

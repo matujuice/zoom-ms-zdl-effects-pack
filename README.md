@@ -46,7 +46,7 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly`. Probes (`tempoprb`, `dryprb`) are built only when named.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly`. Probes (`tempoprb`, `dryprb`, `routeprb`) are built only when named.
 
 ## Repository layout
 

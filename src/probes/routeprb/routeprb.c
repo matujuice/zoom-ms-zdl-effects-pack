@@ -144,8 +144,6 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
 }
 
 /* ---- pedal entry point ---------------------------------------------------- */
-#ifndef ROUTEPRB_HOST_TEST
-
 #include "routeprb_params.h"
 
 #ifndef ROUTEPRB_AUDIO_FUNC
@@ -200,5 +198,3 @@ void ROUTEPRB_AUDIO_FUNC(unsigned int *ctx)
              0.005f * (float)(int)rp_ui(params[ROUTEPRB_LEVEL_SLOT], ROUTEPRB_LEVEL_UI_DEFAULT, 100u),
              fxBuf);
 }
-
-#endif /* ROUTEPRB_HOST_TEST */
