@@ -60,5 +60,5 @@
   ],
   "audio_func_name": "Fx_DLY_Formant",
   "audio_nop": false,
-  "dsp_cost": 150.0
+  "dsp_cost": 122.0
 }

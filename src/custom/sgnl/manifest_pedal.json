@@ -68,5 +68,5 @@
   "audio_func_name": "Fx_DLY_SGNL",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 59.0
+  "dsp_cost": 18.0
 }

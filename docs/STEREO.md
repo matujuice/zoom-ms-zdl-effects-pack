@@ -76,6 +76,32 @@ DualShft 46, DubSiren 48, S.GN_L 59, DirtBox 68. **Choral 150 for now**: its hon
 over the firmware's 225 limit and it could not load at all; it gets optimized, then
 re-measured. The Looper is not measured yet and keeps 20.
 
+## Re-measured after the CPU cuts (M0 probe v2, MS-60B, 2026-10-17)
+
+One effect per patch (the other five slots GAIN), default knobs, P3 CYC after 10 s of
+playing. Net = AVG minus the 228 cycles an empty GAIN slot reads (probe overhead). MAX is not
+used: empty slots already peak at 1,800-2,500 from interrupts. Calibrated on two stock
+effects: Hall (27.4) 2,408 net = 88 cycles per unit, Delay (15.6) 953 net = 61; 75 used.
+Declared cost = net / 75 + 25 % for heavier settings, rounded up.
+
+| Effect | AVG | Net | Net / 75 | Declared |
+|---|---|---|---|---|
+| Choral | 7,532 | 7,304 | 97.4 | 122 |
+| DualShft | 2,832 | 2,604 | 34.7 | 44 |
+| DirtBox | 2,486 | 2,258 | 30.1 | 38 |
+| Looper | 2,122 | 1,894 | 25.3 | 32 |
+| GridDly | 2,082 | 1,854 | 24.7 | 31 |
+| WaveFold | 1,729 | 1,501 | 20.0 | 26 |
+| DubSiren | 1,720 | 1,492 | 19.9 | 25 |
+| S.GN_L | 1,304 | 1,076 | 14.3 | 18 |
+| Breather | 1,278 | 1,050 | 14.0 | 18 |
+| Sweep | 1,193 | 965 | 12.9 | 17 |
+| Scrub | 1,013 | 785 | 10.5 | 14 |
+| EuGate | 516 | 288 | 3.8 | 5 |
+
+These replace the 2026-10-16 costs above. Default knobs only: DirtBox's model, Choral's size and
+chord, the Looper overdubbing can cost more.
+
 ## Per effect: first pass (for Luca to confirm)
 
 | Effect | Today | Suggested | Notes |

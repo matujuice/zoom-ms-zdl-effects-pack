@@ -61,5 +61,5 @@
       "comment": "When switched off: ON = the repeats ring out and decay like the factory delays (nothing new goes in), OFF = they stop at once. The input passes untouched either way. Default ON."
     }
   ],
-  "dsp_cost": 33.0
+  "dsp_cost": 31.0
 }

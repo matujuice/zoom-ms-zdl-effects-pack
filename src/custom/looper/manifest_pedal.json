@@ -42,5 +42,6 @@
       "default": 7,
       "comment": "Cycle length for When CYCLE, shown as 1 to 16 bars. Length 4 with CYCLE 8 records bars 1-4 of the next 8-bar phrase. Default 8 bars."
     }
-  ]
+  ],
+  "dsp_cost": 32.0
 }
