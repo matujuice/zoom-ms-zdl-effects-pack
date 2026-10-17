@@ -509,7 +509,7 @@ def _patch_abs_h16(code: bytearray, offset: int, value: int) -> None:
 
 
 def _patch_pcr_s21(code: bytearray, offset: int, target_addr: int, instr_addr: int) -> None:
-    delta = (target_addr - instr_addr) >> 2          # PC-relative, in instruction words
+    delta = (target_addr - (instr_addr & ~31)) >> 2  # from the fetch packet (PCE1), in words
     if delta < -(1 << 20) or delta >= (1 << 20):
         raise ValueError(f"PCR_S21 displacement {delta:#x} out of range")
     instr = struct.unpack_from('<I', code, offset)[0]
@@ -1138,6 +1138,15 @@ def link(cfg: LinkerConfig) -> None:
         if sym['name'] and sym['shndx'] in section_va:
             obj_symbol_va[sym['name']] = section_va[sym['shndx']] + sym['value']
 
+    # The audio function need not be first in .audio (helpers placed before it, e.g. DirtBox
+    # ab_prepare, Choral): the descriptor must point at the function itself, or the pedal runs
+    # the helper as the audio routine and freezes on load.
+    audio_sym = [sym for sym in obj.symbols
+                 if sym['name'] == cfg.audio_func_name and sym['shndx'] == audio_sec['idx']]
+    if not audio_sym and not cfg.audio_nop:
+        raise ValueError(f"{cfg.audio_func_name} not found in .audio")
+    AUDIO_ENTRY_VA = TEXT_VA + AUDIO_OFF + (audio_sym[0]['value'] if audio_sym else 0)
+
     # =====================================================================
     # Build .const layout
     # =====================================================================
@@ -1244,7 +1253,7 @@ def link(cfg: LinkerConfig) -> None:
 
     desc_bytes, desc_relocs = _build_descriptor(
         effect_name=cfg.display_name or cfg.effect_name,
-        audio_func_va=TEXT_VA + AUDIO_OFF,
+        audio_func_va=AUDIO_ENTRY_VA,
         init_func_va=init_va,
         onf_func_va=onf_va,
         knob_edit_vas=knob_edit_vas,
@@ -1440,6 +1449,11 @@ def link(cfg: LinkerConfig) -> None:
             # real target by exactly the instruction's section offset, which
             # froze the pedal on InitProbe stage 2.
             addend = rel['addend'] if sym['shndx'] != 0 else 0
+            if rtype == RT_PCR_S21 and sym['shndx'] not in (0, sec['idx']):
+                # Call into the other section (Choral's .text labels -> ch_word_text in .audio):
+                # cl6x's addend is the instruction offset again (displacement 0), so the
+                # target is the symbol itself. Adding it froze the pedal on the edit screen.
+                addend = rel['addend'] - offset
             target = sym_addr[rel['sym_idx']] + addend
             file_off = base_off + offset
             if rtype == RT_ABS_L16:
@@ -1533,7 +1547,7 @@ def link(cfg: LinkerConfig) -> None:
         return idx
 
     # 1. Start with relocation targets (unnamed locals)
-    abi_vas = {TEXT_VA + AUDIO_OFF, DESC_TABLE_VA, INFO_VA, PIC_VA, KNOB_INFO_VA, TEXT_VA + NOP_RET_OFF, onf_va, init_va}
+    abi_vas = {AUDIO_ENTRY_VA, DESC_TABLE_VA, INFO_VA, PIC_VA, KNOB_INFO_VA, TEXT_VA + NOP_RET_OFF, onf_va, init_va}
     abi_vas.update(knob_edit_vas)
 
     for tgt in sorted(dynsym_targets.keys()):
@@ -1552,7 +1566,7 @@ def link(cfg: LinkerConfig) -> None:
     for i in reversed(range(len(knob_edit_vas))):
         p_name = cfg.params[i].name.replace(' ', '')
         _add_sym(f"{cfg.audio_func_name}_{p_name}_edit", knob_edit_vas[i], 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
-    _add_sym(cfg.audio_func_name, TEXT_VA + AUDIO_OFF, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
+    _add_sym(cfg.audio_func_name, AUDIO_ENTRY_VA, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym(f"{cfg.audio_func_name}_init", init_va, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym(f"{cfg.audio_func_name}_onf", onf_va, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym('effectTypeImageInfo', INFO_VA, len(info_bytes), STT_OBJECT, STB_LOCAL, STV_HIDDEN)
@@ -1813,7 +1827,7 @@ def link(cfg: LinkerConfig) -> None:
     output = bytearray(zdl_hdr) + elf
 
     if cfg.audio_nop:
-        audio_file_off = len(zdl_hdr) + text_file_off + AUDIO_OFF
+        audio_file_off = len(zdl_hdr) + text_file_off + AUDIO_ENTRY_VA - TEXT_VA
         output[audio_file_off:audio_file_off + len(_NOP_RETURN)] = _NOP_RETURN
 
     Path(cfg.output_path).write_bytes(output)
