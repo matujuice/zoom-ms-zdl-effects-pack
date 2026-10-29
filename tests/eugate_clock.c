@@ -1,6 +1,6 @@
 /* EuGate on the MOD firmware transport block: steps on the clock count, restarts on Start,
  * lands right when loaded mid-song, runs free after Stop at the tempo word, runs at 120 BPM
- * when the block is missing or always mid-write. */
+ * when the block is mid-write, follows the stock patch TEMPO when it is missing. */
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -93,6 +93,17 @@ int main(void)
     { unsigned int i0; long n; block(); i0 = idx(); for (n = 0; n < 44100 / 8; n++) block();
       e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
       CHECK(e == 8u, "no block: expected 8 16ths in 1 s, got %u", e); }
+
+    /* 7: no block, stock patch TEMPO 90 (tap tempo) -> 6 16ths per second; out of range -> 120 */
+    zt_tempo_host = 90;
+    { unsigned int i0; long n; block(); i0 = idx(); for (n = 0; n < 44100 / 8; n++) block();
+      e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
+      CHECK(e == 6u, "stock tempo 90: expected 6 16ths in 1 s, got %u", e); }
+    zt_tempo_host = 999;
+    { unsigned int i0; long n; block(); i0 = idx(); for (n = 0; n < 44100 / 8; n++) block();
+      e = idx() >= i0 ? idx() - i0 : idx() + 64u - i0;
+      CHECK(e == 8u, "stock tempo 999: expected 120 BPM, got %u 16ths", e); }
+    zt_tempo_host = 0;
 
     printf("%s\n", fails ? "eugate_clock: FAILED" : "eugate_clock: ok");
     return fails ? 1 : 0;

@@ -1,5 +1,5 @@
 /*
- * eugate.c - "EuGate": tempo-locked rhythmic gate (trance gate), mono
+ * eugate.c - "EuGate": tempo-locked rhythmic gate (trance gate), stereo
  *
  * Chops whatever goes in (synth pads, vocals, samples, drum machines) into a
  * rhythm. The rhythm is a EUCLIDEAN pattern of Steps (1..64) steps, every step a 16th
@@ -64,7 +64,7 @@
  *   the pattern, so MIDI Start restarts it at step 1, an EuGate loaded mid-song lands on the
  *   right step, and it can't drift. Between two clocks the phase moves on at the tempo but
  *   never past the next clock. After Stop (or no clock for 0.5 s) it runs free at the tempo
- *   from where it was. Without the MOD firmware it runs at 120 BPM.
+ *   from where it was. Without the MOD firmware it follows the stock patch tempo.
  *   The Steps knob carries pedal_flags 0x28 (the flag every stock tempo effect has on a knob),
  *   for the pedal's tap tempo button.
  */
@@ -249,9 +249,11 @@ static inline void ch_process(ChState *s, const ChParams *P, float *restrict buf
     while (pos >= steps) pos -= steps;               /* a shorter Steps than last block: wrap once here, */
     CH_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], a = in, target, end, gl;
+        float in = buf[i], inr = buf[i + 8], a = in, target, end, gl;
         unsigned int j, jn, hit, hitn, low, note, rst;
         a = (a < 0.0f) ? -a : a;
+        gl = (inr < 0.0f) ? -inr : inr;
+        a = (gl > a) ? gl : a;                       /* the louder side drives the sync detector */
         /* sync: a note after silence restarts the pattern */
         low  = (a < CH_QUIET_LVL);
         note = (a > CH_NOTE_LVL);
@@ -282,7 +284,8 @@ static inline void ch_process(ChState *s, const ChParams *P, float *restrict buf
         hitn &= ((end - pp) < gl);
         target = (hit && !hitn) ? 1.0f : 0.0f;
         g += c * (target - g);
-        buf[i] = dryG * in + wetG * (in * g);
+        buf[i] = dryG * in + wetG * (in * g);            /* one gate for both sides */
+        buf[i + 8] = dryG * inr + wetG * (inr * g);
     }
     if (g < 1e-15f && g > -1e-15f) g = 0.0f;
     s->pp = pp; s->g = g; s->pos = pos; s->quiet = quiet;
@@ -358,7 +361,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     ChState *s;
     ChParams P;
     float u[9], beats;
-    int i, run, start;
+    int run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -403,9 +406,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;
     }
-    ch_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    ch_process(s, &P, fxBuf, 8);                 /* stereo: L and R in place, one shared gate */
 }
 
 #endif /* EUGATE_HOST_TEST */

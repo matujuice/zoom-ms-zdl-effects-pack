@@ -1,0 +1,27 @@
+{
+  "effect_name": "LOUDER",
+  "comment": "LOUDER - a transparent look-ahead mastering limiter for the end of the chain (after MIX): it pushes the level up and holds it under a ceiling. Linked stereo (one gain from the louder side), about 1.5 ms look-ahead (the dry is delayed the same, so a part Mix never comb-filters), program-dependent release, a hard safety clip at the ceiling after Mix. Gain = push into the limiter; Ceil = ceiling; Rels = release (AUTO or 1-1000 ms); Style = CLEAN / PUNCH / LOUD (saturation before the limiter and how much transient gets through); Mix is dry/wet (parallel limiting).",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 481,
+  "fxid_comment": "480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep, 497 Looper (this pack). 481 is free in the stock list. Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {"name": "Gain", "max": 180, "default": 0,
+     "comment": "Push into the limiter, 0.0 to +18.0 dB in 0.1 dB steps. Default 0."},
+    {"name": "Ceil", "max": 60, "default": 59,
+     "comment": "Ceiling, -6.0 to 0.0 dB in 0.1 dB steps (0 = -6.0, 60 = 0.0). Nothing comes out above it, at any Mix. Default 59 = -0.1 dB."},
+    {"name": "Rels", "max": 60, "default": 0,
+     "comment": "Release. 0 = AUTO (program-dependent: a 30 ms stage for single peaks and a 250 ms stage for sustained level). 1..60 = 1 to 1000 ms on a log scale. Default AUTO."},
+    {"name": "Style", "max": 2, "default": 0,
+     "comment": "0 CLEAN: no saturation. 1 PUNCH: a little saturation, transients get through a little (the ceiling clip trims them). 2 LOUD: the most saturation, the densest. Never changes the release. Default CLEAN."},
+    {"name": "Mix", "max": 100, "default": 100,
+     "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. The dry is delayed like the wet (parallel limiting). The ceiling clip runs after Mix. Default 100."}
+  ],
+  "audio_func_name": "Fx_DLY_LOUDER",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 10.0,
+  "dsp_cost_comment": "Estimate (the spec says about 10): per sample two peak scans, 2 mults and a ramp, 4 ring accesses; per block a 9-value min, an 8-value mean and 1/x; re-measure on the pedal."
+}

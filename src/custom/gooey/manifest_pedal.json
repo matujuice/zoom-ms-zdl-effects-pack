@@ -1,0 +1,31 @@
+{
+  "effect_name": "Gooey",
+  "comment": "Gooey - an SSL G-bus style VCA mix-bus compressor. Linked stereo feed-forward detector (half peak, half RMS), soft knee, program-dependent AUTO release, a sidechain high-pass that only the detector hears, auto or fixed makeup, and a DJ-crossfade Mix for parallel compression. Thrsh at 0 bypasses it completely.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 501,
+  "fxid_comment": "480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GridDly, 496 Sweep, 497 Looper, 501 Gooey (this pack); probes 498-500. Check against the stock list (tools/effects_db.json) when it is available.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {"name": "Thrsh", "max": 40, "default": 40,
+     "comment": "Threshold, -40 to 0 dB in 1 dB steps (0 = -40, 40 = 0 dB). 40 = 0 dB = OFF: the effect is bypassed (no processing, no makeup). Default OFF."},
+    {"name": "Ratio", "max": 3, "default": 2,
+     "comment": "0 1.5:1, 1 2:1, 2 4:1, 3 10:1. Default 4:1."},
+    {"name": "Attck", "max": 5, "default": 4,
+     "comment": "Attack: 0 0.1 ms, 1 0.3, 2 1, 3 3, 4 10, 5 30 ms. Default 10 ms."},
+    {"name": "Rels", "max": 4, "default": 4,
+     "comment": "Release: 0 0.1 s, 1 0.3, 2 0.6, 3 1.2 s, 4 AUTO (program-dependent: 0.1 s after single peaks, up to 1.2 s after sustained reduction). Default AUTO."},
+    {"name": "MkUp", "max": 41, "default": 1,
+     "comment": "Makeup: 0 AUTO (adds back the average gain reduction), 1 OFF, 2..41 = +0.5 to +20.0 dB in 0.5 dB steps. Default OFF."},
+    {"name": "Mix", "max": 100, "default": 100,
+     "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50 (parallel compression). Default 100."},
+    {"name": "SC HP", "max": 20, "default": 0,
+     "comment": "Sidechain high-pass on the detector only (12 dB/oct, the audio is untouched): 0 OFF, 1..20 = 20 to 300 Hz on a log scale. Default OFF."}
+  ],
+  "audio_func_name": "Fx_DLY_Gooey",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 8.0,
+  "dsp_cost_comment": "Estimate (the spec says about 8): per sample a peak scan (plus 4 one-poles when SC HP is on) and 2 mults of gain; per block a sqrt, a log2 and an exp2. Bypassed it costs a compare. Re-measure on the pedal."
+}

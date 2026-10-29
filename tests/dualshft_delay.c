@@ -33,7 +33,7 @@ static long echo_at(int dly, int bpm)
         ds_prepare(s, &P, k);
         for (i = 0; i < 8; i++) buf[i] = 0.0f;
         if (s->clear_pos >= RING_SIZE && t0 == 0 && s->gA >= 1.0f) { t0 = t; buf[0] = 1.0f; }
-        ds_process(s, &P, buf, 8);
+        { float r[8]; for (int j = 0; j < 8; j++) r[j] = buf[j]; ds_process(s, &P, buf, r, 8); }
         if (t0) for (i = 0; i < 8; i++) if (fabsf(buf[i]) > best && t + i > t0) { best = fabsf(buf[i]); at = t + i - t0; }
     }
     free(s);

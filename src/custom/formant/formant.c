@@ -1,5 +1,6 @@
 /*
- * Choral - a choir that sings the note your synth plays (Zoom MultiStomp, custom ZDL, mono).
+ * Choral - a choir that sings the note your synth plays (Zoom MultiStomp, custom ZDL; the
+ * pitch tracker hears (L + R) / 2, the sections of the choir are spread across the stereo field by Width).
  * (Source folder and audio function keep the working name "Formant".)
  * Rewritten from the ground up on 2026-10-07 (Luca): the old Choral only filtered the input,
  * so it sounded different on every synth and its auto-level pumped and clicked. This one
@@ -126,7 +127,7 @@
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. Pace picks the note value of one
+ *   MOD firmware's transport block; the stock patch tempo without it. Pace picks the note value of one
  *   cycle of the movement; a new BPM only changes its speed. While the MIDI transport runs
  *   the movement's phase is placed on the clock count (beats since Start x Pace's cycles per
  *   beat; 96 beats hold whole cycles of every Pace), so MIDI Start restarts it on the
@@ -268,6 +269,7 @@ typedef struct {
     int   choir, size, chord, sing;
     int legato; float feel, glide_c, att, rel, vibc, breath, bright;
     float dryG, wetG;
+    float panL[4], panR[4];                /* Width: each section's gain on L and R (centre = 1) */
 } ChParams;
 
 SR_ALWAYS_INLINE(clamp01)
@@ -525,6 +527,16 @@ static inline void ch_prepare(ChParams *P, const float *k, float bpm)
     if (P->dryG > 1.0f) P->dryG = 1.0f;
     P->wetG = 2.0f * k[7];
     if (P->wetG > 1.0f) P->wetG = 1.0f;
+    {   /* Width 0..100: GIANT, MEN, WOMEN, KIDS sit at -0.9, -0.4, +0.4, +0.9 x Width, equal power
+         * (cos / sin of the angle), x sqrt 2 so that Width 0 gives 1 on both sides, as before */
+        int b;
+        SR_NOUNROLL
+        for (b = 0; b < 4; b++) { SR_NOSWP
+            float p01 = 0.5f + 0.5f * k[8] * ((b == 0) ? -0.9f : (b == 1) ? -0.4f : (b == 2) ? 0.4f : 0.9f);
+            P->panR[b] = 1.4142136f * sine_of(0.25f * p01);
+            P->panL[b] = 1.4142136f * sine_of(0.25f - 0.25f * p01);
+        }
+    }
 }
 
 /* the movement, once per block, also while switched off: on the clock while the MIDI
@@ -555,7 +567,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
 {
     float inc[CH_NS], iinc[CH_NS], sa[CH_NS];
     int   sec[CH_NS];
-    float ns[4], vt[6], nz8[8], sx[8], wet8[8];
+    float ns[4], vt[6], nz8[8], sx[8], wet8[8], wetR8[8], sec8[8];
     int   act[4];
     unsigned int cw, tw, am;
     int   i, j, n, b, nsec, best, ln, lh, va, vb, cd, tail, quiet;
@@ -568,7 +580,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         SR_NOUNROLL
         SR_ITER(8)
         for (i = 0; i < 8; i++) {
-            float in = buf[i];
+            float in = 0.5f * (buf[i] + buf[i + 8]);   /* the tracker hears (L + R) / 2 */
             h = in - hx + 0.995f * hy;               /* DC blocker */
             hx = in; hy = h;
             y = 0.004603998f * h + l1;               /* 2-pole low-pass at 1 kHz (TDF-II) */
@@ -885,7 +897,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         for (n = 0; n < 8; n++) {
             rg = rg * 1664525u + 1013904223u;
             nz8[n] = (float)(int)(rg >> 9) * 2.3841858e-7f - 1.0f;   /* white noise -1..1 */
-            wet8[n] = 0.0f;
+            wet8[n] = 0.0f; wetR8[n] = 0.0f;
         }
         s->rng = rg;
     }
@@ -954,7 +966,7 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
                     v2 = z0 + a20 * x0 + a30 * v3;
                     x0 = v1 + v1 - x0;
                     z0 = v2 + v2 - z0;
-                    o  = wet8[n] + g0 * v1;
+                    o  = g0 * v1;
                     v3 = tt - z1;                        /* band 1 */
                     v1 = a11 * x1 + a21 * v3;
                     v2 = z1 + a21 * x1 + a31 * v3;
@@ -966,11 +978,17 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
                     v2 = z2 + a22 * x2 + a32 * v3;
                     x2 = v1 + v1 - x2;
                     z2 = v2 + v2 - z2;
-                    wet8[n] = o + g2 * v1;
+                    sec8[n] = o + g2 * v1;
                 }
                 s->nlp[b] = nl; s->tilt[b] = tt;
                 s->ic1[q] = x0; s->ic1[q + 1] = x1; s->ic1[q + 2] = x2;
                 s->ic2[q] = z0; s->ic2[q + 1] = z1; s->ic2[q + 2] = z2;
+                {                                        /* this section onto L and R */
+                    float gl = P->panL[b], gr = P->panR[b];
+                    SR_NOUNROLL
+                    SR_ITER(8)
+                    for (n = 0; n < 8; n++) { wet8[n] += gl * sec8[n]; wetR8[n] += gr * sec8[n]; }
+                }
             }
         }
     }
@@ -980,11 +998,13 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
         SR_NOUNROLL
         SR_ITER(8)
         for (n = 0; n < 8; n++) {
-            float o = wet8[n];
-            pw += o * o;
-            o *= gn;
+            float o = wet8[n], oR = wetR8[n];
+            pw += 0.5f * (o * o + oR * oR);
+            o *= gn; oR *= gn;
             o = (o > 1.5f) ? 1.0f : (o < -1.5f) ? -1.0f : o - 0.14814815f * o * o * o;   /* soft ceiling at +-1 (cubic) */
+            oR = (oR > 1.5f) ? 1.0f : (oR < -1.5f) ? -1.0f : oR - 0.14814815f * oR * oR * oR;
             buf[n] = dg * buf[n] + wg * o;
+            buf[n + 8] = dg * buf[n + 8] + wg * oR;
         }
     }
     /* Voice gain: how loud the formants make our own saw at this pitch and vowel, measured as
@@ -1186,7 +1206,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ChState *s;
     ChParams P;
-    float k[8], bpm, beats;
+    float k[9], bpm, beats;
     int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -1217,6 +1237,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
                        : (i == 3) ? 0.09090909f : 0.01f);   /* 1 / each knob's max */
     }
 
+    k[8] = sr_knob(params[FORMANT_WIDTH_SLOT], (float)FORMANT_WIDTH_UI_DEFAULT, 0.01f);   /* Width */
     if (s->magic != CH_MAGIC) ch_init(s);
     bpm = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     ch_prepare(&P, k, bpm);
@@ -1227,10 +1248,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
         return;
     }
     if (s->was_off) { ch_clear(s); s->was_off = 0; }
-    ch_process(s, &P, fxBuf);                    /* mono: left half in place */
-
-    SR_NOUNROLL
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R */
+    ch_process(s, &P, fxBuf);                    /* L and R in place; tracks (L + R) / 2 */
 }
 
 #endif /* FORMANT_HOST_TEST */

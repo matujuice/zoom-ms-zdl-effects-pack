@@ -1,5 +1,5 @@
 /*
- * wavefold.c - "WaveFold": Buchla 259 style wavefolder, mono
+ * wavefold.c - "WaveFold": Buchla 259 style wavefolder, stereo dry / mono fold
  *
  * Based on the model in: F. Esqueda, H. Pontynen, V. Valimaki, J. D. Parker,
  * "Virtual Analog Buchla 259 Wavefolder", DAFx-2017 (Edinburgh).
@@ -22,11 +22,11 @@
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float
  * division, no libm, no switch, every helper forced inline, no calls.
  *
- * SIGNAL PATH (per sample), mono
+ * SIGNAL PATH (per sample); in = (L + R) / 2, the dry keeps L and R apart
  *   v = in * Drive + offset                 (clamped to +-8 V, like the op-amp rails)
  *   y = 5 v + sum of the five stages        (the transfer curve, see wf_fold)
  *   y -> DC blocker (y = x - x' + 0.9993 y') -> one-pole low-pass (Tone)
- *   wet = soft-ceiling(y * AutoLevel) * Level   out = dry/wet Mix
+ *   wet = soft-ceiling(y * AutoLevel) * Level   out L = dry L * dryG + wet, out R = dry R * dryG + wet
  *   (the ceiling keeps the matched wet signal inside +-1; the wet fades out when the
  *   input is silent so turning Symm never thumps)
  *
@@ -176,7 +176,7 @@ static inline void wf_prepare(WfParams *P, const float *k)
 }
 
 WF_ALWAYS_INLINE(wf_process)
-static inline void wf_process(WfState *s, const WfParams *P, float *restrict buf, int n)
+static inline void wf_process(WfState *s, const WfParams *P, float *restrict buf, float *restrict bufR, int n)
 {
     int i;
     float g = s->g_s, b = s->b_s, lp = s->lp, dcx = s->dcx, dcy = s->dcy;
@@ -187,7 +187,7 @@ static inline void wf_process(WfState *s, const WfParams *P, float *restrict buf
     const float dryG = P->dryG, wetLv = P->wetG * P->level;
     WF_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], v, y, d, w, t, kc;
+        float inL = buf[i], inR = bufR[i], in = 0.5f * (inL + inR), v, y, d, w, t, kc;
         g += WF_SMOOTH * (gain - g);
         b += WF_SMOOTH * (bias - b);
         v = in * g + b;
@@ -211,7 +211,9 @@ static inline void wf_process(WfState *s, const WfParams *P, float *restrict buf
         w = (w < -1.5f) ? -1.5f : w;
         w = w - 0.148148f * w * w * w;
         gate += 0.01f * (((ein > 1e-7f) ? 1.0f : 0.0f) - gate);
-        buf[i] = dryG * in + wetLv * (w * gate);
+        w = wetLv * (w * gate);                          /* the same wet on both sides */
+        buf[i] = dryG * inL + w;
+        bufR[i] = dryG * inR + w;
     }
     if (lp < 1e-15f && lp > -1e-15f) lp = 0.0f;          /* denormals */
     if (dcy < 1e-15f && dcy > -1e-15f) dcy = 0.0f;
@@ -263,7 +265,6 @@ void WAVEFOLD_AUDIO_FUNC(unsigned int *ctx)
     WfState *s;
     WfParams P;
     float k[5];
-    int i;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -292,9 +293,7 @@ void WAVEFOLD_AUDIO_FUNC(unsigned int *ctx)
 
     wf_prepare(&P, k);
     if (s->magic != WF_MAGIC) wf_init(s, &P);
-    wf_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    wf_process(s, &P, fxBuf, fxBuf + 8, 8);      /* reads (L + R) / 2, writes L and R in place */
 }
 
 #endif /* WAVEFOLD_HOST_TEST */

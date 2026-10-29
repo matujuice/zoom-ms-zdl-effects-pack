@@ -7,7 +7,7 @@
 #include "../src/custom/dubsiren/dubsiren.c"
 
 static SirenState *s;
-static float k[9], buf[8];
+static float k[9], buf[16];
 static long t;                         /* samples since the start */
 static int gate;
 static int run, start;           /* transport, as zt_update gives it */

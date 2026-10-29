@@ -1,5 +1,5 @@
 /*
- * breather.c - "Breather": tempo-synced pump with a small built-in reverb, mono
+ * breather.c - "Breather": tempo-synced pump with a small built-in reverb, stereo
  *
  * For synth pads, basses, percussion and drum machines (tekno at ~160 BPM). On every
  * Div (a 16th up to a bar) the pump moves a level: your sound, the reverb, both, or
@@ -49,7 +49,7 @@
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. While the MIDI transport runs the
+ *   MOD firmware's transport block; the stock patch tempo without it. While the MIDI transport runs the
  *   bar clock is placed on the clock count (bp = beats since Start, mod 4), so MIDI Start
  *   restarts the pump on beat 1 and it stays on the grid; after Stop it runs on at the
  *   last tempo. Switched off, the input passes untouched but the bar clock keeps
@@ -91,7 +91,7 @@
 #define PU_CODE_SECTION(fn)
 #endif
 
-#define PU_MAGIC        0x50553035u          /* "PU05" */
+#define PU_MAGIC        0x50553036u          /* "PU06" */
 #define PU_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define PU_BAR          4.0f                 /* beats per bar                    */
 #define PU_SLEW         0.0113f              /* gain slew per sample, ~2 ms      */
@@ -114,18 +114,20 @@
 #define PU_C3 (PU_C2 + PU_C2_LEN)
 #define PU_A0 (PU_C3 + PU_C3_LEN)
 #define PU_A1 (PU_A0 + PU_A0_LEN)
-#define PU_REV_LEN (PU_A1 + PU_A1_LEN)       /* 7084 floats */
+#define PU_REV_LEN (PU_A1 + PU_A1_LEN)       /* 7084 floats: the left set */
+#define PU_SPREAD 23                         /* the right set's lines are this much longer (width) */
+#define PU_REV_TOT (2 * PU_REV_LEN + 6 * PU_SPREAD)   /* both sets, the right one after the left */
 
 typedef struct {
     unsigned int magic;
     float bp;              /* beats into the bar, 0..4                       */
     float gD, gT, gS;      /* smoothed gains: dry, reverb out, reverb in     */
-    float f[4];            /* comb damping filter states                     */
-    int   ix[6];           /* line positions: 4 combs, then 2 allpasses      */
-    int   clear_pos;       /* lazy clear progress, PU_REV_LEN when done      */
+    float f[8];            /* comb damping filter states, L then R           */
+    int   ix[12];          /* line positions: 4 combs, then 2 allpasses, L then R */
+    int   clear_pos;       /* lazy clear progress, PU_REV_TOT when done      */
     unsigned int was_off;  /* set while the footswitch is off                */
     ZtSync zt;             /* MIDI transport (zmt.h)                         */
-    float rev[PU_REV_LEN]; /* reverb delay lines                             */
+    float rev[PU_REV_TOT]; /* reverb delay lines                             */
 } PuState;
 
 typedef struct {
@@ -176,8 +178,8 @@ static inline void pu_init(PuState *s)
 {
     int i;
     s->bp = 0.0f; s->gD = 1.0f; s->gT = 1.0f; s->gS = 1.0f;
-    for (i = 0; i < 4; i++) s->f[i] = 0.0f;
-    for (i = 0; i < 6; i++) s->ix[i] = 0;
+    for (i = 0; i < 8; i++) s->f[i] = 0.0f;
+    for (i = 0; i < 12; i++) s->ix[i] = 0;
     s->clear_pos = 0;
     s->was_off = 0u;
     zt_init(&s->zt);
@@ -189,13 +191,13 @@ PU_ALWAYS_INLINE(pu_clear_step)
 static inline void pu_clear_step(PuState *s)
 {
     int i, end;
-    if (s->clear_pos >= PU_REV_LEN) return;
+    if (s->clear_pos >= PU_REV_TOT) return;
     end = s->clear_pos + PU_CLEAR_CHUNK;
-    if (end > PU_REV_LEN) end = PU_REV_LEN;
+    if (end > PU_REV_TOT) end = PU_REV_TOT;
     for (i = s->clear_pos; i < end; i++) s->rev[i] = 0.0f;
     s->clear_pos = end;
-    if (end >= PU_REV_LEN) {
-        s->f[0] = 0.0f; s->f[1] = 0.0f; s->f[2] = 0.0f; s->f[3] = 0.0f;
+    if (end >= PU_REV_TOT) {
+        for (i = 0; i < 8; i++) s->f[i] = 0.0f;
     }
 }
 
@@ -242,15 +244,16 @@ static inline float pu_env(const PuParams *P, float p)
 PU_ALWAYS_INLINE(pu_process)
 static inline void pu_process(PuState *s, const PuParams *P, float *buf, int n)
 {
-    int i, c;
+    int i, c, ch;
     float bp = s->bp, gD = s->gD, gT = s->gT, gS = s->gS;
-    float gDa[8], gTa[8], ri[8], rv[8];
-    int ready = (s->clear_pos >= PU_REV_LEN);
+    float gDa[8], gTa[8], gSa[8], ri[8], rv[8];
+    int ready = (s->clear_pos >= PU_REV_TOT);
     float *r = s->rev;
+    int cb[6], cl[6];
     (void)n;                                         /* always 8 */
     PU_EIGHT
-    for (i = 0; i < 8; i++) {
-        float in = buf[i], x, p, e;
+    for (i = 0; i < 8; i++) {                        /* one envelope for both sides */
+        float p, e, x;
         bp += P->inc;
         bp = (bp >= PU_BAR) ? bp - PU_BAR : bp;
         x = (bp - P->shift + PU_BAR) * P->invDiv;
@@ -259,78 +262,84 @@ static inline void pu_process(PuState *s, const PuParams *P, float *buf, int n)
         gD += PU_SLEW * (1.0f + P->mD * e - gD);
         gT += PU_SLEW * (1.0f + P->mT * e - gT);
         gS += PU_SLEW * (1.0f + P->mS * e - gS);
-        gDa[i] = gD; gTa[i] = gT;
-        ri[i] = in * gS * P->revIn;
-        rv[i] = 0.0f;
+        gDa[i] = gD; gTa[i] = gT; gSa[i] = gS * P->revIn;
     }
-    if (ready) {
-        int cb[6], cl[6];
-        cb[0] = PU_C0; cb[1] = PU_C1; cb[2] = PU_C2; cb[3] = PU_C3; cb[4] = PU_A0; cb[5] = PU_A1;
-        cl[0] = PU_C0_LEN; cl[1] = PU_C1_LEN; cl[2] = PU_C2_LEN; cl[3] = PU_C3_LEN;
-        cl[4] = PU_A0_LEN; cl[5] = PU_A1_LEN;
-        /* Lines: each 8-sample run is one straight stretch unless it crosses the end of the
-         * line (once in ~200 blocks), which takes the slow copy. Parallel combs add into rv. */
-        PU_NOUNROLL
-        for (c = 0; c < 4; c++) {
-            int len = cl[c], idx = s->ix[c];
-            float f = s->f[c];
-            float * restrict q = r + cb[c] + idx;
-            if (idx + 8 <= len) {
-                PU_EIGHT
-                for (i = 0; i < 8; i++) {
-                    float y = q[i];
-                    f = y * P->damp1 + f * P->damp;
-                    q[i] = ri[i] + f * P->fb;
-                    rv[i] += y;
+    cb[0] = PU_C0; cb[1] = PU_C1; cb[2] = PU_C2; cb[3] = PU_C3; cb[4] = PU_A0; cb[5] = PU_A1;
+    cl[0] = PU_C0_LEN; cl[1] = PU_C1_LEN; cl[2] = PU_C2_LEN; cl[3] = PU_C3_LEN;
+    cl[4] = PU_A0_LEN; cl[5] = PU_A1_LEN;
+    PU_NOUNROLL
+    for (ch = 0; ch < 2; ch++) {                     /* L, then R: own reverb set (R lines a bit longer) */
+        float *bf = buf + 8 * ch;
+        int sp = ch * PU_SPREAD;
+        PU_EIGHT
+        for (i = 0; i < 8; i++) { ri[i] = bf[i] * gSa[i]; rv[i] = 0.0f; }
+        if (ready) {
+            /* Lines: each 8-sample run is one straight stretch unless it crosses the end of the
+             * line (once in ~200 blocks), which takes the slow copy. Parallel combs add into rv. */
+            PU_NOUNROLL
+            for (c = 0; c < 4; c++) {
+                int len = cl[c] + sp, bs = cb[c] + ch * (PU_REV_LEN + PU_SPREAD * c);
+                int idx = s->ix[ch * 6 + c];
+                float f = s->f[ch * 4 + c];
+                float * restrict q = r + bs + idx;
+                if (idx + 8 <= len) {
+                    PU_EIGHT
+                    for (i = 0; i < 8; i++) {
+                        float y = q[i];
+                        f = y * P->damp1 + f * P->damp;
+                        q[i] = ri[i] + f * P->fb;
+                        rv[i] += y;
+                    }
+                } else {
+                    for (i = 0; i < 8; i++) {
+                        int k = idx + i;
+                        float y, *w;
+                        if (k >= len) k -= len;
+                        w = r + bs + k;
+                        y = *w;
+                        f = y * P->damp1 + f * P->damp;
+                        *w = ri[i] + f * P->fb;
+                        rv[i] += y;
+                    }
                 }
-            } else {
-                for (i = 0; i < 8; i++) {
-                    int k = idx + i;
-                    float y, *w;
-                    if (k >= len) k -= len;
-                    w = r + cb[c] + k;
-                    y = *w;
-                    f = y * P->damp1 + f * P->damp;
-                    *w = ri[i] + f * P->fb;
-                    rv[i] += y;
-                }
+                idx += 8;
+                if (idx >= len) idx -= len;
+                s->ix[ch * 6 + c] = idx;
+                s->f[ch * 4 + c] = f;
             }
-            idx += 8;
-            if (idx >= len) idx -= len;
-            s->ix[c] = idx;
-            s->f[c] = f;
-        }
-        /* two allpasses in series, in place on rv */
-        PU_NOUNROLL
-        for (c = 4; c < 6; c++) {
-            int len = cl[c], idx = s->ix[c];
-            float * restrict q = r + cb[c] + idx;
-            if (idx + 8 <= len) {
-                PU_EIGHT
-                for (i = 0; i < 8; i++) {
-                    float b = q[i];
-                    q[i] = rv[i] + b * PU_AP_G;
-                    rv[i] = b - rv[i];
+            /* two allpasses in series, in place on rv */
+            PU_NOUNROLL
+            for (c = 4; c < 6; c++) {
+                int len = cl[c] + sp, bs = cb[c] + ch * (PU_REV_LEN + PU_SPREAD * c);
+                int idx = s->ix[ch * 6 + c];
+                float * restrict q = r + bs + idx;
+                if (idx + 8 <= len) {
+                    PU_EIGHT
+                    for (i = 0; i < 8; i++) {
+                        float b = q[i];
+                        q[i] = rv[i] + b * PU_AP_G;
+                        rv[i] = b - rv[i];
+                    }
+                } else {
+                    for (i = 0; i < 8; i++) {
+                        int k = idx + i;
+                        float b, *w;
+                        if (k >= len) k -= len;
+                        w = r + bs + k;
+                        b = *w;
+                        *w = rv[i] + b * PU_AP_G;
+                        rv[i] = b - rv[i];
+                    }
                 }
-            } else {
-                for (i = 0; i < 8; i++) {
-                    int k = idx + i;
-                    float b, *w;
-                    if (k >= len) k -= len;
-                    w = r + cb[c] + k;
-                    b = *w;
-                    *w = rv[i] + b * PU_AP_G;
-                    rv[i] = b - rv[i];
-                }
+                idx += 8;
+                if (idx >= len) idx -= len;
+                s->ix[ch * 6 + c] = idx;
             }
-            idx += 8;
-            if (idx >= len) idx -= len;
-            s->ix[c] = idx;
         }
+        PU_EIGHT
+        for (i = 0; i < 8; i++) bf[i] = bf[i] * gDa[i] + rv[i] * P->verbG * gTa[i];
     }
-    PU_EIGHT
-    for (i = 0; i < 8; i++) buf[i] = buf[i] * gDa[i] + rv[i] * P->verbG * gTa[i];
-    for (c = 0; c < 4; c++) {
+    for (c = 0; c < 8; c++) {
         float f = s->f[c];
         if (f < 1e-15f && f > -1e-15f) f = 0.0f;
         s->f[c] = f;
@@ -414,7 +423,7 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     PuParams P;
     float u[9];
     float beats, t;
-    int i, run, start;
+    int run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -466,9 +475,7 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
         s->was_off = 0u;
     }
     pu_clear_step(s);
-    pu_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    pu_process(s, &P, fxBuf, 8);                 /* stereo: L and R in place, own reverb each */
 }
 
 #endif /* BREATHER_HOST_TEST */

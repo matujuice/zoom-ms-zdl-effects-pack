@@ -16,7 +16,7 @@ int main(void)
 {
     int fails = 0;
     SgParams P;
-    float b[8];
+    float b[16] = {0};
 
     /* 1. clean line: Loss 0, Codec 0, Jump 0, HIFI, Mix 100 -> output equals input */
     {

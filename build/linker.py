@@ -1425,6 +1425,13 @@ def link(cfg: LinkerConfig) -> None:
     if coe_sym_name in undefined:
         sym_addr[undefined[coe_sym_name]] = COE_VA
 
+    # Same for the cover picture (the RLE blob at the start of .const): an effect
+    # that declares `extern unsigned char _<audio>_Pic[]` gets its runtime address
+    # (live meter on the cover, docs/NEW-EFFECTS.md "Readouts").
+    pic_sym_name = f"_{cfg.audio_func_name}_Pic"
+    if pic_sym_name in undefined:
+        sym_addr[undefined[pic_sym_name]] = PIC_VA
+
     # Compiler-emitted register save/restore helpers — resolve to the
     # spliced LineSel copies if present.  Without these, any moderately
     # complex audio function (anything that spills to stack) would link

@@ -1,5 +1,5 @@
 /*
- * sweep.c - "Sweep": one bar-synced swept effect, three engines on one LFO, mono
+ * sweep.c - "Sweep": one bar-synced swept effect, three engines on one LFO, stereo
  *
  * A phaser, a flanger and a resonant filter in one effect, picked by the Type knob. All
  * three are swept by the same tempo-locked LFO, so a sweep can last from a 1/32 note up
@@ -46,7 +46,7 @@
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. It sets the speed of a synced Rate.
+ *   MOD firmware's transport block; the stock patch tempo without it. It sets the speed of a synced Rate.
  *   While the MIDI transport runs, a synced Rate places the LFO on the clock count: phase =
  *   (clocks since Start mod the sweep length) / length, lengths counted in clocks (a 32nd note
  *   is 3), so MIDI Start restarts the sweep on the downbeat and even a 5 or 7 bar sweep stays
@@ -75,7 +75,7 @@
 #define SW_STAGE_LOOP()
 #endif
 
-#define SW_MAGIC        0x53573034u          /* "SW04" */
+#define SW_MAGIC        0x53573035u          /* "SW05" */
 #define SW_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define SW_HZ_TO_INC    2.2675737e-5f        /* 1 / 44100                       */
 #define SW_RING         1024u                /* flanger ring, a power of two    */
@@ -93,12 +93,12 @@ typedef struct {
     unsigned int was_off;
     unsigned int w;        /* ring write index                                       */
     float d;               /* current flanger delay, samples                          */
-    float fbs;             /* damped feedback signal                                  */
-    float ic1, ic2;        /* state variable filter memory                            */
-    float ap[8];           /* all-pass memory                                         */
+    float fbs[2];          /* damped feedback signal, L and R                         */
+    float ic1[2], ic2[2];  /* state variable filter memory, L and R                   */
+    float ap[16];          /* all-pass memory, L then R                               */
     unsigned int cr, cL, cclk;   /* clock phase cache: (cclk - 1) mod cL = cr, cL = 0: none */
     ZtSync zt;             /* MIDI transport (zmt.h)                                  */
-    float ring[SW_RING];
+    float ring[2 * SW_RING];   /* L then R, same delay */
 } SwState;
 
 typedef struct {
@@ -249,29 +249,30 @@ static inline float sw_clock_phase(SwState *s, unsigned int len, float inv_len)
     return ((float)(int)r + z->sub) * inv_len * 0.33333334f;
 }
 
-SW_ALWAYS_INLINE(sw_init)
-static inline void sw_init(SwState *s)
-{
-    unsigned int i;
-    s->ph = 0.0f; s->rp = 0.0f; s->r0 = 0.0f; s->r1 = 0.7f; s->lfo = 0.0f;
-    s->rng = 0x2545F491u; s->was_off = 0u; s->cL = 0u; s->cr = 0u; s->cclk = 0u;
-    s->w = 0u; s->d = 100.0f; s->fbs = 0.0f; s->ic1 = 0.0f; s->ic2 = 0.0f;
-    for (i = 0u; i < 8u; i++) s->ap[i] = 0.0f;
-    for (i = 0u; i < SW_RING; i++) s->ring[i] = 0.0f;
-    zt_init(&s->zt);
-    s->magic = SW_MAGIC;
-}
-
 /* Clear the filter memory when the effect is switched on again (the ring may keep old audio:
  * the longest read is 12 ms). */
 SW_ALWAYS_INLINE(sw_wake)
 static inline void sw_wake(SwState *s)
 {
     unsigned int i;
-    s->fbs = 0.0f; s->ic1 = 0.0f; s->ic2 = 0.0f;
-    for (i = 0u; i < 8u; i++) s->ap[i] = 0.0f;
+    s->fbs[0] = s->fbs[1] = 0.0f; s->ic1[0] = s->ic1[1] = 0.0f; s->ic2[0] = s->ic2[1] = 0.0f;
+    for (i = 0u; i < 16u; i++) s->ap[i] = 0.0f;
     s->was_off = 0u;
 }
+
+SW_ALWAYS_INLINE(sw_init)
+static inline void sw_init(SwState *s)
+{
+    unsigned int i;
+    s->ph = 0.0f; s->rp = 0.0f; s->r0 = 0.0f; s->r1 = 0.7f; s->lfo = 0.0f;
+    s->rng = 0x2545F491u; s->was_off = 0u; s->cL = 0u; s->cr = 0u; s->cclk = 0u;
+    s->w = 0u; s->d = 100.0f;
+    sw_wake(s);
+    for (i = 0u; i < 2u * SW_RING; i++) s->ring[i] = 0.0f;
+    zt_init(&s->zt);
+    s->magic = SW_MAGIC;
+}
+
 
 /* The LFO value for the block that starts at the current phase. */
 SW_ALWAYS_INLINE(sw_lfo)
@@ -367,16 +368,18 @@ static inline void sw_prepare(SwState *s, SwParams *P, const float *u, float bpm
 SW_ALWAYS_INLINE(sw_phaser)
 static inline void sw_phaser(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
-    int i;
+    int i, c;
     unsigned int k;
-    float *restrict ap = s->ap;                    /* restrict: buf can't alias the state */
     const float fb = P->fb, c1 = P->c1, c2 = P->c2, G2 = 2.0f * P->G, cd = P->cd, ncd = P->ncd;
     const float dryG = P->dryG, wg = P->wg;
     const unsigned int stages = P->stages;
-    float fbs = s->fbs;
+    for (c = 0; c < 2; c++) {                      /* L, then R: own state, same coefficients */
+    float *restrict ap = s->ap + 8 * c;            /* restrict: buf can't alias the state */
+    float *restrict bf = buf + 8 * c;
+    float fbs = s->fbs[c];
     SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], y = in + fb * fbs;
+        float in = bf[i], y = in + fb * fbs;
         SW_STAGE_LOOP()
         for (k = 0u; k < stages; k++) {
             float a = ap[k];
@@ -384,25 +387,29 @@ static inline void sw_phaser(SwState *s, const SwParams *P, float *restrict buf,
             y = c1 * y + c2 * a;                   /* 2 lp - y */
         }
         fbs = ncd * fbs + cd * sw_clip(y);
-        buf[i] = dryG * in + wg * (in + y);
+        bf[i] = dryG * in + wg * (in + y);
     }
-    s->fbs = fbs;
+    s->fbs[c] = fbs;
+    }
 }
 
 SW_ALWAYS_INLINE(sw_flanger)
 static inline void sw_flanger(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
-    int i;
+    int i, c;
     /* the write slot w and the two read slots are never the same (the delay is >= 2 samples),
      * so the ring can be read and written through two restrict pointers */
-    float *restrict rd = s->ring;
-    float *restrict wr = s->ring;
     const float fb = P->fb, cd = P->cd, ncd = P->ncd, dryG = P->dryG, wg = P->wg;
-    float fbs = s->fbs, d = s->d, dd = (P->d_new - s->d) * 0.125f;
+    const float dd = (P->d_new - s->d) * 0.125f;
+    for (c = 0; c < 2; c++) {                      /* L, then R: own ring and feedback, same delay */
+    float *restrict rd = s->ring + c * SW_RING;
+    float *restrict wr = s->ring + c * SW_RING;
+    float *restrict bf = buf + 8 * c;
+    float fbs = s->fbs[c], d = s->d;
     unsigned int w = s->w;
     SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], pos, fr, a, b, dl;
+        float in = bf[i], pos, fr, a, b, dl;
         unsigned int i0, i1;
         d += dd;
         pos = (float)w + 1024.0f - d;
@@ -415,22 +422,26 @@ static inline void sw_flanger(SwState *s, const SwParams *P, float *restrict buf
         fbs = ncd * fbs + cd * sw_clip(dl);
         wr[w] = in + fb * fbs;
         w = (w + 1u) & SW_RING_MASK;
-        buf[i] = dryG * in + wg * (in + dl);
+        bf[i] = dryG * in + wg * (in + dl);
     }
-    s->fbs = fbs; s->d = d; s->w = w;
+    s->fbs[c] = fbs;
+    if (c == 1) { s->d = d; s->w = w; }
+    }
 }
 
 SW_ALWAYS_INLINE(sw_filter)
 static inline void sw_filter(SwState *s, const SwParams *P, float *restrict buf, int n)
 {
-    int i;
+    int i, c;
     const float m11 = P->m11, m12 = P->m12, m21 = P->m21, m22 = P->m22, b1 = P->b1, b2 = P->b2;
     const float dg = P->dg, mk = P->mk, cx = P->cx, cbk = 0.5f * P->cbk, cl = 0.5f * P->cl;
     const float dryG = P->dryG, wetG = P->wetG;
-    float ic1 = s->ic1, ic2 = s->ic2;
+    for (c = 0; c < 2; c++) {                      /* L, then R: own filter state */
+    float *restrict bf = buf + 8 * c;
+    float ic1 = s->ic1[c], ic2 = s->ic2[c];
     SW_BLOCK_LOOP()
     for (i = 0; i < n; i++) {
-        float in = buf[i], x, n1, n2, y;
+        float in = bf[i], x, n1, n2, y;
         x = sw_clip(in * dg) * mk;
         /* trapezoidal SVF as a plain 2x2 state update (ic' = M ic + b x); the outputs v1, v2
          * are the mean of old and new state */
@@ -438,11 +449,12 @@ static inline void sw_filter(SwState *s, const SwParams *P, float *restrict buf,
         n2 = (m21 * ic1 + m22 * ic2) + b2 * x;
         y = (cx * x + cbk * (ic1 + n1)) + cl * (ic2 + n2);
         ic1 = n1; ic2 = n2;
-        buf[i] = dryG * in + wetG * sw_clip(y);
+        bf[i] = dryG * in + wetG * sw_clip(y);
     }
     if (ic1 < 1e-15f && ic1 > -1e-15f) ic1 = 0.0f;
     if (ic2 < 1e-15f && ic2 > -1e-15f) ic2 = 0.0f;
-    s->ic1 = ic1; s->ic2 = ic2;
+    s->ic1[c] = ic1; s->ic2[c] = ic2;
+    }
 }
 
 /* The LFO moves on by one block (while the clock runs, a synced Rate is placed again next block). */
@@ -542,7 +554,7 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     SwState *s;
     SwParams P;
     float u[9], bpm, beats;
-    int i, run, start;
+    int run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -584,8 +596,6 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     else if (P.type < 4u) sw_flanger(s, &P, fxBuf, 8);
     else                  sw_filter(s, &P, fxBuf, 8);
     sw_advance(s, &P);
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
 }
 
 #endif /* SWEEP_HOST_TEST */

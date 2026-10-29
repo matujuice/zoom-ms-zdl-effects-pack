@@ -56,10 +56,17 @@
       "max": 125,
       "default": 70,
       "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
+    },
+    {
+      "name": "Pan",
+      "max": 100,
+      "default": 50,
+      "comment": "Where the siren and its echo sit in the stereo field (equal power). Screen shows L50 .. C .. R50. The input passes through untouched on both sides. Default 50 = centre."
     }
   ],
   "audio_func_name": "Fx_DLY_DubSiren",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 25.0
+  "dsp_cost": 25.0,
+  "dsp_cost_comment": "Unchanged by the stereo port (a few adds per block); re-measure on the pedal."
 }

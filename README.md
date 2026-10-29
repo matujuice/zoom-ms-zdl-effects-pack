@@ -17,11 +17,16 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
 | **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
 | **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
+| **LOUDER** | Transparent look-ahead mastering limiter for the end of the chain: Gain, Ceil, Rels (AUTO or 1-1000 ms), Style (CLEAN, PUNCH, LOUD), Mix. One gain for both sides, hard clip at the ceiling. New, not in a release yet. |
+| **DJFilter** | The DJ mixer filter you ride by hand, plus a kick kill: LP, HP and a one-knob DJ filter (each off at 0), Reso that follows the sweep, Kill (24 dB/oct low cut, 20-300 Hz), Slope 12/24, Glide, Level, Mix. The footswitch is the kick kill. New, not in a release yet. |
+| **Washout** | A tempo-synced stereo delay whose loop smears the repeats into a reverb-like cloud (4 slow all-pass diffusers in the feedback): Time, Wash, Fdbk up to 120, HiCut, LoCut, Mod, Width, Send (the throw), Mix. The footswitch is on/off with trails. New, not in a release yet. |
+| **Takeoff** | Risers and downlifters that only add sound on top: NOISE, SAW, SINE sweeps with swelling volume and growing width, Dir UP/DOWN, Len in bars or seconds, Range, Key (AUTO listens to your input), Space reverb tail, MAN position. A footswitch flip fires a sweep, a hold rises while held. New, not in a release yet. |
+| **Gooey** | SSL G-bus style mix bus compressor: Thrsh (0 = off), Ratio, Attck, Rels (AUTO is program-dependent), MkUp (AUTO adds back the average reduction), Mix (parallel), SC HP (sidechain high-pass). One gain for both sides. New, not in a release yet. |
 | **Looper** | A bar-synced stereo looper on the song grid: the footswitch records Length bars, stops, plays and (double press) deletes, each on the next beat, bar or cycle; latched beat Roll; the loop stays on the grid when the tempo changes. Test build for MIDISTOMP v2.0: with the MIDISTOMP looper services (v2.0 step 2, in test) it holds 8 bars stereo from 79 BPM, the footswitch no longer flips it and the LED shows its state; on older firmware about 10 s mono. Not in a release. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Tempo and MIDI sync (on `main`, not in a release yet):** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they run at 120 BPM. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
+**Tempo and MIDI sync (on `main`, not in a release yet):** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -34,7 +39,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
 The effects marked new are on `main` but not in a release yet: take the tested builds from [dist/](dist/) or build them from source (below) until the next release.
 
-Each effect has its own ID (480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep, 497 Looper). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GridDly, 496 Sweep, 497 Looper, 501 Gooey). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 

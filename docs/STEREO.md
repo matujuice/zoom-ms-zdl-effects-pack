@@ -1,6 +1,7 @@
 # Stereo input: plan for the pack effects
 
-Decided with Luca, 2026-10-16. Not built yet.
+First plan with Luca 2026-10-16; per-effect plan agreed 2026-10-23 (see "Agreed plan"
+at the end, it replaces "What we do" and the first pass). Built 2026-10-28/29: see "Done" at the end.
 
 ## Why
 
@@ -99,10 +100,10 @@ Declared cost = net / 75 + 25 % for heavier settings, rounded up.
 | Scrub | 1,013 | 785 | 10.5 | 14 |
 | EuGate | 516 | 288 | 3.8 | 5 |
 
-These replace the 2026-10-16 costs above. Default knobs only: DirtBox's model, Choral's size and
-chord, the Looper overdubbing can cost more.
+These replace the 2026-10-16 costs above. Default knobs only: DirtBox's model, Choral's size
+and chord can cost more.
 
-## Per effect: first pass (for Luca to confirm)
+## Per effect: first pass (superseded by "Agreed plan" below)
 
 | Effect | Today | Suggested | Notes |
 |---|---|---|---|
@@ -122,3 +123,133 @@ chord, the Looper overdubbing can cost more.
 Each port keeps the pack rules (docs/SAFE-DSP-RULES.md). Each needs a host
 test showing L and R stay apart, and a declared cost updated from a probe
 measurement.
+
+## Agreed plan (Luca, 2026-10-23)
+
+Rule: only effects that add width, or that one would run on a whole mix, are true
+stereo, plus any effect whose stereo cost stays under about 40. The rest keep a mono
+effect sound but let the stereo signal through. For a stereo synth into a mono effect,
+use the firmware's Split mode with two copies of it.
+
+**True stereo.** Both halves of `fxBuf` processed. Costs are estimates (mono net x
+about 1.8: knob maths runs once, the sample loop doubles), to be re-measured on the pedal.
+
+| Effect | How | New knob | Declared cost (now -> stereo) |
+|---|---|---|---|
+| EuGate | one gate pattern, L and R gated together | none | 5 -> 6 |
+| Sweep | always stereo | none | 17 -> ~30 |
+| Breather | always stereo (second comb/allpass set) | none | 18 -> ~32 |
+| S.GN_L | always stereo; packet loss shared, so both sides drop together | none | 18 -> ~32 |
+| Scrub | knob picks the buffer layout | **Stereo**: MONO (7.9 s freeze) / ST (3.9 s) | 14 -> ~25 |
+| GridDly | knob picks the mode | **Stereo**: MONO (7.9 s) / ST (true stereo, 3.9 s) / PING (ping-pong from one buffer, 3.9 s) | 31 -> **44** (mid-way, see below) |
+| Choral | pitch tracking stays mono on (L + R) / 2; the voices are spread | **Width** 0-100 | 122 -> ~135 |
+| Looper | already true stereo | none | 32 |
+
+**Stereo dry, mono effect sound.** The effect reads `(L + R) / 2`; the dry signal keeps
+L and R apart: `out L = dry L * dryG + wet * wetG`, `out R = dry R * dryG + wet * wetG`.
+A few adds per block, so the declared cost does not change.
+
+| Effect | Notes |
+|---|---|
+| DubSiren | the input passes through in stereo (it is never processed); the siren and its echo stay mono, placed by a new **Pan** knob (knob 9, equal power, default centre). Cost stays 25 |
+| WaveFold | DJ-style Mix: full stereo up to Mix 50, fades to mono as Mix goes to 100 |
+| DirtBox | as WaveFold (all 9 knobs used, so no Pan) |
+| DualShft | as WaveFold |
+
+**New knobs.** Each new knob goes in the first free slot (Scrub 8, GridDly 9,
+Choral 9, DubSiren 9). Defaults: GridDly **ST**, Scrub MONO, DubSiren Pan centre.
+Old patches don't need to sound the same (Luca, 2026-10-23).
+
+**Declared cost vs mode.** The firmware's DSP Full check sums the fixed declared cost
+and never sees the knobs, so MONO saves real CPU but not declared cost. The stereo cost
+is declared, except GridDly: declared mid-way (44) because its full stereo (~56) is the
+only big jump. Check ST and PING on a full patch with the MIDISTOMP diagnostics screen
+before trusting it. Raising the firmware's DSP Full limit 225 -> 300 is a separate
+firmware decision (about 39 % CPU headroom measured at declared 213).
+
+**Order.** Cheapest first: EuGate, Sweep, Breather, S.GN_L, then the stereo-dry four
+(WaveFold, DirtBox, DualShft, DubSiren with Pan), then Scrub, GridDly, Choral. Each
+port keeps docs/SAFE-DSP-RULES.md, gets a host test (L and R stay apart, or dry stays
+stereo) and a declared cost from a probe measurement.
+
+**IDs.** GridDly, Breather and GRDLOOP replace BarDelay (495), Pump (493) and the old
+Looper (497) on purpose; a user who keeps an old one installed next to its replacement
+gets a clash. All pack effects stay in Delay 8 for v2.0 (see docs/EFFECT-IDS.md for the later plan).
+
+## Bugs to fix in the stereo pass (MIDISTOMP v2.0 beta1, Luca's pedal, 2026-10-24)
+
+- **GridDly (GRDELAY): about 1 s audio dropout on a footswitch press with a stereo
+  signal.** Mono doesn't do it. Suspects:
+  - the on/off path handles R differently from L: the current mono code copies L
+    to R, while the firmware's bypass passes R through;
+  - a buffer clear or reset on toggle, or the Tail fade, muting both sides.
+
+  Reproduce in a host test (stereo input, toggle on/off) before the GridDly port, and
+  make sure the stereo port fixes it.
+
+## Done: stereo port, part 1 (2026-10-28/29)
+
+Host tests only (no pedal, no listening, no CPU measurement). Every effect: new `tests/<name>_stereo.c`
+(L and R stay apart, or the dry stays stereo), the older tests adapted to the 16-float stereo block, ZDL built
+with the TI compiler, `dsp_cost_comment` in the manifest marks the cost as an estimate. All pack tests pass;
+the only failure in `py tests/run.py` is `looper_loop` (the Looper worker's). Covers untouched: no first-three
+knob label changed. Shared helpers: `tests/stereo_entry.h` (fake pedal context), `tests/stereo_dry.h`
+(Mix 0 / 50 / 100 check of the stereo-dry four).
+
+| Effect | What | New knob | Declared cost (was -> now, estimate) | ZDL bytes (was -> now) |
+|---|---|---|---|---|
+| EuGate | one gate for both sides; the louder side drives Sync | none | 5 -> 6 | 14,110 -> 14,462 |
+| Sweep | own all-pass / ring / filter state per side, one LFO | none | 17 -> 30 | 19,750 -> 20,422 |
+| Breather | one pump envelope, own reverb set per side (right lines 23 samples longer) | none | 18 -> 32 | 16,314 -> 16,602 |
+| S.GN_L | one loss decision and codec gains, own filters / buffers / noise per side; **Size now 1..400 ms** (was 500: two sets of four buffers must fit the 705 KB arena) | none | 18 -> 32 | 21,574 -> 23,494 |
+| WaveFold | hears (L+R)/2, dry L/R apart, same wet on both | none | 26 | 9,374 -> 9,374 |
+| DirtBox | as WaveFold | none | 38 | 25,274 -> 25,242 |
+| DualShft | as WaveFold | none | 44 | 24,266 -> 23,594 |
+| DubSiren | input passes in stereo, siren + echo mono, equal-power Pan (centre 0.707 each) | **Pan** (knob 9, L50..C..R50, default C) | 25 | 21,738 -> 23,226 |
+| Scrub | MONO: one 7.9 s ring of (L+R)/2, dry L/R apart. ST: two 3.9 s rings. The loop is written out twice (macro) so MONO pays nothing for ST; knob change restarts the buffer | **Stereo** (knob 8, MONO/ST, default MONO) | 14 -> 25 | 18,478 -> 19,970 |
+| GridDly | MONO (7.9 s), ST (ring per side, own filters, 3.9 s), PING (one ring, loop = 2 x Time, left = tap half way (odd repeats), right = loop tap (even repeats), Time max about 1.9 s). Knob change restarts the buffer | **Stereo** (knob 9, MONO/ST/PING, default ST) | 31 -> 44 (mid-way) | 23,218 -> 26,626 |
+| Choral | tracker on (L+R)/2; each choir section (GIANT -0.9, MEN -0.4, WOMEN +0.4, KIDS +0.9 x Width) panned equal power, normalised so Width 0 = the old mono level | **Width** (knob 9, default 50) | 122 -> 135 | 28,866 -> 30,414 |
+
+Notes:
+- Choral grew to 30,414 bytes (ELF 30,338), under the 30.9 KB (ELF 30,818) known to boot. Watch it.
+- Choral Width only spreads *sections*: a one-section choir (MEN, WOMEN, KIDS, GIANT) stays in the centre.
+- Scrub / GridDly ST and PING cannot go back further than the 3.9 s ring: Scrub's Pos beyond that is held
+  at the limit (the label still shows up to 6.00 s).
+- Scrub MONO and GridDly MONO with a hard-panned source: (L+R)/2 is 6 dB down on that side, as for the
+  other mono-sum effects.
+
+### GridDly footswitch dropout (v2.0 beta1): what the host test found
+
+Reproduced against the pre-port code (`git show HEAD:src/custom/griddly/griddly.c`, stereo input, footswitch off at
+3 s and on at 5 s, all 6 engines, Tail ON/OFF, Mix 50/100):
+- The effect function by itself never muted the dry at Mix 50. The only way to make it go silent for about
+  a second on a press is **Mix 100 (no dry) after switching on with Tail ON, or with REVRS**: while off, Tail ON
+  lets nothing into the ring, so for one Time after switching on there is nothing to echo (0.5 s at Time 496 ms,
+  about 1 s at Time 1 s, 2 x Time in PING). Mono has it too; I could not make stereo worse in the effect code.
+- The old code also overwrote R with L on every call, switched off too, so R was never passed through
+  (an input on R only gave silence at all times). That is the part that depends on a stereo signal and the
+  most likely other contributor to the report.
+Port: R is never overwritten; switched off with Tail OFF the output of both sides is bit-exact the input, with
+Tail ON it is the dry plus the decaying tail; and a **dry hold**: after switching on (Tail ON, or REVRS) the dry
+is kept at full level for one Time and then fades to Mix's own over 50 ms, so no gap. `tests/griddly_stereo.c`
+toggles the footswitch with a stereo noise input in 3 modes x 6 engines x Tail x Mix (72 runs): no cut longer
+than 58 ms, longest 35 ms (the hand-over), and the old code gave 0.5 to 1 s holes in the same test.
+**Not proven on the pedal.** If the pedal still cuts after this build, the cause is outside the effect (the
+firmware's flip path), and the joint plan sends it back to the firmware.
+
+### Needs the pedal
+
+- Listen to every effect with a real stereo source; confirm none goes silent with only the R jack plugged.
+- Measure the CPU of each (the declared costs are estimates, mono net x 1.8 + 25 %); GridDly ST and PING
+  on a full patch with the MIDISTOMP diagnostics screen, then decide 44 vs about 56.
+- GridDly footswitch with a stereo signal at several Mix / Tail / Time settings.
+- Choral at 30.4 KB must still be listed and load.
+- Scrub and GridDly: switching the Stereo knob while playing (the buffer restarts, dry for about 31 ms).
+- The host test compiler here is `zig cc` through a gcc shim (no gcc on this PC); `sys/mman.h` is shimmed with
+  VirtualAlloc below 4 GB. Run: `py tests/run.py` needs a real `gcc` on PATH, or the same shim.
+
+### Left (not done in part 1)
+
+- The Looper (other worker). Cover art for the new knobs (none needed: first-three labels unchanged).
+- A listening pass on PING with REVRS / TAPS (they use the doubled loop; the half-way tap is a plain read).
+

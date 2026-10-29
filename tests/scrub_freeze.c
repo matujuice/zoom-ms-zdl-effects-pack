@@ -13,10 +13,12 @@ static ScState S;          /* 529 KB: keep it off the stack */
 static void block(const float *u, int on, float *b)
 {
     ScParams P;
+    for (int k = 0; k < 8; k++) b[k + 8] = b[k];             /* mono test signal: R = L */
     if (S.magic != SC_MAGIC) sc_init(&S);
     if (sc_clearing(&S)) return;
     sc_prepare(&P, u);
-    if (!on) { S.was_off = 1; sc_bypassed(&S, P.mode, b, 8); return; }
+    sc_layout(&S, &P);
+    if (!on) { S.was_off = 1; sc_bypassed(&S, &P, b, 8); return; }
     if (S.was_off) { sc_switched_on(&S, &P); S.was_off = 0; }
     sc_process(&S, &P, b, 8);
 }
@@ -32,13 +34,13 @@ int main(void)
 {
     long t;
     int i;
-    float b[8];
+    float b[16];
     printf("state %u bytes (arena >= 705536)\n", (unsigned)sizeof(ScState));
     CHECK(sizeof(ScState) + 3u <= 705536u, "state too big");
 
     /* 1. clearing: dry while clearing, then a HOLD with nothing recorded is silent */
     {
-        float u[8] = {600, 50, 1, 0, 0, 0, 100, 120};
+        float u[9] = {600, 50, 1, 0, 0, 0, 100, 120};
         long dry_blocks = 0; float mx = 0;
         fresh();
         for (t = 0; t < 44100; t += 8) {
@@ -54,7 +56,7 @@ int main(void)
 
     /* 2. LIVE, Pos 100, Spray 0, Mix 100: a delay of exactly one grain length */
     {
-        float u[8] = {600, 50, 0, 0, 0, 0, 100, 120};
+        float u[9] = {600, 50, 0, 0, 0, 0, 100, 120};
         static float in[44100 * 3 + 8];
         float len = 1.25f * sc_grain_len(50), err = 0;
         int L = (int)len;
@@ -78,7 +80,7 @@ int main(void)
 
     /* 3. HOLD: freeze a 220 Hz tone, then 10 s of silence in: the tone rings on, steady */
     {
-        float u[8] = {600, 50, 0, 40, 0, 0, 100, 120};
+        float u[9] = {600, 50, 0, 40, 0, 0, 100, 120};
         float lo = 9, hi = 0, step = 0, prev = 0;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -112,7 +114,7 @@ int main(void)
      * deep the level dips while the old and new voice cross, 5 ms RMS windows; FWD, REV,
      * PING (ping-pong turns round on the same sample, so it should hardly dip) and RAND */
     for (int dir = 0; dir < 4; dir++) {
-        float u[8] = {600, 50, 0, 40, 0, 0, 100, 120};
+        float u[9] = {600, 50, 0, 40, 0, 0, 100, 120};
         float lo = 9, hi = 0, step = 0, prev = 0;
         u[4] = (float)dir;
         fresh();
@@ -144,7 +146,7 @@ int main(void)
 
     /* 3b2. RAND: both directions turn up, about half each */
     {
-        float u[8] = {600, 0, 1, 0, 3, 0, 100, 120};
+        float u[9] = {600, 0, 1, 0, 3, 0, 100, 120};
         ScParams P;
         int fw = 0, bw = 0, turns = 0, prevb = 0;
         sc_init(&S);
@@ -156,7 +158,7 @@ int main(void)
 
     /* 3c. REV plays backward: freeze a rising ramp, the frozen output must mostly fall */
     {
-        float u[8] = {600, 60, 0, 0, 1, 0, 100, 120};
+        float u[9] = {600, 60, 0, 0, 1, 0, 100, 120};
         long up = 0, down = 0; float prev = 0;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -177,7 +179,7 @@ int main(void)
     {
         float pos[5] = {600, 520, 440, 360, 240};
         for (int k = 0; k < 5; k++) {
-            float u[8] = {600, 0, 0, 0, 0, 0, 100, 120};     /* 10 ms grain, no smoothing */
+            float u[9] = {600, 0, 0, 0, 0, 0, 100, 120};     /* 10 ms grain, no smoothing */
             double acc = 0; long n = 0;
             fresh();
             for (t = 0; t < 44100 * 4 + 4400; t += 8) {
@@ -207,7 +209,7 @@ int main(void)
 
     /* 4b. constant pitch: freeze a 440 Hz tone, sweep Pos fast, count zero crossings */
     {
-        float u[8] = {600, 20, 0, 50, 0, 0, 100, 120};
+        float u[9] = {600, 20, 0, 50, 0, 0, 100, 120};
         long zc = 0; float prev = 0;
         fresh();
         for (t = 0; t < 44100 * 5; t += 8) {
@@ -227,7 +229,7 @@ int main(void)
 
     /* 5. STOMP: play while switched off (recorded, untouched), switch on: frozen sound */
     {
-        float u[8] = {600, 70, 2, 40, 0, 0, 100, 120};
+        float u[9] = {600, 70, 2, 40, 0, 0, 100, 120};
         double e = 0; int untouched = 1;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
@@ -250,7 +252,7 @@ int main(void)
 
     /* 6. scrubbing: sweep Pos 100 -> 0 -> 100 with Glide, Spray, all modes; then random knobs */
     {
-        float u[8] = {600, 40, 0, 50, 0, 30, 100, 120};
+        float u[9] = {600, 40, 0, 50, 0, 30, 100, 120};
         unsigned int r = 12345u;
         float mx = 0;
         fresh();
@@ -279,7 +281,7 @@ int main(void)
     /* 6b. tempo sync: grain lengths, the head pulled in for long grains, a held 1/2 at 40 BPM */
     {
         ScParams P;
-        float u[8] = {600, 110, 1, 0, 0, 0, 100, 120};            /* 1/4 at 120 BPM */
+        float u[9] = {600, 110, 1, 0, 0, 0, 100, 120};            /* 1/4 at 120 BPM */
         sc_prepare(&P, u);
         printf("sync: 1/4 at 120 = %.1f samples (22050), inc*len %.6f", P.len, P.inc * P.len);
         CHECK(fabsf(P.len - 22050.0f) < 1.0f && fabsf(P.inc * P.len - 1.0f) < 1e-5f, "1/4 at 120");
@@ -327,14 +329,14 @@ int main(void)
             for (int tb = 0; tb < (g > 100 ? 5 : 1); tb++) {
                 for (int dir = 0; dir < 4; dir++) {
                     for (int rec = 0; rec < 2; rec++) {
-                        float u[8] = {0, 0, 0, 0, 0, 100, 100, 120};
+                        float u[9] = {0, 0, 0, 0, 0, 100, 100, 120};
                         ScParams P;
                         float worst = 0;
                         u[1] = (float)g; u[4] = (float)dir; u[2] = (float)rec; u[7] = bpms[tb];
                         sc_init(&S); S.clr = SC_N;
                         sc_prepare(&P, u);
                         for (t = 0; t < (long)(2.6f * P.len) + 4410; t += 8) {
-                            for (i = 0; i < 8; i++) b[i] = 0.0f;
+                            for (i = 0; i < 16; i++) b[i] = 0.0f;
                             sc_prepare(&P, u);
                             sc_process(&S, &P, b, 8);
                             if (S.aC > worst) worst = S.aC;

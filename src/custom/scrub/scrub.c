@@ -1,5 +1,5 @@
 /*
- * scrub.c - "Scrub": scrub through the recent past, freeze the grain where you stop, mono
+ * scrub.c - "Scrub": scrub through the recent past, freeze the grain where you stop, mono or stereo
  *
  * Everything that goes in is recorded into a 7.9 second buffer. A read head sits somewhere
  * in that buffer and plays a short GRAIN from there, over and over, each repeat
@@ -74,6 +74,14 @@
  *   synced grain pulls the head in, and one that cannot fit even at now is shortened.
  *   No read reaches the end of the 7.9 s. The 1.9 s beyond Pos's 6 s are this headroom.
  *
+ * STEREO (knob 8)
+ *   MONO   one buffer of 7.9 s holding (L + R) / 2; the wet sound is mono, the dry keeps L and R
+ *          apart (L out = dry L x dryG + wet x wetG, R likewise).
+ *   ST     two buffers of 3.9 s (174000 samples each), one per side, read by the same voices at the
+ *          same ages: a true stereo freeze. The head can go back at most 3.9 s minus the grain
+ *          (Pos beyond that is held at the limit, as a long grain already does).
+ *   Changing the knob restarts the buffer (cleared, dry for about 31 ms).
+ *
  * KNOBS (screen values)
  *   0 Pos    0..600  where the head reads, 10 ms per step: 0 = 6 s ago, 600 = now (in HOLD
  *                    the freeze moment); shown as the time back, "0ms", "990ms", "6.00s".
@@ -96,10 +104,12 @@
  *                    (squared curve); shown as "OFF", "+-1" .. "+-250" (ms; 5 characters)
  *   6 Mix    0..100  dry/wet crossfade, DJ style: dry full up to 50, wet full from 50,
  *                    both full at 50
+ *   7 Stereo 0..1    MONO / ST (see STEREO)
+ *   (inside the code u[7] is the pedal's BPM and u[8] Stereo)
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. Only a synced Grain uses it. While
+ *   MOD firmware's transport block; the stock patch tempo without it. Only a synced Grain uses it. While
  *   the MIDI transport runs, a synced grain's phase p is placed on the clock count (beats
  *   since Start / the note value), and a wrap of p starts a new grain as at the end of any
  *   cycle, so the loop stays on the grid; MIDI Start starts a new grain at once (crossfaded
@@ -128,9 +138,11 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435237u        /* "SCR7": change whenever ScState changes */
+#define SC_MAGIC      0x53435238u        /* "SCR8": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
-#define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3)        */
+#define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3), MONO  */
+#define SC_NS         174000             /* ST: one side's ring, 3.9 s                  */
+#define SC_AGE_MAXS   173997.0f          /* ST: oldest age (SC_NS - 3)                  */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
 #define SC_TO16       16384.0f
@@ -154,6 +166,7 @@ typedef struct {
     int   wp;              /* next write index; age a = buf[wp - a]           */
     int   started;         /* 0 until the first block set the head            */
     int   was_off;         /* the effect was switched off (for STOMP, fade-in) */
+    int   nn;              /* ring length in use: SC_N (MONO) or SC_NS (ST)    */
     float D;               /* smoothed head distance from now, samples        */
     float p;               /* grain phase 0..1                                */
     float aC, aO;          /* ages read by the current and the old voice      */
@@ -174,6 +187,9 @@ typedef struct {
     float dryG, wetG;      /* Mix: DJ crossfade gains                         */
     int   mode;            /* SC_MODE_*                                       */
     int   dir;             /* SC_DIR_*                                        */
+    int   st;              /* 1 = ST: two rings of SC_NS                      */
+    int   n;               /* ring length: SC_N or SC_NS                      */
+    float amax;            /* oldest age a read may use                       */
     float xf;              /* seam: crossfade over the first 1/(2 xf) of a cycle */
     float xft;             /* the same where the voice turns round: 1 ms         */
 } ScParams;
@@ -243,14 +259,14 @@ static inline float sc_hann(float p)
 
 /* buffer sample at a (fractional) age >= 1, linear interpolation */
 SC_ALWAYS_INLINE(sc_read)
-static inline float sc_read(const short *b, int wp, float age)
+static inline float sc_read(const short *b, int wp, float age, int nn)
 {
     int a0 = (int)age, j, j1;
     float fr = age - (float)a0, x0, x1;
     j = wp - a0;
-    j = (j < 0) ? j + SC_N : j;
+    j = (j < 0) ? j + nn : j;
     j1 = j - 1;
-    j1 = (j1 < 0) ? j1 + SC_N : j1;
+    j1 = (j1 < 0) ? j1 + nn : j1;
     x0 = (float)b[j];
     x1 = (float)b[j1];
     return (x0 + fr * (x1 - x0)) * SC_FROM16;
@@ -275,10 +291,10 @@ static inline float sc_rand(ScState *s)
 }
 
 SC_ALWAYS_INLINE(sc_clamp_age)
-static inline float sc_clamp_age(float a)
+static inline float sc_clamp_age(float a, float amax)
 {
     a = (a < 1.0f) ? 1.0f : a;
-    return (a > SC_AGE_MAX) ? SC_AGE_MAX : a;
+    return (a > amax) ? amax : a;
 }
 
 /* Grain 0..100 -> length in samples, 10 ms * 100^(g/100) */
@@ -303,7 +319,7 @@ SC_ALWAYS_INLINE(sc_init)
 static inline void sc_init(ScState *s)
 {
     s->rng = 0x5C2B1A37u;
-    s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0;
+    s->clr = 0; s->wp = 0; s->started = 0; s->was_off = 0; s->nn = SC_N;
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
     s->bC = 0; s->bO = 0;
     zt_init(&s->zt);
@@ -318,6 +334,9 @@ static inline void sc_prepare(ScParams *P, const float *u)
     int g = (int)(u[1] + 0.5f);
     P->mode = (int)(u[2] + 0.5f);
     P->dir = (int)(u[4] + 0.5f);
+    P->st = (int)(u[8] + 0.5f);
+    P->n = P->st ? SC_NS : SC_N;
+    P->amax = P->st ? SC_AGE_MAXS : SC_AGE_MAX;
     P->mult = 0.0f;
     if (g > 100) {                               /* synced: the grain is a note at the BPM */
         bpm = u[7];                              /* 30..300 from zt_update */
@@ -341,7 +360,7 @@ static inline void sc_prepare(ScParams *P, const float *u)
         if (P->mode == SC_MODE_LIVE) { reach = 2.75f; rinv = 0.36363637f; }
         else { reach = 1.5f; rinv = 0.6666667f; }
     }
-    lim = SC_AGE_MAX - 4.0f - P->spray;
+    lim = P->amax - 4.0f - P->spray;
     if (reach * P->len > lim) { P->len = lim * rinv; P->inc = sc_recip(P->len); P->mult = 0.0f; }
     lim -= reach * P->len;
     if (lim < 0.0f) lim = 0.0f;
@@ -375,7 +394,7 @@ static inline float sc_new_voice(ScState *s, const ScParams *P)
     if (P->dir == SC_DIR_PING) b = !s->bC;
     if (P->dir == SC_DIR_RAND) b = (sc_rand(s) >= 0.5f);
     s->bC = b;
-    return sc_clamp_age((b ? 0.25f : 1.25f) * P->len + s->D + 1.0f + off);
+    return sc_clamp_age((b ? 0.25f : 1.25f) * P->len + s->D + 1.0f + off, P->amax);
 }
 
 /* clear part of the buffer after loading; returns 1 while still clearing */
@@ -389,29 +408,73 @@ static inline int sc_clearing(ScState *s)
     return 1;
 }
 
+/* the Stereo knob moved: the rings are laid out anew, so start over (cleared, dry meanwhile) */
+SC_ALWAYS_INLINE(sc_layout)
+static inline void sc_layout(ScState *s, const ScParams *P)
+{
+    if (s->nn != P->n) { s->nn = P->n; s->wp = 0; s->clr = 0; s->started = 0; }
+}
+
 /* effect switched off: keep recording (LIVE, STOMP), the sound passes untouched */
 SC_ALWAYS_INLINE(sc_bypassed)
-static inline void sc_bypassed(ScState *s, int mode, const float *buf, int n)
+static inline void sc_bypassed(ScState *s, const ScParams *P, const float *buf, int n)
 {
-    int i, wp = s->wp;
+    int i, wp = s->wp, nn = P->n;
     short * restrict sb = s->buf;
-    if (mode == SC_MODE_HOLD) return;
+    short * restrict sbR = s->buf + SC_NS;
+    if (P->mode == SC_MODE_HOLD) return;
     SC_EIGHT
     for (i = 0; i < n; i++) {
-        sc_put(sb, wp, buf[i]);
+        if (P->st) { sc_put(sb, wp, buf[i]); sc_put(sbR, wp, buf[i + 8]); }
+        else sc_put(sb, wp, 0.5f * (buf[i] + buf[i + 8]));
         wp++;
-        wp = (wp >= SC_N) ? 0 : wp;
+        wp = (wp >= nn) ? 0 : wp;
     }
     s->wp = wp;
 }
 
+/* The sample loop, written out twice (MONO, ST) by this macro so each copy has no run-time
+ * branch on the layout: MONO records (L + R) / 2 and reads one ring; ST records and reads both. */
+#define SC_LOOP(ST)                                                                      \
+    SC_EIGHT                                                                             \
+    for (i = 0; i < 8; i++) {                                                            \
+        float in = buf[i], inR = buf[i + 8], q, g, wet, wetR, aOn, aCn;                  \
+        int wf, bOn;                                                                     \
+        if (rec) {                                                                       \
+            if (ST) { sc_put(sb, wp, in); sc_put(sbR, wp, inR); }                        \
+            else sc_put(sb, wp, 0.5f * (in + inR));                                      \
+            wp++;                                                                        \
+            wp = (wp >= nn) ? 0 : wp;                                                    \
+        }                                                                                \
+        p += inc;                                                                        \
+        wf = (p >= 1.0f);                                                                \
+        p = wf ? p - 1.0f : p;                                                           \
+        aOn = sc_clamp_age(aO + (bO ? daB : daF), amax);                                 \
+        aCn = sc_clamp_age(aC + (bC ? daB : daF), amax);                                 \
+        aO = wf ? aC : aOn;                                                              \
+        bOn = wf ? bC : bO;                                                              \
+        aC = wf ? nvA : aCn;                                                             \
+        bC = wf ? nvB : bC;                                                              \
+        bO = bOn;                                                                        \
+        q = p * ((bC != bO) ? xft : xf);                                                 \
+        g = (q < 0.5f) ? sc_hann(q) : 1.0f;                                              \
+        wet = g * sc_read(sb, wp, aC, nn) + (1.0f - g) * sc_read(sb, wp, aO, nn);        \
+        wetR = wet;                                                                      \
+        if (ST) wetR = g * sc_read(sbR, wp, aC, nn) + (1.0f - g) * sc_read(sbR, wp, aO, nn); \
+        fin += SC_FIN_STEP;                                                              \
+        fin = (fin > 1.0f) ? 1.0f : fin;                                                 \
+        buf[i] = dryG * in + wetG * fin * wet;                                           \
+        buf[i + 8] = dryG * inR + wetG * fin * wetR;                                     \
+    }
+
 SC_ALWAYS_INLINE(sc_process)
 static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
 {
-    int i, rec = (P->mode == SC_MODE_LIVE), bC, bO, wp, wi = 8, nvB = 0;
+    int i, rec = (P->mode == SC_MODE_LIVE), bC, bO, wp, wi = 8, nvB = 0, nn = P->n;
     float daF, daB, p = s->p, aC = s->aC, aO = s->aO, fin = s->fin, nvA = 0.0f;
-    const float inc = P->inc, xf = P->xf, xft = P->xft, dryG = P->dryG, wetG = P->wetG;
+    const float inc = P->inc, xf = P->xf, xft = P->xft, dryG = P->dryG, wetG = P->wetG, amax = P->amax;
     short * restrict sb = s->buf;
+    short * restrict sbR = s->buf + SC_NS;       /* ST: the right ring (unused in MONO) */
     (void)n;                                     /* always 8 */
 
     if (!s->started) { s->D = P->Dt; s->started = 1; s->bC = 0; aC = sc_new_voice(s, P); aO = aC; s->bO = s->bC; }
@@ -433,33 +496,8 @@ static inline void sc_process(ScState *s, const ScParams *P, float *buf, int n)
     }
     if (wi < 8) { nvA = sc_new_voice(s, P); nvB = s->bC; }
 
-    SC_EIGHT
-    for (i = 0; i < 8; i++) {
-        float in = buf[i], q, g, wet, aOn, aCn;
-        int wf, bOn;
-        if (rec) {
-            sc_put(sb, wp, in);
-            wp++;
-            wp = (wp >= SC_N) ? 0 : wp;
-        }
-        p += inc;
-        wf = (p >= 1.0f);
-        p = wf ? p - 1.0f : p;
-        aOn = sc_clamp_age(aO + (bO ? daB : daF));
-        aCn = sc_clamp_age(aC + (bC ? daB : daF));
-        aO = wf ? aC : aOn;                      /* grain end: the old voice is the one that was current */
-        bOn = wf ? bC : bO;
-        aC = wf ? nvA : aCn;
-        bC = wf ? nvB : bC;
-        bO = bOn;
-        q = p * ((bC != bO) ? xft : xf);
-        wet = sc_read(sb, wp, aC);
-        g = (q < 0.5f) ? sc_hann(q) : 1.0f;      /* seam: old voice fades out */
-        wet = g * wet + (1.0f - g) * sc_read(sb, wp, aO);
-        fin += SC_FIN_STEP;
-        fin = (fin > 1.0f) ? 1.0f : fin;
-        buf[i] = dryG * in + wetG * fin * wet;
-    }
+    if (P->st) { SC_LOOP(1) }
+    else       { SC_LOOP(0) }
     s->p = p; s->aC = aC; s->aO = aO; s->fin = fin; s->bC = bC; s->bO = bO; s->wp = wp;
 }
 
@@ -594,6 +632,14 @@ int ZDL_GetLabel_0(unsigned int value, char *out)
     return 5;
 }
 
+/* knob 7 Stereo: 0 "MONO", 1 "ST" */
+int ZDL_GetLabel_7(unsigned int value, char *out)
+{
+    if (value >= 1u) { out[0] = 'S'; out[1] = 'T'; out[2] = 0; return 2; }
+    out[0] = 'M'; out[1] = 'O'; out[2] = 'N'; out[3] = 'O'; out[4] = 0;
+    return 4;
+}
+
 /* knob 4 Dir: 0 "FWD", 1 "REV", 2 "PING", 3 "RAND" */
 int ZDL_GetLabel_4(unsigned int value, char *out)
 {
@@ -643,8 +689,8 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     ScState *s;
     ScParams P;
-    float u[8], beats;
-    int i, run, start;
+    float u[9], beats;
+    int run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -670,25 +716,25 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[4] = sc_ui(params[SCRUB_DIR_SLOT],    (float)SCRUB_DIR_UI_DEFAULT,    3.0f);
     u[5] = sc_ui(params[SCRUB_SPRAY_SLOT],  (float)SCRUB_SPRAY_UI_DEFAULT,  100.0f);
     u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
+    u[8] = sc_ui(params[SCRUB_STEREO_SLOT], (float)SCRUB_STEREO_UI_DEFAULT, 1.0f);
 
     if (s->magic != SC_MAGIC) sc_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     sc_prepare(&P, u);
+    sc_layout(s, &P);                            /* the Stereo knob moved: start over */
     if (sc_clearing(s)) {                        /* first ~31 ms after loading: dry */
         if (run) sc_lock(s, &P, beats);          /* but a mid-song load lands on the clock */
         return;
     }
     if (params[0] < 0.5f) {                      /* effect switched off */
         s->was_off = 1;
-        sc_bypassed(s, P.mode, fxBuf, 8);
+        sc_bypassed(s, &P, fxBuf, 8);
         return;
     }
     if (s->was_off) { sc_switched_on(s, &P); s->was_off = 0; }
     else if (start && s->started) sc_restart(s, &P);  /* MIDI Start: new grain now */
     if (run) sc_lock(s, &P, beats);              /* on the clock (synced grain only) */
-    sc_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    sc_process(s, &P, fxBuf, 8);                 /* L and R in place */
 }
 
 #endif /* SCRUB_HOST_TEST */

@@ -1,6 +1,6 @@
 {
-  "effect_name": "Looper",
-  "comment": "Looper - a bar-synced stereo looper on the MOD firmware's song grid (bar 1 = MIDI Start, or the press that records when no clock runs). Footswitch: with the MIDISTOMP looper services the firmware counts presses (footswitch on the Looper, its on/off CC 64-127) and the Looper drives the LED; without them every on/off flip is a press: press records Length bars when empty, then stops / plays the loop; a double press deletes it. Every action waits for When (IMMED, BEAT, BAR, or CYCLE = the next Amount-bar line). Roll repeats the last 1/2..1/32 of a bar from the next bar line, latched. Mix crossfades live and loop. 12-bit block floating point; stereo whenever Length fits, else mono, else shorter. Tempo changes: the loop stays on the grid (re-synced on 1/32 lines, pitch unchanged).",
+  "effect_name": "GRDLOOP",
+  "comment": "GRDLOOP (was Looper) - a bar-synced stereo looper on the MOD firmware's song grid (bar 1 = MIDI Start, or the press that records when no clock runs). Footswitch: with the MIDISTOMP looper services the firmware counts presses (footswitch on the looper, its on/off CC 64-127) and the looper drives the LED; without them every on/off flip is a press: press records (Sync OWN: until a second press, whole cycles; SLAVE: one cycle) when empty, then stops / plays the loop; a double press deletes it at once. Record, stop and play wait for Next (NOW, BEAT, BAR, CYC = the next Cycle-bar line). Roll repeats the last 1/2..1/32 of a bar from the next bar line, latched. Mix crossfades live and loop. 12-bit block floating point; stereo whenever a cycle fits, else mono (L+R)/2, else shorter (REC n/m). Tempo changes: the loop stays on the grid (re-synced on 1/32 lines, pitch unchanged).",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 497,
@@ -24,23 +24,29 @@
       "comment": "OFF, 1/2, 1/4, 1/8, 1/16, 1/32 of a bar (no triplets). Latched beat repeat: starts on the next bar line and repeats the last slice of the bar that was playing; a new rate takes over on its next line; OFF lands on the running rate's next line, where the loop would have been. Default OFF."
     },
     {
-      "name": "Length",
-      "max": 7,
-      "default": 7,
-      "comment": "Loop length, shown as 1 to 8 bars. Picked when recording starts: stereo if it fits, else mono, else halved (8 -> 4 -> 2 -> 1). Default 8 bars.",
+      "name": "Sync",
+      "max": 1,
+      "default": 0,
+      "comment": "OWN: record from the Next line until the Next line after the second press, rounded up to whole cycles. SLAVE: record one cycle, then play. Old Looper patches: Length 2 bars reads as SLAVE, every other Length as OWN. Default OWN.",
       "flags": 40
     },
     {
-      "name": "When",
+      "name": "Next",
       "max": 3,
       "default": 3,
-      "comment": "When record, stop, play and delete happen (Perform mode's When): IMMED (now; a single press waits 300 ms for a possible double press), BEAT, BAR, CYCLE (the next Amount-bar line counted from bar 1). Default CYCLE."
+      "comment": "When record, stop and play land: NOW (a single press waits 300 ms for a possible double press), BEAT, BAR, CYC (the next cycle start counted from bar 1). Delete (double press) is always at once. Old patches' When maps 1:1 (IMMED = NOW). Default CYC."
     },
     {
-      "name": "Amount",
-      "max": 15,
+      "name": "Cycle",
+      "max": 31,
       "default": 7,
-      "comment": "Cycle length for When CYCLE, shown as 1 to 16 bars. Length 4 with CYCLE 8 records bars 1-4 of the next 8-bar phrase. Default 8 bars."
+      "comment": "Cycle length, shown as 1 to 32 bars. Perform mode's CYCLE (looper services word 21) overrides it when set. Old patches' Amount (1-16 bars) maps 1:1. Default 8 bars."
+    },
+    {
+      "name": "Stop",
+      "max": 1,
+      "default": 0,
+      "comment": "KEEP: MIDI Stop and clock loss are ignored, the loop plays on at the last tempo and waiting actions keep waiting; the next MIDI Start restarts the loop at bar 1. HALT: MIDI Stop stops the loop and drops waiting actions; Start plays it from bar 1. Default KEEP."
     }
   ],
   "dsp_cost": 32.0

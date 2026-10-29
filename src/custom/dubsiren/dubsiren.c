@@ -1,6 +1,7 @@
 /*
  * DubSiren - a dub siren in the style of classic analogue sirens,
- * with a tape-style dub echo (Zoom MultiStomp MS-70CDR, custom ZDL, mono).
+ * with a tape-style dub echo (Zoom MultiStomp MS-70CDR, custom ZDL; the input passes in stereo, the siren and its echo are mono and
+ * placed by Pan).
  *
  * WHAT THE REAL SIRENS DO (from public circuit write-ups of analogue sirens;
  * exact values are not published, so the numbers here are my own tuning of
@@ -31,8 +32,10 @@
  *                                                      +--> x 0.6 (fixed) --+
  *
  *   out = in + siren + echo * 0.6 (Fdbk 0 = echo off). The echo only ever sees the siren.
+ *   Stereo: the input passes L to L and R to R; the siren + echo is one mono signal added to
+ *   the two sides with equal-power Pan gains (centre = 0.707 each, hard side = 1 and 0).
  *
- * CONTROLS (8 knobs)
+ * CONTROLS (9 knobs)
  *   0 Trig   the FOOT PEDAL (the effect's on/off footswitch) is the trigger;
  *            this knob picks how it behaves:
  *              Hold   siren sounds while the effect is ON (footswitch latched
@@ -66,12 +69,14 @@
  *   5 Vol    siren level
  *   6 Time   echo time, ms = 50 + 0.095*screen^2 (50 ms .. 1 s), shown on screen
  *   7 Fdbk   echo feedback in percent; 100 = unity; above that it self-oscillates
+ *   8 Pan    0..100, shown L50..C..R50: where the siren and its echo sit in the stereo field
+ *            (equal power, default C = centre). The input is not affected.
  *   (echo tone is fixed: two low-pass poles at ~1.5 kHz, warm tape)
  *   Rate carries the tap flag (manifest flags 40) so the pedal shows its tap button.
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it.
+ *   MOD firmware's transport block; the stock patch tempo without it.
  *   Rate 101..112 = one whole LFO cycle lasts a note value: 4bar 2bar 1bar 1/2. 1/2 1/4.
  *            1/4 1/8. 1/8 1/8T 1/16 1/32 (Fast = 2x, Slow = 0.5x, as in free mode).
  *   Rate 1..100 is the free (Hz) range, as before. The echo Time is never synced.
@@ -174,6 +179,7 @@ typedef struct {
     float lfo_inc;         /* LFO cycles per sample                           */
     float depth;           /* FM depth: f = f0 * (1 + depth * u)              */
     float volume, echoLvl;
+    float panL, panR;      /* equal-power pan gains of the siren + echo      */
     float dlySamp;         /* echo time target, samples                       */
     float fb;              /* feedback gain, 0..1.25                          */
     float lpA;             /* echo low-pass coefficient                       */
@@ -359,6 +365,7 @@ static inline void sr_prepare(SirenState *s, SirenParams *P, const float *k, int
     P->depth  = 4.0f * k[4];                         /* knob: 0..4 (top = 5x f0) */
 
     P->volume  = k[5];
+    P->panL = 0.70710678f; P->panR = 0.70710678f;      /* centre; the entry point sets Pan */
     P->echoLvl = (nf > 0) ? 0.6f : 0.0f;              /* fixed echo level; Fdbk 0 = echo off */
     P->dlySamp = (50.0f + 0.095f * (float)(nt * nt)) * MS_TO_SAMPLES;
     if (P->dlySamp > 44000.0f) P->dlySamp = 44000.0f;
@@ -481,7 +488,9 @@ static inline void sr_process(SirenState *s, const SirenParams *P, float *restri
         x = siren * 0.9f + e * P->fb;              /* feedback may exceed 1.0  */
         ring[wn] = soft_clip(x);
         w = wn;
-        buf[i] = buf[i] + siren + e * P->echoLvl;
+        siren = siren + e * P->echoLvl;            /* one mono sound, placed by Pan */
+        buf[i] = buf[i] + siren * P->panL;
+        buf[i + 8] = buf[i + 8] + siren * P->panR;
     }
 
     s->w = w; s->osc_ph = osc_ph; s->lfo_ph = lfo_ph; s->env = env; s->menv = menv;
@@ -583,6 +592,22 @@ int ZDL_GetLabel_6(unsigned int value, char *out)
     return len;
 }
 
+/* 8 Pan: "C" at 50, "L1".."L50" below, "R1".."R50" above */
+int ZDL_GetLabel_8(unsigned int value, char *out)
+{
+    int n, t = 0, len = 1;
+    if (value > 100u) value = 100u;
+    if (value == 50u) { out[0] = 'C'; out[1] = 0; return 1; }
+    n = (int)value - 50;
+    out[0] = 'R';
+    if (n < 0) { out[0] = 'L'; n = -n; }
+    while (n >= 10) { n -= 10; t++; }
+    if (t > 0) { out[len] = (char)('0' + t); len++; }
+    out[len] = (char)('0' + n); len++;
+    out[len] = 0;
+    return len;
+}
+
 /* 7 Fdbk: "Off" at 0 (no echo at all), then the percent 1..125 */
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
@@ -624,7 +649,7 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     SirenState *s;
     SirenParams P;
     float k[9], beats;
-    int i, foot, run, start;
+    int foot, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -656,9 +681,9 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     if (s->magic != SR_MAGIC) sr_init(s);        /* prev_* must be valid       */
     k[8] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     sr_prepare(s, &P, k, foot, run, beats, start);
+    k[0] = sr_knob(params[DUBSIREN_PAN_SLOT], (float)DUBSIREN_PAN_UI_DEFAULT, 0.01f);   /* equal power */
+    P.panR = sine_of(0.25f * k[0]); P.panL = sine_of(0.25f - 0.25f * k[0]);
     sr_process(s, &P, fxBuf, 8);
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];
 }
 
 #endif /* DUBSIREN_HOST_TEST */

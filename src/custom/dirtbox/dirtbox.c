@@ -1,7 +1,7 @@
 /*
  * dirtbox.c - "DIRTBOX": a distortion box for an acid machine (TB-303 / TD-3 lines
  * into the pedal). Seven pedal circuits on one Model knob, mildest first, a 3-band
- * EQ tuned for acid, and an automatic ZNR-style noise reducer. Mono.
+ * EQ tuned for acid, and an automatic ZNR-style noise reducer. Stereo dry, mono box (it hears (L + R) / 2).
  *
  * MODELS (Model knob, least to most aggressive). Each follows the real circuit
  * stage by stage, from a published analysis or a circuit-level digital model; the
@@ -714,12 +714,12 @@ static void ab_tone(AbState *restrict s, const AbParams *restrict P, float *rest
  * software-pipeline them; all filter states live in locals and are stored once.
  * n is always 8 (the pedal's block). Same maths as before, in the same order. */
 AB_ALWAYS_INLINE(ab_process)
-static inline void ab_process(AbState *s, const AbParams *restrict P, float *restrict buf, int n)
+static inline void ab_process(AbState *s, const AbParams *restrict P, float *restrict buf, float *restrict bufR, int n)
 {
     int i, hold, eqh = s->eqh, m = P->model, tsm = (m == M_TS9);
     float dcx, dcy, fade, env, nf, gz, invThr;
     float el1, el2, em1, em2, eh1, eh2;
-    float zv[8], dv[8];
+    float zv[8], dv[8], xm[8];
     (void)n;
 
     if (m != s->model) { s->model = m; ab_clear(s); }
@@ -728,13 +728,17 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
     el1 = s->el1; el2 = s->el2; em1 = s->em1; em2 = s->em2; eh1 = s->eh1; eh2 = s->eh2;
     invThr = ab_inv(nf * P->margin);
 
+    /* the box hears (L + R) / 2; the dry keeps L and R apart */
+    AB_LOOP8
+    for (i = 0; i < 8; i++) xm[i] = 0.5f * (buf[i] + bufR[i]);
+
     /* 1. before the clipper: zv[] = what the clipper sees */
-    ab_pre(s, P, buf, zv);
+    ab_pre(s, P, xm, zv);
 
     /* 2. the clipper, one copy for all models, and the DC blocker */
     AB_LOOP8
     for (i = 0; i < 8; i++) {
-        float y = (tsm ? buf[i] : 0.0f) + ab_diode(zv[i], P);
+        float y = (tsm ? xm[i] : 0.0f) + ab_diode(zv[i], P);
         float d = y - dcx + AB_DC_R * dcy;
         dcx = y; dcy = d;
         dv[i] = d;
@@ -762,7 +766,7 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
     /* 5. ZNR on the clean input (selects, no branches), fade-in, mix */
     AB_LOOP8
     for (i = 0; i < 8; i++) {
-        float x = buf[i], ax = (x < 0.0f) ? -x : x, r, tgt, gn;
+        float x = xm[i], ax = (x < 0.0f) ? -x : x, r, tgt, gn, wv;
         int open, act;
         env *= AB_ENV_REL;
         env = (ax > env) ? ax : env;
@@ -775,7 +779,9 @@ static inline void ab_process(AbState *s, const AbParams *restrict P, float *res
         gn = gz + ((tgt > gz) ? AB_G_ATT : AB_G_REL) * (tgt - gz);
         gz = P->znr ? gn : 1.0f;
         fade += AB_FADE * (1.0f - fade);
-        buf[i] = P->dryG * x + P->wetG * (dv[i] * P->wetScale * gz * fade);
+        wv = P->wetG * (dv[i] * P->wetScale * gz * fade);   /* the same wet on both sides */
+        buf[i] = P->dryG * buf[i] + wv;
+        bufR[i] = P->dryG * bufR[i] + wv;
     }
 
     /* noise floor: follow the envelope down quickly, creep up slowly */
@@ -905,9 +911,7 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
             for (i = 0; i < 9; i++) s->kc[i] = k[i];
         }
     }
-    ab_process(s, &s->pc, fxBuf, 8);             /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    ab_process(s, &s->pc, fxBuf, fxBuf + 8, 8);  /* hears (L + R) / 2, dry L and R stay apart */
 }
 
 #endif /* DIRTBOX_HOST_TEST */
