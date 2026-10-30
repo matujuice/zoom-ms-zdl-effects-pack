@@ -27,12 +27,13 @@
  *   the block (no zipper). Thrsh at 0 (or Mix 0) bypasses everything: the gain ramps to 1, then
  *   the block is skipped entirely (the cost is a compare). SC HP is skipped when OFF.
  *
- * METER (gain reduction bar + dB number, peak held 300 ms; docs/NEW-EFFECTS.md "Readouts")
- *   Drawn by the effect on its own cover, no firmware hook (src/custom/common/zdl_meter.h). The
- *   value, hold and throttle run every block (a few cycles). When the shown value (0.1 dB)
- *   changes, at most GO_M_TICK blocks apart (15 a second), the band in the cover is redrawn and
- *   the UI task is asked for a redraw (Event_post), but only if the firmware check done once at
- *   state init says this is MS-70CDR 2.10. Steady value or effect off: no writes, no calls.
+ * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
+ *   A scrolling history of the output level (after the gain, also in bypass; the loudest sample
+ *   of each 1/8 beat, 16 beats across), 1 row a dB from 0 dB down, white over the black box down
+ *   to the threshold, with a THRSH tag inside the box when there is room. Drawn only while the
+ *   cover is on screen and only on MS-70CDR 2.10 (checked once at state init): off screen it costs
+ *   nothing, on screen one 8-sample peak scan a block and a frame every 1/15 s at most, rendered
+ *   32 bytes a block.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static arrays in .audio, no divide, no libm,
  * no switch, no double, helpers forced inline, state in the arena with a magic. The one call
@@ -53,7 +54,7 @@
 #define GO_BLOCK_LOOP()
 #endif
 
-#define GO_MAGIC     0x474F4F31u            /* "GOO1": change when GoState changes */
+#define GO_MAGIC     0x474F4F33u            /* "GOO3": change when GoState changes */
 #define GO_KEY_NONE  0xFFFFFFFFu
 #define GO_DPK       0.99638f               /* peak follower fall per block: 50 ms         */
 #define GO_CMS       0.03563f               /* mean-square follower per block: 5 ms        */
@@ -63,20 +64,18 @@
 #define GO_KNEE_K    0.50172f               /* 1 / (2 x knee width)                        */
 #define GO_DB2LOG    0.16609640f            /* dB -> log2 units                            */
 
-/* ---- meter: cover band (zdl_meter.h) ------------------------------------------------- */
+/* ---- meter: the cover (zdl_meter.h) --------------------------------------------------- */
 #ifndef GOOEY_HOST_TEST
 #ifndef GOOEY_AUDIO_FUNC
 #define GOOEY_AUDIO_FUNC Fx_DLY_Gooey
 #endif
 #define GO_PIC_X(f) _##f##_Pic
 #define GO_PIC_(f) GO_PIC_X(f)
-extern unsigned char GO_PIC_(GOOEY_AUDIO_FUNC)[];       /* the cover blob; the linker resolves it */
+extern unsigned char GO_PIC_(GOOEY_AUDIO_FUNC)[];       /* the cover data; the linker resolves it */
 #define ZM_PIC GO_PIC_(GOOEY_AUDIO_FUNC)
 #endif
-#include "gooey_layout.h"                  /* COVER_BAND_OFF / COVER_BAND_LEN, from build.py */
+#include "gooey_layout.h"                  /* ZM_TOP / ZM_CAP, from build.py */
 #include "../common/zdl_meter.h"
-#define GO_M_HOLD    1654u                  /* blocks: 300 ms */
-#define GO_M_TICK    367u                   /* blocks between redraws: 15 per second at most */
 
 typedef struct {
     unsigned int magic;
@@ -85,9 +84,7 @@ typedef struct {
     float cA, cR, hpa;
     float pkenv, ms, rS, rF, avg, gm;
     float a1l, a2l, a1r, a2r;               /* sidechain high-pass: the two low-pass states per side */
-    float m_peak;                           /* meter: held reduction (linear, 0..1) */
-    unsigned int m_hold, m_tick, m_shown;   /* hold blocks left, redraw throttle, last shown (0.1 dB) */
-    unsigned int m_fw;                      /* zm_fw_ok() at init: may we call Event_post */
+    ZmState zm;                             /* the cover meter */
 } GoState;
 
 typedef struct {
@@ -169,8 +166,7 @@ static inline void go_init(GoState *s)
     go_reset(s);
     s->k_att = GO_KEY_NONE; s->k_rel = GO_KEY_NONE; s->k_hp = GO_KEY_NONE;
     s->cA = 0.0f; s->cR = 0.0f; s->hpa = 0.0f; s->gm = 1.0f; s->was_off = 0u;
-    s->m_peak = 0.0f; s->m_hold = 0u; s->m_tick = 0u; s->m_shown = 0u;
-    s->m_fw = ZM_FW_OK();
+    zm_init(&s->zm);
     s->magic = GO_MAGIC;
 }
 
@@ -212,32 +208,53 @@ static inline void go_prepare(GoParams *P, GoState *s, const float *u)
     P->hp = (kh != 0u);
 }
 
-/* ---- meter value: held reduction, throttle, redraw request ---------------------------- */
-/* -20 log10(1 - r) in 0.1 dB steps (same maths as LOUDER's), r in 0..0.999 */
-GO_ALWAYS_INLINE(go_tenths)
-static inline unsigned int go_tenths(float r)
+/* ---- meter: level, rows and tag (custom_covers.meter_geometry, make_v8.row_gooey) ------- */
+/* loudest output sample of the block into the meter level (only while the cover is on screen) */
+GO_ALWAYS_INLINE(go_meter_level)
+static inline void go_meter_level(GoState *s, const float *buf)
 {
-    int t = (int)(-60.205999f * go_log2(1.0f - r) + 0.5f);
-    return (unsigned int)((t < 0) ? 0 : (t > 999 ? 999 : t));
+    int i;
+    float m = s->zm.lvl;
+    GO_BLOCK_LOOP()
+    for (i = 0; i < 8; i++) {
+        float p = buf[i], q = buf[i + 8];
+        p = (p < 0.0f) ? -p : p;
+        q = (q < 0.0f) ? -q : q;
+        p = (q > p) ? q : p;
+        m = (p > m) ? p : m;
+    }
+    s->zm.lvl = m;
 }
 
-#ifndef GO_METER_REDRAW
-#define GO_METER_REDRAW(s) zm_show((s)->m_shown, (s)->m_fw)
-#endif
-
-/* r = the block's reduction (1 - gain). Redraws the cover band when the shown value changes. */
-GO_ALWAYS_INLINE(go_meter_step)
-static inline void go_meter_step(GoState *s, float r)
+/* first wave row of a level: 1 row a dB from 0 dB (row ZM_TOP) down */
+GO_ALWAYS_INLINE(go_row)
+static inline unsigned int go_row(float a)
 {
-    if (r >= s->m_peak) { s->m_peak = r; s->m_hold = GO_M_HOLD; }
-    else if (s->m_hold > 0u) s->m_hold--;
-    else s->m_peak = r;                                           /* hold over: follow the value */
-    s->m_tick++;
-    if (s->m_tick >= GO_M_TICK) {
-        unsigned int t = go_tenths(s->m_peak);
-        s->m_tick = 0u;
-        if (t != s->m_shown) { s->m_shown = t; GO_METER_REDRAW(s); }
+    float y;
+    if (!(a > 1e-6f)) return ZM_EMPTY;
+    y = (float)ZM_TOP - zm_db(a);
+    if (y > 64.0f) y = 64.0f;
+    if (y < (float)ZM_TOP) y = (float)ZM_TOP;
+    return (unsigned int)(int)(y + 0.5f);
+}
+
+/* once per on-screen block: history column, box and tag for the Thrsh knob, frame */
+GO_ALWAYS_INLINE(go_meter)
+static inline void go_meter(GoState *s, const float *u)
+{
+    ZmState *z = &s->zm;
+    unsigned int thr = (unsigned int)(int)u[0];
+    if (zm_column(z)) zm_push(z, go_row(z->lvl));
+    if (thr != z->key && z->pos >= ZM_RAW) {
+        char t[12];
+        z->by = ZM_TOP + 40u - thr; z->key = thr; z->dirty = 1u;
+        z->tag[0].n = 0u; z->tag[1].n = 0u;
+        if (z->by >= ZM_TOP + 10u) {
+            t[0] = 'T'; t[1] = 'H'; t[2] = 'R'; t[3] = 'S'; t[4] = 'H'; t[5] = ' '; t[6] = '-';
+            zm_tag_set(&z->tag[0], t, zm_tenths((40u - thr) * 10u, t, 7u), 125u, z->by - 3u);
+        }
     }
+    zm_frame(z);
 }
 
 /* ---- the compressor: one 8-sample block, L = buf[0..7], R = buf[8..15], in place ------- */
@@ -249,11 +266,12 @@ static inline void go_process(GoState *s, const GoParams *P, float *restrict buf
 
     if (P->off) {                               /* bypass: ramp the gain to 1, then do nothing */
         go_reset(s);
-        go_meter_step(s, 0.0f);
-        if (s->gm == 1.0f) return;
-        g = s->gm; gs = (1.0f - g) * 0.125f; s->gm = 1.0f;
-        GO_BLOCK_LOOP()
-        for (i = 0; i < 8; i++) { g += gs; buf[i] *= g; buf[i + 8] *= g; }
+        if (s->gm != 1.0f) {
+            g = s->gm; gs = (1.0f - g) * 0.125f; s->gm = 1.0f;
+            GO_BLOCK_LOOP()
+            for (i = 0; i < 8; i++) { g += gs; buf[i] *= g; buf[i + 8] *= g; }
+        }
+        if (s->zm.on) go_meter_level(s, buf);
         return;
     }
 
@@ -315,7 +333,7 @@ static inline void go_process(GoState *s, const GoParams *P, float *restrict buf
     GO_BLOCK_LOOP()
     for (i = 0; i < 8; i++) { g += gs; buf[i] *= g; buf[i + 8] *= g; }
 
-    go_meter_step(s, 1.0f - go_exp2(-tot));
+    if (s->zm.on) go_meter_level(s, buf);
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -434,6 +452,7 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
     GoState *s;
     GoParams P;
     float u[7];
+    unsigned int on;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -468,7 +487,9 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
     u[6] = go_ui(params[GOOEY_SC_HP_SLOT], (float)GOOEY_SC_HP_UI_DEFAULT, 20.0f);
 
     go_prepare(&P, s, u);
+    on = zm_begin(&s->zm, params);
     go_process(s, &P, fxBuf);
+    if (on) go_meter(s, u);
 }
 
 #endif /* GOOEY_HOST_TEST */

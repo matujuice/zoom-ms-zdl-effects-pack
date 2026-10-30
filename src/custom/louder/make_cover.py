@@ -1,38 +1,56 @@
-"""Generate src/airwindows/common/covers/LOUDER.json: a plain PLACEHOLDER cover (title and
-knob labels only, the same look as the generic cover of custom_covers.make_cover). Real cover
-art is designed later with Luca (docs/NEW-EFFECTS.md, "Covers").
+"""LOUDER cover: the live meter (src/custom/common/zdl_meter.h) under the approved v12 title.
 
 Run from anywhere:  py src/custom/louder/make_cover.py
-Also writes cover_preview.png next to this script.
+Re-renders title.txt (title rows 0..15, '#' = black) from the approved mockup code in
+MOCKUPS (make_v12.title_louder_k) when that folder and PIL are there; the build only reads
+title.txt. Then writes covers/LOUDER.json (frame A: default knobs, empty history) and
+cover_preview.png next to this script.
 """
 import json, sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]        # src/custom/louder/make_cover.py -> repo root
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[2]                            # src/custom/louder -> repo root
 sys.path.insert(0, str(ROOT / "build"))
 sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
-from screen_image import Canvas
 import custom_covers as cc
-from custom_covers import _VSquash, DEVICE_ASPECT
 
-NAME = "LOUDER"
-LABELS = ["Gain", "Ceil", "Rels"]
+NAME, FOLDER, BAR = "LOUDER", "louder", 15
+MOCKUPS = Path.home() / "OneDrive" / "Documenti" / "CLAUDE" / "meter-mockups"
 
 
-def build():
-    return cc.meter_cover(NAME, LABELS)      # placeholder + the live meter band
+def render_title():
+    """title rows 0..BAR from the mockup code, or None when the mockups or PIL are missing"""
+    try:
+        sys.path.insert(0, str(MOCKUPS))
+        import make_v8 as v8
+        import make_v12 as v12
+    except ImportError:
+        return None
+    s = v8.Screen([[0] * 128 for _ in range(16)])
+    s.p = [[0] * 128 for _ in range(64)]
+    s.rect(0, 0, 127, BAR)
+    v12.title_louder_k(3, 1, 13, 1)(s)
+    return ["".join("#" if s.p[y][x] else "." for x in range(128)) for y in range(BAR + 1)]
 
 
 if __name__ == "__main__":
-    c = build()
+    t = render_title()
+    if t:
+        (HERE / "title.txt").write_text("\n".join(t) + "\n")
+        print("wrote", HERE / "title.txt")
+    else:
+        print("mockups or PIL missing: kept title.txt")
+    m = json.loads((HERE / "manifest_pedal.json").read_text(encoding="utf-8"))
+    by, tags = cc.meter_geometry(FOLDER, [p["default"] for p in m["params"]])
+    c = cc.meter_frame(cc.meter_title(FOLDER), by, tags)
     out = ROOT / "src" / "airwindows" / "common" / "covers" / (NAME + ".json")
     out.write_text(json.dumps({"name": NAME, "w": 128, "h": 64, "grid": c.pixels}))
+    print("wrote", out)
     from PIL import Image
     im = Image.new("RGB", (128, 64), (255, 255, 255))
     for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (0, 0, 0))
-    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
-    print("wrote", out)
+        for x in range(128):
+            if c.pixels[y][x]:
+                im.putpixel((x, y), (0, 0, 0))
+    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(str(HERE / "cover_preview.png"))

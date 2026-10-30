@@ -61,8 +61,8 @@ CFLAGS = [
 def main() -> None:
     manifest = json.loads((HERE / "manifest_pedal.json").read_text(encoding="utf-8"))
     write_param_header(manifest, HERE / "gooey_params.h", "GOOEY")
-    # cover with the live meter band; the layout header tells the C code where the band is
-    cover, _off, _len, layout_h = meter_layout(manifest["effect_name"], [p["name"] for p in manifest["params"]][:3])
+    # the live meter cover (frames A and B, the title); the layout header gives ZM_TOP / ZM_CAP
+    cover, layout_h = meter_layout(HERE.name, manifest)
     (HERE / "gooey_layout.h").write_text(layout_h)
 
     src_c = HERE / "gooey.c"

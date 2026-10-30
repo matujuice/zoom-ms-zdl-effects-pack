@@ -51,7 +51,7 @@ Maximizer class): it pushes the level up and holds it under a ceiling.
   Style sets only the saturation and how much transient gets through (Rels owns the
   release): CLEAN has none, PUNCH lets transients through a little, LOUD is the densest.
 - **Cost:** about 10.
-- Built 2026-10-29: fxid 481, cost 10 (estimate), ZDL size 13826 bytes (with the live meter on the cover; was 11954).
+- Built 2026-10-29: fxid 481, cost 10 (estimate), ZDL size 22378 bytes (with the live cover meter; was 11954).
 
 ## DJFILTER: DJ filter and kick kill
 
@@ -225,7 +225,7 @@ sets the output). Knob names fit the 5-character LCD and match LIMITER (Rels in 
 
   AUTO release is program-dependent, like the G-bus.
 - **Cost:** about 8.
-- Built 2026-10-29: fxid 501, cost 8 (estimate), ZDL size 19286 bytes (with the live meter on the cover; was 15886).
+- Built 2026-10-29: fxid 501, cost 8 (estimate), ZDL size 24478 bytes (with the live cover meter; was 15886).
 
 ## Covers: not in this build (Luca, 2026-10-23)
 
@@ -233,39 +233,48 @@ Cover art is designed later with Luca, after some back and forth. Until then, ea
 effect gets a plain placeholder cover from the existing cover tool (title and knob labels
 only).
 
-LIMITER (LOUDER) and COMP (Gooey) have the live meter on their placeholder cover: a band
-(one 8-row block) between the title and the knob labels, drawn by the effect itself
-(src/custom/common/zdl_meter.h; see Readouts). Host tests decode the cover after band
-writes and render preview PNGs at a few gain-reduction levels.
+LIMITER (LOUDER) and COMP (Gooey) have a live meter instead: the whole cover is the meter,
+drawn by the effect itself (src/custom/common/zdl_meter.h; see Readouts).
 
 ## Readouts (LIMITER and COMP)
 
-Both effects show how hard they are working, like the gain-reduction meter on a real
-limiter or bus compressor. The effect draws the meter itself, on its own cover (Luca,
-2026-10-23), so MIDISTOMP needs no new code or space for it. This uses themanro's
-findings (github.com/themanro/ZoomMultistompZDL, docs/pedal-research/animated-covers.md,
-from Leemuzhko's SDK):
+Both effects show the level on their own cover (Luca, 2026-10-23), so MIDISTOMP needs no new
+code or space for it. Approved look: mockups v12 (LOUDER) and v16 (Gooey) in
+CLAUDE/meter-mockups. This builds on themanro's findings (github.com/themanro/ZoomMultistompZDL,
+docs/pedal-research/animated-covers.md, from Leemuzhko's SDK).
 
-- **Cover in RAM:** an effect may rewrite bytes of its own cover, and the firmware
-  re-reads the cover on every redraw (probe C). The meter area is stored as literal
-  (not run-length) bytes, so a rewrite never changes the encoded length.
-- **Done (2026-10-29):** the linker resolves `extern unsigned char _<audio>_Pic[]` to
-  the cover; build.py checks the band is literal and writes `<effect>_layout.h`. Bit 7 of
-  every band byte is a dotted baseline so neighbours always differ (no accidental RLE run).
-- **Redraw trigger:** the audio code posts the UI redraw event (Blink probe D:
-  `Event_post` `0xC00CBF40`, MS-70CDR 2.10 addresses).
-- **What it shows:** a gain-reduction bar plus the dB number, peak held about 300 ms.
+- **The picture:** the title stays fixed at the top (16 rows on LOUDER, 17 on Gooey). Below it
+  is a scrolling level history, where one column is 1/8 beat and the 128 columns cover 16 beats.
+  It follows the patch TEMPO, or tap tempo and the MIDISTOMP clock. A black box runs down to the
+  effect's line, with small tags.
+  - **LOUDER:** shows the input after Gain. The line is the ceiling, tagged CEIL (when there is
+    room) and GAIN.
+  - **Gooey:** shows the output, bypass included. The line is the threshold, tagged THRSH.
+- **How it gets on screen (MS-70CDR 2.10):** the firmware reads the cover's RLE pointer
+  (imageInfo word 5) on every redraw. The cover data is
+  [RLE A, 1536 bytes][RLE B, 1536][title raw, 384] = 3456 bytes; build.py writes
+  `<effect>_layout.h` (ZM_TOP, ZM_CAP).
+  - While the page is on screen and the picture changed, the effect renders the next frame
+    into the buffer the firmware is NOT reading. It renders 32 raw bytes per audio block, so a
+    frame takes 32 blocks.
+  - It then swaps word 5 and posts the redraw event (`Event_post` `0xC00CBF40`). Since it
+    never writes the buffer being shown, there is no tearing.
+- **Worst case:** a Zoom RLE frame is at most 1536 bytes (all equal pairs, 3 bytes per 2), so
+  each buffer holds any picture. Host tests check this bound, plus 20000 random pictures,
+  thousands of random histories and an adversarial frame (largest seen: 1512).
 
 **Rules:**
-- Post a redraw at most about 15 times a second, only when the shown value changes,
-  and only while this effect's page is on screen. Limit today: we cannot tell yet whether
-  the page is on screen, so a change posts a redraw of whatever page shows (UI task cost,
-  not audio). Steady value or effect off: no writes, no calls. ponytail: find the
-  "current slot" address later.
-- Check the firmware once, at state init (first 20 bytes of `Event_post` match MS-70CDR
-  2.10, event handle in RAM). Without a match no OS call is ever made: the band is still
-  written, the cover just stays static. It works on any MS-70CDR 2.10, stock included, not
-  only MIDISTOMP.
-- Never use the edit handlers' UI postbox (`state[7]`) from audio code, because it
-  deadlocks.
-- Test on the pedal for clicks or stalls with the meter running and other effects busy.
+- At most one frame start every 367 blocks (15 a second), and only when the picture changed.
+- **On screen:** `zm_find` reads the current slot and page from firmware RAM every 16 blocks.
+  Off screen, or with the knob page shown, there is no level, no tempo and no rendering, only a
+  counter per block. Coming back clears the history.
+- **Firmware check:** checked once at init (the first 20 bytes of `Event_post` match 2.10, and
+  the event handle is in RAM). Without a match, no firmware read or call is ever made, and the
+  cover stays frame A (default knobs, empty history). It works on any MS-70CDR 2.10, stock
+  included.
+- Never use the edit handlers' UI postbox (`state[7]`) from audio code, because it deadlocks.
+- **Test on the pedal:**
+  - the meter scrolls with tap tempo and with the patch TEMPO;
+  - no tearing;
+  - DIAGNOSTICS CPU with the effect page on screen and off screen;
+  - no clicks or stalls with other effects busy.

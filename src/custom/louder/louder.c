@@ -31,12 +31,13 @@
  *   the clip trims the rest (transients get through); LOUD the most saturation (densest).
  *   The dry path is delayed by the same 64 samples, so a part Mix never comb-filters.
  *
- * METER (gain reduction bar + dB number, peak held 300 ms; docs/NEW-EFFECTS.md "Readouts")
- *   Drawn by the effect on its own cover, no firmware hook (src/custom/common/zdl_meter.h). The
- *   value, hold and throttle run every block (a few cycles). When the shown value (0.1 dB)
- *   changes, at most LO_M_TICK blocks apart (15 a second), the band in the cover is redrawn and
- *   the UI task is asked for a redraw (Event_post), but only if the firmware check done once at
- *   state init says this is MS-70CDR 2.10. Steady value or effect off: no writes, no calls.
+ * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
+ *   A scrolling history of the pushed level (after Gain, the loudest sample of each 1/8 beat, 16
+ *   beats across), white over the black box down to the ceiling, so what pokes out of the box is
+ *   what the limiter takes off. Tags CEIL (the ceiling, inside the box when there is room) and
+ *   GAIN. Rows: 3 a dB from +3 down to -9 dB, then 1 per 4 dB. Drawn only while the cover is on
+ *   screen and only on MS-70CDR 2.10 (checked once at state init): elsewhere it costs one max per
+ *   block, on screen a frame every 1/15 s at most, rendered 32 bytes a block.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static arrays in .audio, no divide, no libm,
  * no switch, no double, helpers forced inline, state in the arena with a magic. The one call
@@ -57,7 +58,7 @@
 #define LO_BLOCK_LOOP()
 #endif
 
-#define LO_MAGIC     0x4C4F5531u            /* "LOU1": change when LoState changes */
+#define LO_MAGIC     0x4C4F5533u            /* "LOU3": change when LoState changes */
 #define LO_DELAY     64u                    /* look-ahead in samples = 8 blocks */
 #define LO_NMIN      9                      /* blocks in the lowest-need window */
 #define LO_NAVG      8                      /* blocks in the mean               */
@@ -65,20 +66,18 @@
 #define LO_CS_AUTO   0.00073f               /* AUTO slow stage, 8 / (44100 * 0.250)  */
 #define LO_KEY_NONE  0xFFFFFFFFu
 
-/* ---- meter: cover band (zdl_meter.h) ------------------------------------------------- */
+/* ---- meter: the cover (zdl_meter.h) --------------------------------------------------- */
 #ifndef LOUDER_HOST_TEST
 #ifndef LOUDER_AUDIO_FUNC
 #define LOUDER_AUDIO_FUNC Fx_DLY_LOUDER
 #endif
 #define LO_PIC_X(f) _##f##_Pic
 #define LO_PIC_(f) LO_PIC_X(f)
-extern unsigned char LO_PIC_(LOUDER_AUDIO_FUNC)[];       /* the cover blob; the linker resolves it */
+extern unsigned char LO_PIC_(LOUDER_AUDIO_FUNC)[];       /* the cover data; the linker resolves it */
 #define ZM_PIC LO_PIC_(LOUDER_AUDIO_FUNC)
 #endif
-#include "louder_layout.h"                  /* COVER_BAND_OFF / COVER_BAND_LEN, from build.py */
+#include "louder_layout.h"                  /* ZM_TOP / ZM_CAP, from build.py */
 #include "../common/zdl_meter.h"
-#define LO_M_HOLD    1654u                  /* blocks: 300 ms */
-#define LO_M_TICK    367u                   /* blocks between redraws: 15 per second at most */
 
 typedef struct {
     unsigned int magic;
@@ -90,9 +89,7 @@ typedef struct {
     float gprev, rF, rS;
     float bm[LO_NMIN], mn[LO_NAVG];
     float dl[LO_DELAY], dr[LO_DELAY];
-    float m_peak;                           /* meter: held reduction (linear, 0..1) */
-    unsigned int m_hold, m_tick, m_shown;   /* hold blocks left, redraw throttle, last shown (0.1 dB) */
-    unsigned int m_fw;                      /* zm_fw_ok() at init: may we call Event_post */
+    ZmState zm;                             /* the cover meter */
 } LoState;
 
 typedef struct {
@@ -160,8 +157,7 @@ static inline void lo_init(LoState *s)
     s->k_gain = LO_KEY_NONE; s->k_ceil = LO_KEY_NONE; s->k_rels = LO_KEY_NONE;
     s->gainLin = 1.0f; s->ceilLin = 1.0f; s->cF = LO_CF_AUTO;
     s->gprev = 1.0f; s->rF = 0.0f; s->rS = 0.0f;
-    s->m_peak = 0.0f; s->m_hold = 0u; s->m_tick = 0u; s->m_shown = 0u;
-    s->m_fw = ZM_FW_OK();
+    zm_init(&s->zm);
     s->magic = LO_MAGIC;
 }
 
@@ -200,41 +196,43 @@ static inline float lo_sat(float x, float a, float xm)
     return x - a * x * x * x;
 }
 
-/* ---- meter value: held reduction, throttle, redraw request ---------------------------- */
-/* -20 log10(1 - r) in 0.1 dB steps: ln(m), m in 1..2, from a polynomial (error < 1e-4), plus the
- * exponent times ln 2; r in 0..0.999 */
-LO_ALWAYS_INLINE(lo_tenths)
-static inline unsigned int lo_tenths(float r)
+/* ---- meter: rows and tags (custom_covers.meter_geometry, make_v8.row_louder) ----------- */
+/* first wave row of a level: 3 rows a dB from +3 dB (row ZM_TOP) to -9, then 1 row per 4 dB */
+LO_ALWAYS_INLINE(lo_row)
+static inline unsigned int lo_row(float a)
 {
-    union { float f; unsigned int u; } c;
-    float m, ln;
-    int e, t;
-    c.f = 1.0f - r;
-    e = (int)(c.u >> 23) - 127;
-    c.u = (c.u & 0x007FFFFFu) | 0x3F800000u;                      /* mantissa 1..2 */
-    m = c.f;
-    ln = (float)e * 0.6931472f + (-1.7417939f + (2.8212026f + (-1.4699568f + (0.44717955f - 0.056570851f * m) * m) * m) * m);
-    t = (int)(-86.85890f * ln + 0.5f);                            /* 0.1 dB */
-    return (unsigned int)((t < 0) ? 0 : (t > 999 ? 999 : t));
+    float db, y;
+    if (!(a > 1e-6f)) return ZM_EMPTY;
+    db = zm_db(a);
+    y = (db >= -9.0f) ? (float)ZM_TOP + (3.0f - db) * 3.0f : (float)ZM_TOP + 36.0f + (-9.0f - db) * 0.25f;
+    if (y > 64.0f) y = 64.0f;
+    if (y < (float)ZM_TOP) y = (float)ZM_TOP;
+    return (unsigned int)(int)(y + 0.5f);
 }
 
-#ifndef LO_METER_REDRAW
-#define LO_METER_REDRAW(s) zm_show((s)->m_shown, (s)->m_fw)
-#endif
-
-/* r = the block's total reduction. Redraws the cover band when the shown value changes. */
-LO_ALWAYS_INLINE(lo_meter_step)
-static inline void lo_meter_step(LoState *s, float r)
+/* once per on-screen block: history column, box and tags for the Gain / Ceil knobs, frame */
+LO_ALWAYS_INLINE(lo_meter)
+static inline void lo_meter(LoState *s, const float *u)
 {
-    if (r >= s->m_peak) { s->m_peak = r; s->m_hold = LO_M_HOLD; }
-    else if (s->m_hold > 0u) s->m_hold--;
-    else s->m_peak = r;                                           /* hold over: follow the value */
-    s->m_tick++;
-    if (s->m_tick >= LO_M_TICK) {
-        unsigned int t = lo_tenths(s->m_peak);
-        s->m_tick = 0u;
-        if (t != s->m_shown) { s->m_shown = t; LO_METER_REDRAW(s); }
+    ZmState *z = &s->zm;
+    unsigned int kg = (unsigned int)(int)u[0], kc = (unsigned int)(int)u[1], key = kg | (kc << 8);
+    if (zm_column(z)) zm_push(z, lo_row(z->lvl));
+    if (key != z->key && z->pos >= ZM_RAW) {
+        char t[12];
+        unsigned int k = 60u - kc, v = ZM_TOP * 10u + 90u + 3u * k, by = 0u, n;
+        while (v >= 10u) { v -= 10u; by++; }
+        if (v > 5u || (v == 5u && (by & 1u))) by++;           /* half to even, like Python's round */
+        z->by = by; z->key = key; z->dirty = 1u;
+        z->tag[0].n = 0u;
+        if (by >= ZM_TOP + 10u) {
+            t[0] = 'C'; t[1] = 'E'; t[2] = 'I'; t[3] = 'L'; t[4] = ' '; n = 5u;
+            if (k) t[n++] = '-';
+            zm_tag_set(&z->tag[0], t, zm_tenths(k, t, n), 125u, by - 3u);
+        }
+        t[0] = 'G'; t[1] = 'A'; t[2] = 'I'; t[3] = 'N'; t[4] = ' '; t[5] = '+';
+        zm_tag_set(&z->tag[1], t, zm_tenths(kg, t, 6u), 125u, 61u);
     }
+    zm_frame(z);
 }
 
 /* ---- the limiter: one 8-sample block, L = buf[0..7], R = buf[8..15], in place ---------- */
@@ -309,7 +307,7 @@ static inline void lo_process(LoState *s, const LoParams *P, float *restrict buf
         buf[i + 8] = (orr > C) ? C : ((orr < -C) ? -C : orr);
     }
     s->pos = (p + 8u >= LO_DELAY) ? 0u : p + 8u;
-    lo_meter_step(s, r);
+    s->zm.lvl = (pk > s->zm.lvl) ? pk : s->zm.lvl;               /* meter: loudest pushed sample */
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -399,6 +397,7 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
     LoState *s;
     LoParams P;
     float u[5];
+    unsigned int on;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -436,7 +435,9 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
     u[4] = lo_ui(params[LOUDER_MIX_SLOT],   (float)LOUDER_MIX_UI_DEFAULT,   100.0f);
 
     lo_prepare(&P, s, u);
+    on = zm_begin(&s->zm, params);
     lo_process(s, &P, fxBuf);
+    if (on) lo_meter(s, u);
 }
 
 #endif /* LOUDER_HOST_TEST */

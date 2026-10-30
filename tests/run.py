@@ -35,9 +35,9 @@ for folder, prefix in [("wavefold", "WAVEFOLD"), ("dualshft", "DUALSHFT"), ("for
                        ("../probes/tempoprb", "TEMPOPRB"), ("../probes/dryprb", "DRYPRB")]:
     m = json.loads((ROOT / "src" / "custom" / folder / "manifest_pedal.json").read_text(encoding="utf-8"))
     write_param_header(m, GEN / f"{Path(folder).name}_params.h", prefix)
-    if folder in ("louder", "gooey"):          # the meter band layout + cover blob (build.py writes the same)
+    if folder in ("louder", "gooey"):          # the meter layout + cover data (build.py writes the same)
         from custom_covers import meter_layout
-        (GEN / f"{folder}_layout.h").write_text(meter_layout(m["effect_name"], [p["name"] for p in m["params"]][:3])[3])
+        (GEN / f"{folder}_layout.h").write_text(meter_layout(folder, m)[1])
 
 want = sys.argv[1:]
 failed = []
