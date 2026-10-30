@@ -14,7 +14,7 @@ one fits (Time, Fdbk, Reso, Mix ...). Effect names on the pedal (`effect_name`, 
 DJFILTER = **DJFilter**, WASH = **Washout**, RISER = **Takeoff**, COMP = **Gooey**. The
 section names below are working names only.
 
-**IDs:** all pack effects are in Delay (gid 8): 480-481, 484-497, 501 (498-500 are probes,
+**IDs:** all pack effects are in Delay (gid 8): 480-481, 485-497, 501-502 (498-500 are probes,
 482/483 reserved). Use the next free number there. Moving to a 900+ range is a proposal for
 after v2.0: see [EFFECT-IDS.md](EFFECT-IDS.md).
 
@@ -99,7 +99,7 @@ filter. This one is the static filter you ride by hand, CC or Perform: the v2.0 
   | 9 | Mix | DJ crossfade, default 100 |
 
 - **Cost:** about 6 with one filter on, about 9 with LP, HP and Kill all on.
-- Built 2026-10-29: fxid 484, cost 9 (estimate, all on), ZDL size 15978 bytes.
+- Built 2026-10-29: fxid 484, moved to 502 on 2026-10-30 (484 clashes with the community effect Gyre), cost 9 (estimate, all on), ZDL size 15978 bytes.
 
 ## WASH: dedicated washout
 

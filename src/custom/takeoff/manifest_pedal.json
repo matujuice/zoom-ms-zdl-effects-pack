@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 494,
-  "fxid_comment": "480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 Looper (this pack; 494 was the dropped SyncEQ, 498-500 are probes). Not checked against the stock ZDLs on this PC (none present): run build/extract_effect_db.py with stock_zdls/ to confirm.",
+  "fxid_comment": "480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 Looper (this pack; 494 was the dropped SyncEQ, 498-500 are probes). Not checked against the stock ZDLs on this PC (none present): run build/extract_effect_db.py with stock_zdls/ to confirm.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [

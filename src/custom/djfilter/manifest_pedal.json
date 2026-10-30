@@ -3,8 +3,8 @@
   "comment": "DJFilter - the DJ mixer filter you ride by hand (Xone / DJM style) plus a kick kill. Three filter knobs, each off at 0: LP, HP and DJ (-100 LP ... 0 ... +100 HP, -3..+3 flat). LP amount = max(LP, DJ below 0), HP amount = max(HP, DJ above 0); a filter at 0 is skipped. Exponential sweep (LP 100 about 40 Hz, HP 100 about 10 kHz). Resonance rises as the filter closes; Reso sets the far-end amount. Kill = independent 24 dB/oct low cut. Slope 12/24, Glide smooths LP/HP/DJ, Level trim, Mix = DJ crossfade. Footswitch on/off is ramped over a few ms. Linked stereo.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
-  "fxid": 484,
-  "fxid_comment": "480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep, 497 Looper (this pack). 484 is not used by a stock effect (482 and 483 are old aliases of other projects, so they were skipped). Unique inside the repo; check other community effects.",
+  "fxid": 502,
+  "fxid_comment": "480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep, 497 Looper (this pack). 502 (484 clashed with the community effect Gyre; 482 and 483 are old aliases of other projects). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
