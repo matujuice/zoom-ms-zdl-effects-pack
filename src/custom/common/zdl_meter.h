@@ -61,7 +61,7 @@ typedef char zm_cap_check[(ZM_CAP >= 1536u && ZM_TOP <= 24u) ? 1 : -1];
 #define ZM_FIND(params) zm_find(params)
 #endif
 
-typedef struct {                            /* make_v12.btag: black border, white box, black text */
+typedef struct {                            /* make_v12.btag: 1 px black border, white box, black text */
     unsigned int x0, x1, ix0, tx0, xr, yb;  /* border x0..x1, white ix0..xr, text tx0..xr-1   */
     unsigned int n;                         /* text columns; 0 = no tag                       */
     unsigned char col[ZM_TAGW];             /* text columns, bit r = row yb-5+r               */
@@ -166,8 +166,8 @@ static inline void zm_tag_set(ZmTag *t, const char *s, unsigned int len, unsigne
         }
     }
     t->n = n; t->xr = xr; t->yb = yb;
-    t->tx0 = xr - n; t->ix0 = xr - n - 1u; t->x0 = xr - n - 3u;
-    t->x1 = (xr + 2u > 127u) ? 127u : xr + 2u;
+    t->tx0 = xr - n; t->ix0 = xr - n - 1u; t->x0 = xr - n - 2u;
+    t->x1 = (xr + 1u > 127u) ? 127u : xr + 1u;
 }
 
 /* "12.3" from tenths (0..999) at out[len]; returns the new length */
@@ -293,7 +293,7 @@ static inline void zm_render(ZmState *z)
     boxm = zm_span(p8, (int)ZM_TOP, (int)z->by);
     for (k = 0u; k < 2u; k++) {
         int yb = (int)z->tag[k].yb;
-        om[k] = zm_span(p8, yb - 8, yb + 3);
+        om[k] = zm_span(p8, yb - 7, yb + 2);
         im[k] = zm_span(p8, yb - 6, yb + 1);
         sh[k] = yb - 5 - p8;
         sh[k] = (sh[k] > 8) ? 8 : (sh[k] < -8 ? -8 : sh[k]);         /* text outside this block: shifts out */

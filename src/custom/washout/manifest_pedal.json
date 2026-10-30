@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
-  "fxid_comment": "480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 495 GridDly, 496 Sweep, 497 Looper (this pack; 492 was used by the dropped Metro branch, 498-500 by the probes). Not checked against the stock ZDLs on this PC (none present): run build/extract_effect_db.py with stock_zdls/ to confirm.",
+  "fxid_comment": "480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 495 GRDELAY, 496 Sweep, 497 Looper (this pack; 492 was used by the dropped Metro branch, 498-500 by the probes). Not checked against the stock ZDLs on this PC (none present): run build/extract_effect_db.py with stock_zdls/ to confirm.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "audio_func_name": "Fx_DLY_Washout",
@@ -12,7 +12,7 @@
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
   "params": [
     {"name": "Time", "max": 113, "default": 109, "flags": 40,
-     "comment": "0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms..1.00 s), as GridDly. 101..113 = note values at the pedal's tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. Too long for the 3.8 s ring = halved until it fits. Default 109 = 1/4."},
+     "comment": "0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms..1.00 s), as GRDELAY. 101..113 = note values at the pedal's tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. Too long for the 3.8 s ring = halved until it fits. Default 109 = 1/4."},
     {"name": "Wash", "max": 100, "default": 70,
      "comment": "Diffusion: the all-pass coefficient of the 4 diffusers in the loop, 0..0.7. 0 = diffusers skipped. Default 70."},
     {"name": "Fdbk", "max": 120, "default": 60,

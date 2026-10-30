@@ -544,7 +544,7 @@ def _tag_cols(text):
 def meter_frame(title, by, tags, rows=None):
     """One meter frame (Canvas). title = '#'/'.' rows 0..top-1; box = rows top..by-1 black;
     rows[x] = first wave row of column x (64 = empty), the wave is black under the box, white in
-    it; tags = [(text, x_right, y_bot)]: 2 px black border, white box, black text."""
+    it; tags = [(text, x_right, y_bot)]: 1 px black border, white box, black text."""
     c = Canvas()
     top = len(title)
     for y, line in enumerate(title):
@@ -557,8 +557,8 @@ def meter_frame(title, by, tags, rows=None):
     for text, xr, yb in tags:
         cols = _tag_cols(text)
         w = len(cols)
-        for x in range(xr - w - 3, xr + 3):
-            for y in range(yb - 8, yb + 3):
+        for x in range(xr - w - 2, min(xr + 2, 128)):
+            for y in range(yb - 7, yb + 2):
                 inner = xr - w - 1 <= x <= xr and yb - 6 <= y <= yb
                 bit = inner and xr - w <= x < xr and yb - 5 <= y < yb and (cols[x - xr + w] >> (y - yb + 5)) & 1
                 c.px(x, y, 1 if bit else int(not inner))
@@ -571,11 +571,11 @@ def meter_geometry(folder, knobs):
     if folder == "louder":
         top, gain, ceil = 16, knobs[0], knobs[1]
         by = round(top + (3 - (ceil - 60) / 10) * 3)          # 3 rows a dB under +3 dB; Python rounds half to even, so does the C
-        tags = [(f"CEIL {(ceil - 60) / 10:.1f}", 125, by - 3)] if by - top >= 10 else []
-        return by, tags + [(f"GAIN {gain / 10:+.1f}", 125, 61)]
+        tags = [(f"CEIL {(ceil - 60) / 10:.1f}", 126, max(by - 2, top + 7))]   # above the line, parked under the title
+        return by, tags + [(f"GAIN {gain / 10:+.1f}", 126, 62)]
     top, thr = 17, knobs[0]
     by = top + 40 - thr                                       # 1 row a dB under 0 dB
-    return by, [(f"THRSH {thr - 40:.1f}", 125, by - 3)] if by - top >= 10 else []
+    return by, [(f"THRSH {thr - 40:.1f}", 126, max(by - 2, top + 7))]
 
 
 def meter_title(folder):

@@ -34,8 +34,8 @@
  * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
  *   A scrolling history of the pushed level (after Gain, the loudest sample of each 1/8 beat, 16
  *   beats across), white over the black box down to the ceiling, so what pokes out of the box is
- *   what the limiter takes off. Tags CEIL (the ceiling, inside the box when there is room) and
- *   GAIN. Rows: 3 a dB from +3 down to -9 dB, then 1 per 4 dB. Drawn only while the cover is on
+ *   what the limiter takes off. Tags CEIL (the ceiling: over the line, parked under the title when the
+ *   line is higher) and GAIN, 1 px frames. Rows: 3 a dB from +3 down to -9 dB, then 1 per 4 dB. Drawn only while the cover is on
  *   screen and only on MS-70CDR 2.10 (checked once at state init): elsewhere it costs one max per
  *   block, on screen a frame every 1/15 s at most, rendered 32 bytes a block.
  *
@@ -224,13 +224,12 @@ static inline void lo_meter(LoState *s, const float *u)
         if (v > 5u || (v == 5u && (by & 1u))) by++;           /* half to even, like Python's round */
         z->by = by; z->key = key; z->dirty = 1u;
         z->tag[0].n = 0u;
-        if (by >= ZM_TOP + 10u) {
-            t[0] = 'C'; t[1] = 'E'; t[2] = 'I'; t[3] = 'L'; t[4] = ' '; n = 5u;
-            if (k) t[n++] = '-';
-            zm_tag_set(&z->tag[0], t, zm_tenths(k, t, n), 125u, by - 3u);
-        }
+        t[0] = 'C'; t[1] = 'E'; t[2] = 'I'; t[3] = 'L'; t[4] = ' '; n = 5u;
+        if (k) t[n++] = '-';
+        zm_tag_set(&z->tag[0], t, zm_tenths(k, t, n), 126u,
+                   by - 2u > ZM_TOP + 7u ? by - 2u : ZM_TOP + 7u);   /* above the line, parked under the title */
         t[0] = 'G'; t[1] = 'A'; t[2] = 'I'; t[3] = 'N'; t[4] = ' '; t[5] = '+';
-        zm_tag_set(&z->tag[1], t, zm_tenths(kg, t, 6u), 125u, 61u);
+        zm_tag_set(&z->tag[1], t, zm_tenths(kg, t, 6u), 126u, 62u);
     }
     zm_frame(z);
 }

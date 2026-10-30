@@ -42,10 +42,8 @@ static void eff_geom(const float *u, int *by, RefTag *tags, int *nt)
     int thr = (int)u[0];
     *by = (int)ZM_TOP + 40 - thr;
     *nt = 0;
-    if (*by - (int)ZM_TOP >= 10) {
-        snprintf(tags[0].text, sizeof tags[0].text, "THRSH %.1f", (double)(thr - 40));
-        tags[0].xr = 125; tags[0].yb = *by - 3; *nt = 1;
-    }
+    snprintf(tags[0].text, sizeof tags[0].text, "THRSH %.1f", (double)(thr - 40));
+    tags[0].xr = 126; tags[0].yb = *by - 2 > (int)ZM_TOP + 7 ? *by - 2 : (int)ZM_TOP + 7; *nt = 1;
 }
 static void eff_randk(float *u) { u[0] = (float)(rand() % 41); }
 static int eff_row(double db) { return (int)floor((int)ZM_TOP - db + 0.5); }

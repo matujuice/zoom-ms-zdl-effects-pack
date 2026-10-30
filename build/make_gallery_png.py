@@ -10,10 +10,8 @@ Output is not byte-identical to the June set: those were rendered from an older
 cover whose border bled to the frame edge, while make_cover now draws it inset
 by a pixel. The framing is the same; the art is simply current.
 
-The cover is decoded from the ZDL, then scaled with nearest-neighbor pixels.
-The physical pixel aspect comes from lcd_geometry.PIXEL_ASPECT (about 1.4),
-so a 128x64 bitmap is displayed at approximately 10:7, matching PE. No VHS
-filter is applied to the release gallery.
+The cover is decoded from the ZDL and drawn by build/lcd_render.py (the pedal LCD look).
+With no arguments it also writes release/covers.png, the README gallery.
 
 Usage:
     python3 build/make_gallery_png.py            # every effect in dist/
@@ -29,44 +27,29 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "build"))
 
 from decode_picture import decode_picture  # noqa: E402
-from make_thumb_png import vhs  # noqa: E402
+from lcd_render import save_png, sheet  # noqa: E402
 
-try:
-    from PIL import Image
-except ImportError:
-    raise SystemExit("Pillow is required: pip install pillow")
+# the README gallery (release/covers.png), in its order, two per row
+README_COVERS = ["WaveFold", "DualShft", "Choral", "EuGate", "DubSiren", "SGNL", "Scrub", "DirtBox", "Breather",
+                 "GRDELAY", "Sweep", "LOUDER", "Gooey", "DJFilter", "Washout", "Takeoff", "GRDLOOP"]
+# effects whose gallery picture is a live still, not the stored cover: src/custom/<folder>/live_still.png
+# (128x64, 1 bit, black = ink). LOUDER / Gooey: the meter with a drum loop going in (custom_covers.meter_frame);
+# GRDLOOP: the loop bar drawn on the cover by the MIDISTOMP firmware (zoom-ms-modding asm/looper/lbox.c).
+LIVE = {"LOUDER": "louder", "Gooey": "gooey", "GRDLOOP": "looper"}
 
-# P4 "television white blend" -- the editor's TV phosphor theme, so the gallery,
-# the hero and the editor all look like the same machine. The June palette was the
-# light-blue LCD skin and clashed the moment the hero went to tape.
-BG = (8, 9, 11)
-LIT = (157, 193, 216)
-from lcd_geometry import PIXEL_ASPECT
-INNER = (630, round(630 * 64 / 128 * PIXEL_ASPECT))
-CANVAS = (640, INNER[1] + 12)
-ORIGIN = (5, 6)
+
+def gallery_pixels(name: str):
+    if name in LIVE:
+        from PIL import Image
+        im = Image.open(ROOT / "src" / "custom" / LIVE[name] / "live_still.png").convert("1")
+        return [[int(im.getpixel((x, y)) == 0) for x in range(128)] for y in range(64)]
+    return decode_picture(str(ROOT / "dist" / (name + ".ZDL")))[0]
 
 
 def render(zdl: Path, out: Path) -> None:
     px, _name = decode_picture(str(zdl))
-    h = len(px)
-    w = len(px[0]) if h else 0
-    cover = Image.new("RGB", (w, h), BG)
-    load = cover.load()
-    for y in range(h):
-        row = px[y]
-        for x in range(w):
-            if row[x]:
-                load[x, y] = LIT
-    cover = cover.resize(INNER, Image.NEAREST)
-    canvas = Image.new("RGB", CANVAS, BG)
-    canvas.paste(cover, ORIGIN)
-    # Gentler than the hero: these render at 220px in the README table, where the
-    # full tape pass turns knob labels into texture. Seeded per effect so each one
-    # gets its own dropouts instead of 21 identically-damaged frames.
-    # Native artwork: no texture that obscures pixels at pedal size.
     out.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out)
+    save_png(px, out)
 
 
 def main() -> int:
@@ -84,6 +67,10 @@ def main() -> int:
         out = gfx / f"{z.stem.lower()}.png"
         render(z, out)
         print(f"  {z.stem:<10} -> {out.relative_to(ROOT)}")
+    if not wanted:
+        sheet([gallery_pixels(n) for n in README_COVERS],
+              ROOT / "release" / "covers.png", cols=2)
+        print("  release/covers.png")
     return 0
 
 

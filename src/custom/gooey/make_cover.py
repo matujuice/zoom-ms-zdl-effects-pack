@@ -6,7 +6,7 @@ MOCKUPS (make_v11.title_gooey_k with the v13 G and the v16 holes) when that fold
 title.txt. Then writes covers/Gooey.json (frame A: default knobs, empty history) and
 cover_preview.png next to this script.
 """
-import json, sys
+import json, math, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -50,10 +50,10 @@ if __name__ == "__main__":
     out = ROOT / "src" / "airwindows" / "common" / "covers" / (NAME + ".json")
     out.write_text(json.dumps({"name": NAME, "w": 128, "h": 64, "grid": c.pixels}))
     print("wrote", out)
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (255, 255, 255))
-    for y in range(64):
-        for x in range(128):
-            if c.pixels[y][x]:
-                im.putpixel((x, y), (0, 0, 0))
-    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(str(HERE / "cover_preview.png"))
+    sys.path.insert(0, str(ROOT / "build"))
+    from lcd_render import sheet
+    # preview = stock frame A | one plausible live frame (a rising, decaying history; the real one is drawn by the C meter)
+    top = len(cc.meter_title(FOLDER))
+    rows = [64 if x < 40 else min(63, max(top, round(60 - 16 * (1 + math.sin(x / 9)) * (x - 40) / 88))) for x in range(128)]
+    live = cc.meter_frame(cc.meter_title(FOLDER), by, tags, rows)
+    sheet([c.pixels, live.pixels], str(HERE / "cover_preview.png"), cols=2)

@@ -1,32 +1,67 @@
-"""Generate src/airwindows/common/covers/Takeoff.json: a plain PLACEHOLDER cover (title and
-knob labels only, the same look as the generic cover of custom_covers.make_cover). Real cover
-art is designed later with Luca (docs/NEW-EFFECTS.md, "Covers").
+"""Generate src/airwindows/common/covers/Takeoff.json (128x64 cover override), Luca's takeoff-v5a.
+
+TAKEOFF in BREATHER's stretched 3x5 font: sparse dither above a riser boundary, a solid line, a
+white line, solid below; the boundary rises across the word and peaks on the last F's top-right
+corner. Under it a filled wave growing from zero, with a dotted centre line. BREATHER's knob row.
+(meter-mockups/make_takeoff_v5.py build("a").)
 
 Run from anywhere:  py src/custom/takeoff/make_cover.py
-Also writes cover_preview.png next to this script.
+The build (custom_covers.make_cover) picks the JSON up automatically.
+Also writes cover_preview.png next to this script (LCD look, build/lcd_render.py).
 """
-import json, sys
+import importlib.util, json, math
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]        # src/custom/takeoff/make_cover.py -> repo root
-sys.path.insert(0, str(ROOT / "build"))
-sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
-from screen_image import Canvas
-import custom_covers as cc
-from custom_covers import _VSquash, DEVICE_ASPECT
+spec = importlib.util.spec_from_file_location("breather_cover", ROOT / "src" / "custom" / "breather" / "make_cover.py")
+br = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(br)                       # BREATHER's ink() and labels(); its __main__ does not run
+from screen_image import Canvas                   # build/ is on sys.path via the BREATHER module
 
 NAME = "Takeoff"
-LABELS = ["Dir", "Len", "Trig"]
+br.LABELS = ("Dir", "Len", "Trig")
+WORD = "TAKEOFF"
+CELL, COLS, ROWS, TOP = 18, (4, 4, 4), (4, 4, 3, 4, 4), 2   # letters 12 x 19, rows 2..20
+X0 = (128 - 7 * CELL) // 2 + (CELL - 12) // 2
+BOT = TOP + sum(ROWS) - 1                         # last letter row
+B_MID, B_AMP = 29, 6                              # wave under the title
+XE = X0 + 6 * CELL + 11                           # last F's right column
+
+
+def boundary(x):
+    """white line row: low on T, exactly one row above the last F's top-right corner"""
+    t = min(max((x - X0) / (XE - X0), 0.0), 1.0)
+    return BOT - 1 - (BOT - TOP) * t ** 1.4
 
 
 def build():
     c = Canvas()
-    c.rect(1, 1, 126, 62)
-    for by in range(2, 16):
-        c.hline(2, 125, by)
-    x = max(3, (128 - (len(NAME) * 7 - 1)) // 2)
-    _VSquash(c, 9, aspect=DEVICE_ASPECT).draw_text(NAME.upper(), x, 4, scale=2, spacing=1, v=0)
-    cc._draw_knob_row(c, LABELS)
+    for i, ch in enumerate(WORD):
+        y = TOP
+        for r, row in enumerate(Canvas._FONT[ch]):
+            xx = X0 + i * CELL
+            for k, bit in enumerate(row):
+                if bit == "1":
+                    for dy in range(ROWS[r]):
+                        for dx in range(COLS[k]):
+                            X, Y = xx + dx, y + dy
+                            wy = round(boundary(X))
+                            if Y > wy or Y == wy - 1 or (Y < wy and br.ink(0, X, Y)):
+                                c.px(X, Y)
+                xx += COLS[k]
+            y += ROWS[r]
+    for x in range(4, 124):                       # filled wave, growing left to right
+        t = (x - 4) / 119
+        h = B_AMP * t * (0.55 + 0.45 * abs(math.sin(2 * math.pi * x / 6)))
+        n = int(h) + (h % 1 > ((x * 5) % 7 + 0.5) / 7)   # dithered top / bottom pixel: no visible steps
+        c.vline(x, B_MID - n, B_MID + n)
+    for x in range(2, 126):                       # dotted centre line: white in the wave, ink outside
+        inside = c.pixels[B_MID - 1][x] or c.pixels[B_MID + 1][x]
+        if x % 2 == 0:
+            c.px(x, B_MID, 0 if inside else 1)
+        elif not inside:
+            c.px(x, B_MID, 0)
+    br.labels(c)
     return c
 
 
@@ -34,12 +69,6 @@ if __name__ == "__main__":
     c = build()
     out = ROOT / "src" / "airwindows" / "common" / "covers" / (NAME + ".json")
     out.write_text(json.dumps({"name": NAME, "w": 128, "h": 64, "grid": c.pixels}))
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (255, 255, 255))
-    for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (0, 0, 0))
-    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
+    from lcd_render import save_png
+    save_png(c.pixels, Path(__file__).resolve().parent / "cover_preview.png")
     print("wrote", out)

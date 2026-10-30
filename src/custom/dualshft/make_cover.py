@@ -101,12 +101,7 @@ if __name__ == "__main__":
     c = build()
     out = ROOT / "src" / "airwindows" / "common" / "covers" / "DualShft.json"
     out.write_text(json.dumps({"name": "DualShft", "w": 128, "h": 64, "grid": c.pixels}))
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (20, 22, 26))
-    for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (186, 228, 255))
-    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "build"))
+    from lcd_render import save_png
+    save_png(c.pixels, Path(__file__).resolve().parent / "cover_preview.png")
     print("wrote", out)

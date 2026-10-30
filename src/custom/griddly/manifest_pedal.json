@@ -1,10 +1,10 @@
 {
-  "effect_name": "GridDly",
-  "comment": "GridDly - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo (MIDI clock, tap or patch tempo); Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tail (repeats ring out or stop when switched off). MIDI Start restarts the REVRS chunk; MIDI clock keeps synced chunks on the beat. 7.9 s 16-bit ring.",
+  "effect_name": "GRDELAY",
+  "comment": "GRDELAY - one tempo-synced mono delay with six engines on the Type knob: DIGI (clean), TAPE (wow, flutter, gliding time), DUB (band-limited, saturated loop), REVRS (reversed chunks that start on the beat), TAPS (three taps inside Time) and LOFI (each repeat crumbles). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo (MIDI clock, tap or patch tempo); Fdbk, Tone, Char (meaning per engine), Duck (repeats dip while you play), Mix (DJ crossfade), Tail (repeats ring out or stop when switched off). MIDI Start restarts the REVRS chunk; MIDI clock keeps synced chunks on the beat. 7.9 s 16-bit ring.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 495,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "audio_func_name": "Fx_DLY_GridDly",

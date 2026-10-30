@@ -13,7 +13,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
-| **GridDly** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. New, not in a release yet. |
+| **GRDELAY** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. New, not in a release yet. |
 | **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
 | **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
 | **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
@@ -26,7 +26,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Tempo and MIDI sync (on `main`, not in a release yet):** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
+**Tempo and MIDI sync (on `main`, not in a release yet):** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -39,7 +39,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
 The effects marked new are on `main` but not in a release yet: take the tested builds from [dist/](dist/) or build them from source (below) until the next release.
 
-Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GridDly, 496 Sweep, 497 Looper, 501 Gooey). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 484 DJFilter, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 Looper, 501 Gooey). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 

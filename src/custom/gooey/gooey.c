@@ -30,7 +30,7 @@
  * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
  *   A scrolling history of the output level (after the gain, also in bypass; the loudest sample
  *   of each 1/8 beat, 16 beats across), 1 row a dB from 0 dB down, white over the black box down
- *   to the threshold, with a THRSH tag inside the box when there is room. Drawn only while the
+ *   to the threshold, with a THRSH tag over the line (parked under the title when the line is higher). Drawn only while the
  *   cover is on screen and only on MS-70CDR 2.10 (checked once at state init): off screen it costs
  *   nothing, on screen one 8-sample peak scan a block and a frame every 1/15 s at most, rendered
  *   32 bytes a block.
@@ -249,10 +249,9 @@ static inline void go_meter(GoState *s, const float *u)
         char t[12];
         z->by = ZM_TOP + 40u - thr; z->key = thr; z->dirty = 1u;
         z->tag[0].n = 0u; z->tag[1].n = 0u;
-        if (z->by >= ZM_TOP + 10u) {
-            t[0] = 'T'; t[1] = 'H'; t[2] = 'R'; t[3] = 'S'; t[4] = 'H'; t[5] = ' '; t[6] = '-';
-            zm_tag_set(&z->tag[0], t, zm_tenths((40u - thr) * 10u, t, 7u), 125u, z->by - 3u);
-        }
+        t[0] = 'T'; t[1] = 'H'; t[2] = 'R'; t[3] = 'S'; t[4] = 'H'; t[5] = ' '; t[6] = '-';
+        zm_tag_set(&z->tag[0], t, zm_tenths((40u - thr) * 10u, t, thr < 40u ? 7u : 6u), 126u,
+                   z->by - 2u > ZM_TOP + 7u ? z->by - 2u : ZM_TOP + 7u);   /* parked under the title */
     }
     zm_frame(z);
 }

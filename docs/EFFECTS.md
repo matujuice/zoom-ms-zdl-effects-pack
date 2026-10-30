@@ -2,7 +2,7 @@
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo comes from the pedal (on `main`, not in a release yet).** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
+**Tempo comes from the pedal (on `main`, not in a release yet).** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
@@ -106,7 +106,7 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### GridDly: one tempo-synced delay, six engines
+### GRDELAY: one tempo-synced delay, six engines
 New, not in a release yet: built and tested on the MS-60B (2026-10-07).
 
 One delay with a 7.9 second mono memory (3.9 s in the stereo modes). Type picks the engine, Time sets the echo (free or a note value at the pedal's tempo), and Char changes what it means with each engine.
@@ -235,7 +235,7 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 
 | Knob | Range | What it does |
 |---|---|---|
-| Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GridDly, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
+| Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GRDELAY, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
 | Wash | 0..100 | Diffusion: how much each pass smears. 0 skips the diffusers. Default 70. |
 | Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
 | HiCut | 0..100 | Low-pass in the loop, so each pass gets darker. 0 = off. |

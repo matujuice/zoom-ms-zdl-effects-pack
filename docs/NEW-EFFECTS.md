@@ -103,7 +103,7 @@ filter. This one is the static filter you ride by hand, CC or Perform: the v2.0 
 
 ## WASH: dedicated washout
 
-Not a GridDly engine: its own effect, built to do one thing well and stay cheap. It
+Not a GRDELAY engine: its own effect, built to do one thing well and stay cheap. It
 turns the input into a smeared, reverb-like cloud of repeats, the Octatrack-style
 "washout" for transitions.
 
@@ -120,9 +120,9 @@ turns the input into a smeared, reverb-like cloud of repeats, the Octatrack-styl
 
   | # | Knob | Range |
   |---|---|---|
-  | 1 | Time | same as GridDly's Time: 12 ms..1.00 s, then 1/32..1bar, 2bar |
+  | 1 | Time | same as GRDELAY's Time: 12 ms..1.00 s, then 1/32..1bar, 2bar |
   | 2 | Wash | diffusion amount |
-  | 3 | Fdbk | 0-120, as GridDly: 100 = 1:1 (holds forever with Send 0 and both cuts off), above 100 grows, soft-clipped |
+  | 3 | Fdbk | 0-120, as GRDELAY: 100 = 1:1 (holds forever with Send 0 and both cuts off), above 100 grows, soft-clipped |
   | 4 | HiCut | low-pass in the loop: 0 off, 100 darkest |
   | 5 | LoCut | high-pass in the loop: 0 off, 100 thinnest |
   | 6 | Mod | modulation depth |
@@ -135,7 +135,7 @@ turns the input into a smeared, reverb-like cloud of repeats, the Octatrack-styl
 
   No Freeze knob (Luca, 2026-10-24): the all-pass diffusers lose no level, so Fdbk 100
   with Send 0 and both cuts off already holds the cloud. Knob names and ranges match the
-  pack (Time and Fdbk as GridDly); every knob that is off is off at 0.
+  pack (Time and Fdbk as GRDELAY); every knob that is off is off at 0.
 
   Send replaces Duck (Luca, 2026-10-23): turning Send up and back down is the "throw"
   move, and it reaches CC and Perform. A washout is meant to take over, so ducking matters

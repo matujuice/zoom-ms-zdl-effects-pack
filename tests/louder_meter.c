@@ -41,12 +41,10 @@ static void eff_geom(const float *u, int *by, RefTag *tags, int *nt)
     int gain = (int)u[0], ceil = (int)u[1];
     *by = py_round((int)ZM_TOP + (3.0 - (ceil - 60) / 10.0) * 3.0);
     *nt = 0;
-    if (*by - (int)ZM_TOP >= 10) {
-        snprintf(tags[*nt].text, sizeof tags[0].text, "CEIL %.1f", (ceil - 60) / 10.0);
-        tags[*nt].xr = 125; tags[*nt].yb = *by - 3; (*nt)++;
-    }
+    snprintf(tags[*nt].text, sizeof tags[0].text, "CEIL %.1f", (ceil - 60) / 10.0);
+    tags[*nt].xr = 126; tags[*nt].yb = *by - 2 > (int)ZM_TOP + 7 ? *by - 2 : (int)ZM_TOP + 7; (*nt)++;
     snprintf(tags[*nt].text, sizeof tags[0].text, "GAIN %+.1f", gain / 10.0);
-    tags[*nt].xr = 125; tags[*nt].yb = 61; (*nt)++;
+    tags[*nt].xr = 126; tags[*nt].yb = 62; (*nt)++;
 }
 static void eff_randk(float *u) { u[0] = (float)(rand() % 181); u[1] = (float)(rand() % 61); }
 static int eff_row(double db)

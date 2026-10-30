@@ -60,7 +60,7 @@ Zoom's 512 for future stock effects and fits 124 pack effects per group.
 | 910 | DualShft | 6 MOD |
 | 911 | Sweep | 6 MOD |
 | 912 | GRDLOOP (looper) | 8 DLY |
-| 913 | GridDly | 8 DLY |
+| 913 | GRDELAY | 8 DLY |
 | 914 | DubSiren | 8 DLY |
 | 915 | Scrub | 8 DLY |
 | 916 | Washout | 9 REV |

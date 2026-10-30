@@ -458,7 +458,7 @@ remain deferred until we hardware-confirm the TAPEECH3 reading.
 
 ## 10. MOD firmware MIDI transport (2026-10-08)
 
-The pack's tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) target
+The pack's tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) target
 Luca's custom firmware only (MOD 0.4 and later, repo zoom-ms-modding, spec in its
 `docs/transport-block.md`). It handles MIDI clock, Start and Stop and keeps an 8-word transport block
 at `0x1181FF00`: magic `0x5A4D5401`, sequence (odd = mid-write), running, Start counter, clocks since

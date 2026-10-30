@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Build GridDly.ZDL from griddly.c + manifest_pedal.json (9-knob pedal build).
+"""Build GRDELAY.ZDL from griddly.c + manifest_pedal.json (9-knob pedal build).
 
 Adapted from the Hydra build script: same compiler flags, same linker options,
 same 3-knob cover layout (the pedal screen shows the first three knobs).
 
 Finds the TI C6000 compiler automatically (see _find_ti_root). Run from the
 repo root:  py -B src\\custom\\griddly\\build.py   (or py build_all.py griddly).
-Output: dist\\GridDly.ZDL
+Output: dist\\GRDELAY.ZDL
 """
 
 from __future__ import annotations

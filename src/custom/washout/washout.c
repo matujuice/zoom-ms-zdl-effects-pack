@@ -32,7 +32,7 @@
  * IDLE: when nothing goes in (off, or Send 0) and the ring has been silent (under 2 LSB of the
  *   16-bit ring) for longer than the delay, the effect does no work: it only applies the dry gain.
  *
- * TIME (as GridDly): 0..100 free, ms = 12 + 0.0988 x screen^2 (12 ms .. 1 s);
+ * TIME (as GRDELAY): 0..100 free, ms = 12 + 0.0988 x screen^2 (12 ms .. 1 s);
  *   101..113 synced: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar at the pedal's
  *   tempo (zmt.h; the stock patch tempo without the MOD firmware). A synced time longer than the ring (3.8 s,
  *   168000 samples) is halved until it fits. Changing Time crossfades read points over 23 ms.

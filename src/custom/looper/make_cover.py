@@ -1,11 +1,11 @@
 """Generate src/airwindows/common/covers/GRDLOOP.json (128x64 cover override).
 
-GRDLOOP: the name in big letters on top and, under it, the Perform mode top bar as a
-long rounded bar: it fills over the cycle (5 of 8 bars here), PLAY knocked out of the
-fill, the bar.beat/cycle count on the right and a gap in the bottom edge at each bar line.
+GRDLOOP: the name in big letters on top and, under it, the empty rounded loop bar outline
+(2 px stroke, radius-2 corners, rows 17..34). The MIDISTOMP firmware draws the live bar
+(fill, state, bar.beat/cycle) on top of it (zoom-ms-modding asm/looper/lbox.c).
 
 Run from anywhere:  py src/custom/looper/make_cover.py
-Also writes cover_preview.png next to this script (black on white, like the pedal's screen).
+Also writes cover_preview.png next to this script (LCD look, build/lcd_render.py).
 """
 import json, sys
 from pathlib import Path
@@ -121,31 +121,9 @@ def build():
     c = Canvas()
     glitch_title(c)
 
-    # --- the loop bar, as Perform mode's top bar ---------------------------------
+    # --- the loop bar outline only: the MIDISTOMP firmware draws the live bar on top (lbox.c)
     for d in (0, 1):
         c.rect(d, BAR_Y0 + d, W - 1 - d, BAR_Y1 - d)
-    x0, x1 = 2, W - 3                                  # inside the stroke
-    fx = x0 + (x1 - x0 + 1) * FILL_BARS // BARS - 1
-    for y in range(BAR_Y0 + 2, BAR_Y1 - 1):
-        c.hline(x0, fx, y)
-    for i in range(1, BARS):                           # a gap at each bar line
-        gx = x0 + (x1 - x0 + 1) * i // BARS
-        for y in (BAR_Y0, BAR_Y0 + 1, BAR_Y1 - 1, BAR_Y1):   # top and bottom edge
-            c.px(gx, y, 0)
-    ty = (BAR_Y0 + BAR_Y1) // 2 - 4
-    count = "5.1/8"
-    texts = (("PLAY", x0 + 4), (count, x1 - 3 - (4 * 2 * len(count) - 2)))
-    for t, tx in texts:
-        small_xor(c, t, tx, ty)
-    ink = Canvas()                                     # where the text is, to keep the dots off it
-    for t, tx in texts:
-        small_xor(ink, t, tx, ty)
-    near_ink = lambda x, y: any(ink.pixels[y + dy][x + dx] for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-    for i in range(1, BARS):                           # a dotted line at each bar line, XORed:
-        gx = x0 + (x1 - x0 + 1) * i // BARS            # inverted where the fill has passed
-        for y in range(BAR_Y0 + 2, BAR_Y1 - 1, 2):
-            if not near_ink(gx, y):                    # off the text and 1 px around it
-                c.px(gx, y, 1 - c.pixels[y][gx])
     for x, y in ((0, 0), (1, 0), (0, 1)):              # round the four corners, radius 2
         for px_, py_ in ((x, BAR_Y0 + y), (W - 1 - x, BAR_Y0 + y), (x, BAR_Y1 - y), (W - 1 - x, BAR_Y1 - y)):
             c.px(px_, py_, 0)
@@ -169,12 +147,7 @@ if __name__ == "__main__":
     c = build()
     out = ROOT / "src" / "airwindows" / "common" / "covers" / (NAME + ".json")
     out.write_text(json.dumps({"name": NAME, "w": 128, "h": 64, "grid": c.pixels}))
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (255, 255, 255))
-    for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (0, 0, 0))
-    im.resize((128 * 6, 64 * 6), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "build"))
+    from lcd_render import save_png
+    save_png(c.pixels, Path(__file__).resolve().parent / "cover_preview.png")
     print("wrote", out)

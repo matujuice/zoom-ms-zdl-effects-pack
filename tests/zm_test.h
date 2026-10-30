@@ -132,7 +132,7 @@ static void ref_frame(unsigned char *raw, const unsigned char *title, int top, i
         const char *s = tags[k].text;
         int w = -1, xr = tags[k].xr, yb = tags[k].yb, i, cx;
         for (i = 0; s[i]; i++) w += ref_gw(s[i]) + 1;
-        for (x = xr - w - 3; x <= xr + 2; x++) for (y = yb - 8; y <= yb + 2; y++) ref_set(x, y, 1);
+        for (x = xr - w - 2; x <= xr + 1; x++) for (y = yb - 7; y <= yb + 1; y++) ref_set(x, y, 1);
         for (x = xr - w - 1; x <= xr; x++) for (y = yb - 6; y <= yb; y++) ref_set(x, y, 0);
         cx = xr - w;
         for (i = 0; s[i]; i++) {
