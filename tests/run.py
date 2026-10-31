@@ -38,6 +38,9 @@ for folder, prefix in [("wavefold", "WAVEFOLD"), ("dualshft", "DUALSHFT"), ("for
     if folder in ("louder", "gooey"):          # the meter layout + cover data (build.py writes the same)
         from custom_covers import meter_layout
         (GEN / f"{folder}_layout.h").write_text(meter_layout(folder, m)[1])
+    if folder == "looper":                     # the loop bar's cover data (build.py writes the same)
+        from custom_covers import bar_layout
+        (GEN / "looper_layout.h").write_text(bar_layout(m["effect_name"], [p["name"] for p in m["params"]])[1])
 
 want = sys.argv[1:]
 failed = []
