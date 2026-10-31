@@ -205,7 +205,7 @@ One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for sy
 Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.
 
 ### LOUDER: a mastering limiter
-For the end of the chain (after MIX); stereo in and out. A transparent look-ahead limiter: it pushes the level up and holds it under the ceiling, one gain for both sides, 1.5 ms look-ahead, hard clip at Ceil after Mix. Not tested on a pedal yet.
+For the end of the chain (after MIX); stereo in and out. A transparent look-ahead limiter: it pushes the level up and holds it under the ceiling, one gain for both sides, 1.5 ms look-ahead, hard clip at Ceil after Mix.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -217,7 +217,7 @@ For the end of the chain (after MIX); stereo in and out. A transparent look-ahea
 | Mix | 0..100 | Dry/wet crossfade, DJ style (parallel limiting). The dry is delayed like the wet, so a part Mix never sounds like a comb filter. |
 
 ### DJFilter: a DJ filter and kick kill
-Stereo in and out. Not tested on a pedal yet.
+Stereo in and out.
 
 The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. Three filter knobs, each off at 0 (a filter that is off costs nothing): LP closes the highs, HP closes the lows, DJ is the one-knob version (left LP, right HP, -3..+3 flat). DJ drives the same two filters and the more closed setting wins, so LP and HP can be parked as a floor and DJ sweeps past them; LP and HP together make a band-pass. Turning right is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
 
@@ -234,7 +234,7 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
 ### Washout: a delay that melts into a cloud
-Stereo in and out. Not tested on a pedal yet.
+Stereo in and out.
 
 A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. There is no Mix knob: Send is a crossfade-send. When the tail has died and nothing goes in, it costs next to nothing.
 
@@ -252,7 +252,7 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark swell that never ends.
 
 ### Takeoff: risers and downlifters
-Stereo in and out. Not tested on a pedal yet (hold needs MIDISTOMP's HOLD FOR = MOMENTARY).
+Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
 
 Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep and the stereo width grows with it. The key is always AUTO: it listens to what you play and starts and ends the sweep on its strongest note; with drums or noise only it falls back to a free glide. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing (only the key listener keeps running).
 
@@ -271,7 +271,7 @@ Adds a riser or a downlifter on top of what you play, like DubSiren: the input i
 Try: UP, Len 8 bars, Wind 60, Space 40 for a classic build-up; Range 20, Len 1 bar for a quick lift into a chorus; DOWN, Color 80, Space 60 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
 
 ### Gooey: a mix bus compressor
-Stereo in and out. Not tested on a pedal yet.
+Stereo in and out.
 
 An SSL G-bus style VCA compressor to glue a mix: one character, done well. One gain for both sides, taken from the louder one (half peak, half RMS detector, soft knee). The sidechain high-pass listens only to the detector, so a kick does not pump the whole mix and the sound itself is never filtered. Thrsh at 0 bypasses it completely.
 
@@ -289,7 +289,7 @@ An SSL G-bus style VCA compressor to glue a mix: one character, done well. One g
 Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level, with the threshold as a centered line tagged THRSH. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
 
 ### GRDLOOP: a bar-synced looper on the song grid
-Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo. Not tested on a pedal yet.
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo.
 
 The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
 

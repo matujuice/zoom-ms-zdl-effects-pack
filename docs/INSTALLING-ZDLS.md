@@ -1,15 +1,15 @@
 # Installing ZDLs With Zoom Effect Manager
 
-The release `.ZDL` files are in [../dist/](../dist/). Use
+The release `.ZDL` files are in the pack zip on the [Releases](https://github.com/matujuice/zoom-ms-zdl-effects-pack/releases) page; unzip it. Use
 [Zoom Effect Manager](https://zoomeffectmanager.com/en/download/) 2.3.3 or
-newer and point it at that folder.
+newer and point it at the unzipped folder.
 
 ## Steps
 
 1. Connect the pedal first, then open Zoom Effect Manager.
 2. Open `Settings`.
 3. Choose `Read Effects from folder`.
-4. Select this repo's `dist/` folder.
+4. Select the unzipped pack folder.
 
 ![Read effects from folder](images/read-effects.png)
 
