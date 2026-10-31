@@ -26,7 +26,7 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Tempo and MIDI sync:** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
+**Tempo and MIDI sync:** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom MS firmware [MIDISTOMP](https://github.com/matujuice/zoom-ms-midistomp) (v1.0 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 

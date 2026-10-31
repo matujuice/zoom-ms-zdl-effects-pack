@@ -11,7 +11,6 @@ Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other 
 
 1. Open **Zoom Effect Manager** and connect the pedal.
 2. In Zoom Effect Manager open Settings, choose "Read Effects from folder" and select the folder with the `.ZDL` files. Then turn on "Effects from devices" and "From Folder", add the effects you want and write them to the pedal.
-3. Delete GridDly.ZDL from the pedal before adding GRDELAY.ZDL (same effect, new name; old patches load it).
 
 On the MS-70CDR (real stereo input) EuGate, Sweep, Breather, S.GN_L, Scrub, GRDELAY and Choral are stereo; WaveFold, DualShft, DirtBox and DubSiren hear the two inputs added together and keep the dry in stereo; GRDLOOP is stereo. On the MS-50G and MS-60B everything works as before. The footswitch turns the effect on and off like normal.
 
@@ -19,7 +18,7 @@ On the MS-70CDR (real stereo input) EuGate, Sweep, Breather, S.GN_L, Scrub, GRDE
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo comes from the pedal.** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 and earlier have the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
+**Tempo comes from the pedal.** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom firmware [MIDISTOMP](https://github.com/matujuice/zoom-ms-midistomp) (v1.0 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 and earlier have the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
 
 ### WaveFold: wavefolder
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.

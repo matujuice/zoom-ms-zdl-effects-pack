@@ -2,7 +2,7 @@
 
 > **Proposal for after v2.0, not used yet.** v2.0 keeps the beta1 IDs: every pack effect is in
 > Delay (gid 8) with its old fxid (480-497, 501). The plan for categories and IDs is in the firmware
-> repo, zoom-ms-modding `docs/dev/future-effect-ids-and-categories.md`.
+> repo, zoom-ms-midistomp `docs/dev/future-effect-ids-and-categories.md`.
 
 **Proposed rule (not in force): pack effect IDs (fxid) live in 900-1023.** Keep the effect's group
 (gid); pick the next free number in 900-1023. Probes (498-500) and the old aliases 482/483 stay where they are.
