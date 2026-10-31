@@ -21,14 +21,14 @@ static int fails;
 static float inL[MAXN], inR[MAXN], outL[MAXN], outR[MAXN], tr[MAXN / 8];
 static GoState S;
 
-/* knobs in screen units: Thrsh 0..40, Ratio 0..3, Attck 0..5, Rels 0..4, MkUp 0..41, Mix 0..100, SC HP 0..20 */
+/* knobs in screen units (Thrsh here in dB + 40, the knob is twice that; Zoom stays 1): Thrsh 0..40, Ratio 0..3, Attck 0..5, Rels 0..4, MkUp 0..41, Mix 0..100, SC HP 0..20 */
 typedef struct { float thr, rat, att, rel, mk, mix, hp; } K;
 static K kd(void) { K k = { 40, 2, 4, 4, 1, 100, 0 }; return k; }
 
 static void run(int n, K k)
 {
-    float u[7]; GoParams P; int b, i;
-    u[0] = k.thr; u[1] = k.rat; u[2] = k.att; u[3] = k.rel; u[4] = k.mk; u[5] = k.mix; u[6] = k.hp;
+    float u[8]; GoParams P; int b, i;
+    u[0] = k.thr * 10.0f; u[1] = k.rat; u[2] = 1.0f; u[3] = k.att; u[4] = k.rel; u[5] = k.mk; u[6] = k.mix; u[7] = k.hp;
     go_init(&S);
     for (b = 0; b < n / 8; b++) {
         float buf[16];
@@ -142,9 +142,9 @@ int main(void)
         printf("2 kHz: GR %.2f dB off, %.2f dB with 300 Hz\n", gr_mid * 6.0206f, tr[SR / 8 - 1] * 6.0206f);
         CHECK(fabsf(tr[SR / 8 - 1] - gr_mid) * 6.0206f < 0.5f, "SC HP 300 Hz moves the 2 kHz reduction");
         /* labels / frequency range: knob 1 = 20 Hz, 20 = 300 Hz */
-        { char t[16]; ZDL_GetLabel_6(1, t); printf("SC HP 1 = %s, ", t); CHECK(!strcmp(t, "20Hz"), "label 1: %s", t);
-          ZDL_GetLabel_6(20, t); printf("20 = %s\n", t); CHECK(!strcmp(t, "300Hz"), "label 20: %s", t);
-          ZDL_GetLabel_6(0, t); CHECK(!strcmp(t, "OFF"), "label 0: %s", t); }
+        { char t[16]; ZDL_GetLabel_7(1, t); printf("SC HP 1 = %s, ", t); CHECK(!strcmp(t, "20Hz"), "label 1: %s", t);
+          ZDL_GetLabel_7(20, t); printf("20 = %s\n", t); CHECK(!strcmp(t, "300Hz"), "label 20: %s", t);
+          ZDL_GetLabel_7(0, t); CHECK(!strcmp(t, "OFF"), "label 0: %s", t); }
     }
 
     /* ---- 5. makeup: AUTO restores about the input level, fixed is a plain gain ---- */
@@ -160,9 +160,9 @@ int main(void)
         k.mk = 14; run(SR * 2, k);                                   /* +6.5 dB */
         printf("MkUp +6.5: gain over OFF %.2f dB (GR %.1f)\n", db(peak(outL, SR * 2 - 2000, SR * 2) / base), gr);
         CHECK(fabsf(db(peak(outL, SR * 2 - 2000, SR * 2) / base) - 6.5f) < 0.1f, "fixed makeup");
-        { char t[16]; ZDL_GetLabel_4(2, t); CHECK(!strcmp(t, "+0.5"), "MkUp 2 label %s", t);
-          ZDL_GetLabel_4(41, t); CHECK(!strcmp(t, "+20.0"), "MkUp 41 label %s", t);
-          ZDL_GetLabel_4(1, t); CHECK(!strcmp(t, "OFF"), "MkUp 1 label %s", t); }
+        { char t[16]; ZDL_GetLabel_5(2, t); CHECK(!strcmp(t, "+0.5"), "MkUp 2 label %s", t);
+          ZDL_GetLabel_5(41, t); CHECK(!strcmp(t, "+20.0"), "MkUp 41 label %s", t);
+          ZDL_GetLabel_5(1, t); CHECK(!strcmp(t, "OFF"), "MkUp 1 label %s", t); }
     }
 
     /* ---- 6. Thrsh 0 = transparent (bit exact, whatever Mix and MkUp say), gain ramps out cleanly ---- */
@@ -178,10 +178,10 @@ int main(void)
         printf("Thrsh 0: bit-exact bypass\n");
         /* compress, then Thrsh -> 0 in the middle: the gain returns to 1 in a ramp, no jump */
         sine(inL, SR, 1000.0f, 0.7f, 0); memcpy(inR, inL, sizeof(float) * SR);
-        { float u[7] = { 10, 2, 2, 3, 1, 100, 0 }; GoParams P; go_init(&S);
+        { float u[8] = { 100, 2, 1, 2, 3, 1, 100, 0 }; GoParams P; go_init(&S);
           for (b = 0; b < SR / 8; b++) {
               float buf[16];
-              u[0] = (b < SR / 16) ? 10.0f : 40.0f;
+              u[0] = (b < SR / 16) ? 100.0f : 400.0f;
               for (i = 0; i < 8; i++) { buf[i] = inL[b * 8 + i]; buf[i + 8] = inR[b * 8 + i]; }
               go_prepare(&P, &S, u); go_process(&S, &P, buf);
               for (i = 0; i < 8; i++) { outL[b * 8 + i] = buf[i]; outR[b * 8 + i] = buf[i + 8]; }
@@ -248,15 +248,18 @@ int main(void)
     /* ---- labels ---- */
     {
         char t[16];
-        ZDL_GetLabel_0(0, t);  CHECK(!strcmp(t, "-40"), "Thrsh 0 label %s", t);
-        ZDL_GetLabel_0(40, t); CHECK(!strcmp(t, "0"), "Thrsh 40 label %s", t);
+        ZDL_GetLabel_0(0, t);  CHECK(!strcmp(t, "-40.0"), "Thrsh 0 label %s", t);
+        ZDL_GetLabel_0(400, t); CHECK(!strcmp(t, "0"), "Thrsh 400 label %s", t);
+        ZDL_GetLabel_0(225, t); CHECK(!strcmp(t, "-17.5"), "Thrsh 225 label %s", t);
+        ZDL_GetLabel_0(399, t); CHECK(!strcmp(t, "-0.1"), "Thrsh 399 label %s", t);
+        ZDL_GetLabel_2(1, t);  CHECK(!strcmp(t, "x1.0"), "Zoom 1 label %s", t);
         ZDL_GetLabel_1(0, t);  CHECK(!strcmp(t, "1.5:1"), "Ratio 0 label %s", t);
         ZDL_GetLabel_1(3, t);  CHECK(!strcmp(t, "10:1"), "Ratio 3 label %s", t);
-        ZDL_GetLabel_2(0, t);  CHECK(!strcmp(t, "0.1ms"), "Attck 0 label %s", t);
-        ZDL_GetLabel_2(5, t);  CHECK(!strcmp(t, "30ms"), "Attck 5 label %s", t);
-        ZDL_GetLabel_3(3, t);  CHECK(!strcmp(t, "1.2s"), "Rels 3 label %s", t);
-        ZDL_GetLabel_3(4, t);  CHECK(!strcmp(t, "AUTO"), "Rels 4 label %s", t);
-        ZDL_GetLabel_3(2, t);  CHECK(!strcmp(t, "0.6s"), "Rels 2 label %s", t);
+        ZDL_GetLabel_3(0, t);  CHECK(!strcmp(t, "0.1ms"), "Attck 0 label %s", t);
+        ZDL_GetLabel_3(5, t);  CHECK(!strcmp(t, "30ms"), "Attck 5 label %s", t);
+        ZDL_GetLabel_4(3, t);  CHECK(!strcmp(t, "1.2s"), "Rels 3 label %s", t);
+        ZDL_GetLabel_4(4, t);  CHECK(!strcmp(t, "AUTO"), "Rels 4 label %s", t);
+        ZDL_GetLabel_4(2, t);  CHECK(!strcmp(t, "0.6s"), "Rels 2 label %s", t);
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nall ok\n", fails);

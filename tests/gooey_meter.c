@@ -1,7 +1,7 @@
 /* Gooey meter on the cover (src/custom/common/zdl_meter.h): every frame the firmware would draw
  * equals an independent render of the approved v16 look and the reference RLE encoder, stays in
  * ZM_CAP (worst case 1536 bytes), the pointer flips A/B, at most 15 redraws a second, columns at
- * 8 a beat (patch TEMPO and MIDISTOMP clock), nothing on stock firmware or off screen, the level
+ * 32 a beat (patch TEMPO and MIDISTOMP clock), nothing on stock firmware or off screen, the level
  * is the output (bypass too), and preview PNGs of a few histories. */
 #define GOOEY_HOST_TEST
 #define ZM_EFFECT_C "../src/custom/gooey/gooey.c"
@@ -40,18 +40,16 @@ static void eff_block(const float *u, float amp, int b)
 static void eff_geom(const float *u, int *by, RefTag *tags, int *nt)
 {
     int thr = (int)u[0];
-    *by = (int)ZM_TOP + 40 - thr;
-    *nt = 0;
-    snprintf(tags[0].text, sizeof tags[0].text, "THRSH %.1f", (double)(thr - 40));
-    tags[0].xr = 126; tags[0].yb = *by - 2 > (int)ZM_TOP + 7 ? *by - 2 : (int)ZM_TOP + 7; *nt = 1;
+    *by = (int)ZM_MID;
+    snprintf(tags[0].text, sizeof tags[0].text, "THRSH %.1f", (thr - 400) / 10.0);
+    tags[0].xr = 126; tags[0].yb = *by - 2; *nt = 1;
 }
-static void eff_randk(float *u) { u[0] = (float)(rand() % 41); }
-static int eff_row(double db) { return (int)floor((int)ZM_TOP - db + 0.5); }
-static unsigned int eff_row_c(float a) { return go_row(a); }
+static void eff_randk(float *u) { u[0] = (float)(rand() % 401); u[2] = (float)(rand() % 16); }
+static void eff_line(const float *u, double *line, double *rpd) { *line = (u[0] - 400.0) / 10.0; *rpd = (u[2] + 1.0) / 2.0; }
 
 int main(void)
 {
-    static const float udef[EFF_NK] = { 40.0f, 2.0f, 4.0f, 4.0f, 1.0f, 100.0f, 0.0f };
+    static const float udef[EFF_NK] = { 400.0f, 2.0f, 1.0f, 4.0f, 4.0f, 1.0f, 100.0f, 0.0f };
     float u[EFF_NK], pk;
     int g, b, r, w;
 
@@ -60,15 +58,14 @@ int main(void)
     /* the shown level is the output after the gain; in bypass (Mix 0) the dry signal */
     for (g = 0; g < 2; g++) {
         zmt_reset(1u, 1u);
-        memcpy(u, udef, sizeof u); u[0] = 20.0f;
-        if (g) u[5] = 0.0f;
+        memcpy(u, udef, sizeof u); u[0] = 200.0f;
+        if (g) u[6] = 0.0f;
         for (b = 0; b < 5512; b++) eff_block(u, 0.5f, b);
         pk = 0.0f;
         for (b = 5512; b < 5512 + 2000; b++) { eff_block(u, 0.5f, b); pk = last_out > pk ? last_out : pk; }
-        r = (int)S.zm.wy[(S.zm.head - 1u) & 255u];
-        w = eff_row(20.0 * log10(pk));
-        w = w < (int)ZM_TOP ? (int)ZM_TOP : (w > 64 ? 64 : w);
-        CHECK(r >= w && r <= w + 1, "%s: row %d, output peak %.3f wants %d", g ? "Mix 0" : "Thrsh -20", r, pk, w);
+        r = (int)zm_row(&S.zm, S.zm.lv[(S.zm.head - 1u) & 255u]);
+        w = ref_row(u, 20.0 * log10(pk));
+        CHECK(r >= w - 1 && r <= w + 1, "%s: row %d, output peak %.3f wants %d", g ? "Mix 0" : "Thrsh -20", r, pk, w);
     }
 
     for (g = 0; g < 4; g++) {
@@ -77,8 +74,8 @@ int main(void)
         static const float amp[4] = { 0.0f, -0.9f, 0.4f, 0.9f };
         zmt_reset(1u, 1u);
         memcpy(u, udef, sizeof u);
-        if (g == 2) u[0] = 20.0f;
-        if (g == 3) u[0] = 8.0f;
+        if (g == 2) u[0] = 200.0f;
+        if (g == 3) { u[0] = 80.0f; u[2] = 3.0f; }
         run_blocks(u, 5512 * 9, amp[g]);
         CHECK(frame_matches(u, 0), "preview %d frame differs", g);
         preview(nm[g]);

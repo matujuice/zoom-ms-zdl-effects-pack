@@ -19,7 +19,7 @@ spec.loader.exec_module(br)                       # BREATHER's ink() and labels(
 from screen_image import Canvas                   # build/ is on sys.path via the BREATHER module
 
 NAME = "Takeoff"
-br.LABELS = ("Dir", "Len", "Trig")
+br.LABELS = ("Dir", "Len", "Sound")
 WORD = "TAKEOFF"
 CELL, COLS, ROWS, TOP = 18, (4, 4, 4), (4, 4, 3, 4, 4), 2   # letters 12 x 19, rows 2..20
 X0 = (128 - 7 * CELL) // 2 + (CELL - 12) // 2

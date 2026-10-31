@@ -203,13 +203,14 @@ A transparent look-ahead limiter in the Pro-L / Ozone Maximizer family: it pushe
 
 | Knob | Range | What it does |
 |---|---|---|
-| Gain | 0.0 .. +18.0 dB | How hard the sound is pushed into the limiter. Default 0. |
-| Ceil | -6.0 .. 0.0 dB | The ceiling: nothing comes out above it. Default -0.1 dB. |
+| Gain | 0.0 .. +18.0 dB | How hard the sound is pushed into the limiter, 0.1 dB steps. Default 0. |
+| Ceil | -6.0 .. 0.0 dB | The ceiling: nothing comes out above it. 0.1 dB steps. Default -0.1 dB. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the ceiling line. Default x3. |
 | Rels | AUTO, 1 .. 1000 ms | Release. AUTO is program-dependent: a fast stage (30 ms) lets go after single peaks, a slow one (250 ms) after sustained level, so it does not pump. A number is one stage with that time. |
 | Style | CLEAN, PUNCH, LOUD | Only the saturation before the limiter and how much transient gets through (never the release). CLEAN has none, PUNCH adds a little and lets transients through a little, LOUD is the densest. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style (parallel limiting). The dry is delayed like the wet, so a part Mix never sounds like a comb filter. |
 
-At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 ms later). The cover shows a live gain-reduction meter (bar and dB number, peak held 300 ms), drawn by the effect itself. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 ms later). The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the level after Gain (one column = 1/32 beat), with the ceiling as a centered line tagged CEIL and GAIN. What pokes out of the box above the line is what the limiter takes off. It scrolls with the MIDI clock when it runs, else with tap or patch tempo. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
 
 ### DJFilter: a DJ filter and kick kill
 New, not in a release yet. Stereo in and out. Not tested on a pedal yet.
@@ -243,28 +244,27 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 | Mod | 0..100 | Slow modulation of the diffusers (it blurs the cloud). Default 20. |
 | Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
 | Send | 0..100 | How much input feeds the wash, smoothed. 0 = only the tail keeps ringing: turn it up and back down for a throw. Default 100. |
-| Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
 Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark swell that never ends.
 
 ### Takeoff: risers and downlifters
 New, not in a release yet. Stereo in and out. Not tested on a pedal yet (hold needs MIDISTOMP's HOLD FOR = MOMENTARY).
 
-Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len; flip again during it to drop it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go; from MIDISTOMP v2.0 it also sits at the top if you hold past the end of Len. The volume swells with the sweep and the stereo width grows with it. Key AUTO listens to what you play and starts and ends the sweep on its strongest note; with drums or noise only it falls back to a free glide. When nothing is sounding it costs next to nothing (only the AUTO listener keeps running).
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The volume swells with the sweep and the stereo width grows with it. The key is always AUTO: it listens to what you play and starts and ends the sweep on its strongest note; with drums or noise only it falls back to a free glide. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing (only the key listener keeps running).
 
 | Knob | Range | What it does |
 |---|---|---|
 | Dir | UP / DOWN | UP sweeps up and cuts clean at the end. DOWN starts at the top, falls and fades. Default UP. |
 | Len | 1/2/4/8/16 bars, or 1..31 s | Sweep length (bars at the pedal's tempo). Default 4 bars. |
-| Trig | PLAY / MAN | PLAY: footswitch or MIDI fires a sweep. MAN: no sweep, Pos is the position. Default PLAY. |
 | Sound | NOISE, SAW, N+SAW, SINE, N+SIN | Noise through a resonant sweeping filter; 3 detuned saws spread left and right; a sine (DOWN, SINE and Range 1 = the sub drop). |
+| Color | 0..100 | Noise tone: low = a narrow whistling resonance, high = a wide airy hiss. Default 25. |
+| Wind | 0..100 | Slow random gusts: the noise filter and level drift on their own, apart on left and right. 0 = steady. Default 40. |
+| Grain | 0..100 | Noise texture: 0 = smooth hiss, up = coarse, crackly, gritty. Default 0. |
 | Range | 1..4 oct | How far the sweep travels. Default 3. |
-| Key | AUTO, FREE, C..B | AUTO follows your input, FREE is an untuned glide, C..B fixes the note. Default AUTO. |
 | Space | 0..100 | Reverb tail on the riser's own sound, ringing on after the cut. 0 = off. Default 0. |
-| Pos | 0..100 | Manual position (MAN only), by hand, CC or Perform. |
 | Vol | 0..100 | Level of the added sound. Default 50. |
 
-Try: SINE, DOWN, Range 1, Key C for a sub drop; NOISE, UP, Len 8 bars, Space 40 for a classic build-up.
+Try: SINE, DOWN, Range 1 for a sub drop; NOISE, UP, Len 8 bars, Wind 60, Space 40 for a classic build-up; NOISE, Color 0, Grain 70 for a gritty whistle.
 
 ### Gooey: a mix bus compressor
 New, not in a release yet. Stereo in and out. Not tested on a pedal yet.
@@ -273,15 +273,16 @@ An SSL G-bus style VCA compressor to glue a mix: one character, done well. One g
 
 | Knob | Range | What it does |
 |---|---|---|
-| Thrsh | -40 .. 0 dB | Threshold. 0 = OFF (bit-exact bypass, no cost). Default 0. |
+| Thrsh | -40 .. 0 dB | Threshold in 0.1 dB steps. 0 = OFF (bit-exact bypass, no cost). Default 0. |
 | Ratio | 1.5, 2, 4, 10 | Default 4. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the threshold line. Default x1. |
 | Attck | 0.1, 0.3, 1, 3, 10, 30 ms | Default 10 ms. |
 | Rels | 0.1, 0.3, 0.6, 1.2 s, AUTO | AUTO is program-dependent: 0.1 s after single peaks, up to 1.2 s after sustained reduction, so it does not pump. Default AUTO. |
 | MkUp | AUTO, OFF, +0.5 .. +20 dB | AUTO adds back the average gain reduction. Default OFF. |
 | Mix | 0..100 | Linear dry/wet blend like the Digitakt compressor (parallel compression), so Mix 50 is not louder. Default 100. |
 | SC HP | OFF, 20 .. 300 Hz | High-pass on the detector only (12 dB/oct). Default OFF. |
 
-Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover shows a live gain-reduction meter (bar and dB number, peak held 300 ms), drawn by the effect itself. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level (one column = 1/32 beat), with the threshold as a centered line tagged THRSH. It scrolls with the MIDI clock when it runs, else with tap or patch tempo. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
 
 ### Looper: a bar-synced looper on the song grid
 Test build for MIDISTOMP v2.0 (step 1, 2026-10-15; looper services, step 2, in test), not in a release. Made for the MIDISTOMP firmware. On stock firmware it still works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo. Not tested on a pedal yet.

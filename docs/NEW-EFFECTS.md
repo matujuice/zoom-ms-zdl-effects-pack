@@ -157,49 +157,43 @@ Only adds sound on top, like DubSiren: the input passes through in stereo, never
   falls and fades to silence.
 - **Space:** a reverb tail on the riser's own sound only, ringing on after the cut.
   Reuse WASH's diffuser code.
-- **Key:** AUTO listens to the input (strongest note over the last few bars, from a
+- **Key:** always AUTO: listens to the input (strongest note over the last few bars, from a
   decimated chroma) and the sweep starts and ends on that note; with no clear note
-  (silence, drums only) it falls back to FREE. FREE is an untuned glide. C to B fixes the
-  note. The listener runs only in AUTO (about 3-5 cost); FREE and fixed keys cost nothing.
-- **Trigger (Trig):** PLAY or MAN. No setting needed; the footswitch tells a press from a hold.
-  - **PLAY, short press** (let go within half a second): one full sweep over Length, on its
-    own; UP cuts on the bar. Pressing again during a sweep drops it early.
-  - **PLAY, hold** (still down after half a second): manual riser. It rises while you hold
-    (at Length's speed), stays at the top if it gets there, and drops the moment you let go.
-  - **MAN:** no automatic sweep; Pos is the position (0 rest, 100 top), by hand, CC or
-    Perform; smoothed.
-  - **What the effect sees:** its on/off flag (passed while OFF, as DubSiren) plus a
-    "footswitch down" flag from the firmware (new, see Firmware below). Any on/off flip
-    starts a sweep; if the down flag is still set after half a second it is a hold, and
-    the release drops it. MIDI: an on/off CC flip = a press; a momentary CC (on while
-    held, off on release) = a hold, since an OFF during a sweep drops it.
+  (silence, drums only) it falls back to a free glide. (FREE, C to B and MAN were dropped
+  in beta3.)
+- **Trigger:** no setting. Any on/off flip fires a sweep. Without a MIDI clock it starts at
+  once. QUANT only while the clock runs: it waits for the next Len line from bar 1, so it
+  ends on the beat. A flip up to 150 ms late joins the line it just missed; a
+  flip while waiting cancels; a flip during a sweep drops it early.
+  - **Hold** (transport word 6, MIDISTOMP HOLD FOR MOMENTARY): rises while held at Len's
+    speed, sits at the top, drops on release. The release flip (within 40 ms of word 6
+    falling) is swallowed, so letting go only drops.
+- **Noise shaping:** Color = filter damping (narrow whistle to wide hiss), Wind = slow
+  random gusts on filter and level, apart per side, Grain = sample-and-hold noise (smooth
+  to gritty, level-compensated).
 - **Idle:** when nothing sounds and the tail has died, skip all processing (about zero
-  cost); only the AUTO key listener keeps running.
+  cost); only the key listener keeps running.
 - **Knobs:**
 
   | # | Knob | Range |
   |---|---|---|
   | 1 | Dir | UP / DOWN |
   | 2 | Len | length: 1/2/4/8/16 bars, or FREE seconds |
-  | 3 | Trig | PLAY (default) / MAN |
-  | 4 | Sound | NOISE / SAW / NOISE+SAW / SINE / NOISE+SINE |
-  | 5 | Range | 1-4 octaves |
-  | 6 | Key | AUTO (default) / FREE / C to B |
-  | 7 | Space | reverb tail, 0 off |
-  | 8 | Pos | manual position 0-100 (MAN only) |
+  | 3 | Sound | NOISE / SAW / NOISE+SAW / SINE / NOISE+SINE |
+  | 4 | Color | 0-100, default 25 |
+  | 5 | Wind | 0-100, default 40 |
+  | 6 | Grain | 0-100, default 0 |
+  | 7 | Range | 1-4 octaves |
+  | 8 | Space | reverb tail, 0 off |
   | 9 | Vol | level of the added sound |
 
-- **Cost:** about 12-15 while sounding, plus 3-5 for AUTO key.
-- **Firmware (needed for hold):** MIDISTOMP passes RISER a "footswitch down" flag (the
-  footswitch hold hook, asm/looper/hold_trampoline.S, already sees press and release).
-  Without it, a short press works and hold-to-rise works only via Perform's footswitch
-  Hold -> on / Release -> off, or a momentary MIDI CC. No SETTINGS option involved.
-- **Firmware follow-up (not in this build):** RISER's footswitch LED and Perform softkey
-  light should show the sweep: brightness fading up on a rise, down on a downlifter, off
-  when the tail ends. That needs MIDISTOMP's press/LED service (today owned only by
-  GRDLOOP) to take a second owner; it touches the same claim code as the
-  looper-bar-over-other-effects bug. QUANT (start on the next bar) can come back with it.
-- Built 2026-10-29: fxid 494, cost 20 (estimate, AUTO total), ZDL size 21846 bytes.
+- **LED (MIDISTOMP v2.0):** through the services block at 0xC00F3000 (word 0 magic
+  0x5A4C5301, words 13/14/15 LED on/off/mask, word 22 cursor params pointer). Written only
+  when the cursor is on this effect: beat pulse while a sweep waits, PWM fade up with an UP
+  sweep (down with DOWN), one off write at the end, nothing when idle. On stock (no magic)
+  it never writes.
+- Built 2026-10-31 (beta3): fxid 494 v1.10, ZDL size 23762 bytes. Old patches load with
+  shifted params (knob order changed).
 
 ## COMP: mix bus compressor
 
@@ -244,7 +238,7 @@ CLAUDE/meter-mockups. This builds on themanro's findings (github.com/themanro/Zo
 docs/pedal-research/animated-covers.md, from Leemuzhko's SDK).
 
 - **The picture:** the title stays fixed at the top (16 rows on LOUDER, 17 on Gooey). Below it
-  is a scrolling level history, where one column is 1/8 beat and the 128 columns cover 16 beats.
+  is a scrolling level history, where one column is 1/32 beat and the 128 columns cover the last 4 beats.
   It follows the patch TEMPO, or tap tempo and the MIDISTOMP clock. A black box runs down to the
   effect's line, with small tags.
   - **LOUDER:** shows the input after Gain. The line is the ceiling, tagged CEIL (when there is

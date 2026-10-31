@@ -15,7 +15,7 @@ static void fresh(int time, int wash, int fdbk, int width, int send, int mix)
     memset(se_m + 4096, 0, ARENA);
     params[0] = 1.0f;
     SET(TIME, time); SET(WASH, wash); SET(FDBK, fdbk); SET(HICUT, 0); SET(LOCUT, 0);
-    SET(MOD, 20); SET(WIDTH, width); SET(SEND, send); SET(MIX, mix);
+    SET(MOD, 20); SET(WIDTH, width); SET(SEND, send);
 }
 static unsigned rng = 9u;
 static float noise(void) { rng = rng * 1664525u + 1013904223u; return (float)(int)(rng >> 9) * 2.3841858e-7f - 1.0f; }
@@ -37,7 +37,7 @@ int main(void)
     long i, b; int mix;
     se_init(ARENA);
 
-    /* 1. L and R stay apart: a burst only on L stays on L (Mix 100, Width 100); only on R stays on R */
+    /* 1. L and R stay apart: a burst only on L stays on L (Width 100); only on R stays on R */
     for (mix = 0; mix < 2; mix++) {
         double eL, eR;
         fresh(109, 70, 60, 100, 100, 100);
@@ -64,7 +64,7 @@ int main(void)
           else CHECK(diff < 1e-5, "Width 0 is not mono");
       } }
 
-    /* 3. footswitch: noise for 1 s with the effect on, then off with the input silent (Mix 100): the tail keeps ringing
+    /* 3. footswitch: noise for 1 s with the effect on, then off with the input silent: the tail keeps ringing
      *    (and dies, Fdbk is capped at 95 off); no clicks at either switch with a steady tone on the input */
     { double tail, dryerr = 0; float st; long t;
       fresh(109, 70, 60, 100, 100, 100);
@@ -88,16 +88,14 @@ int main(void)
       printf("off with an empty ring: output - dry = %.2e\n", dryerr);
       CHECK(dryerr == 0.0, "dry changed when off"); }
 
-    /* 4. footswitch at Mix 100: off then the dry passes at full level (ramped); settled output = dry + tail; run with no
-     *    tail (Send 0 first) to see the dry alone */
+    /* 4. no Mix knob: the dry passes at full level on and off; run with no tail (Send 0) to see the dry alone */
     { double e; long t;
       fresh(109, 70, 60, 100, 0, 100);
       for (i = 0; i < SEC * 3; i++) { inL[i] = 0.3f * noise(); inR[i] = 0.3f * noise(); }
       for (b = 0; b < SEC * 3 / 8; b++) { t = b * 8; blk(t, t < SEC); }
-      e = 0; for (i = SEC + 600; i < SEC * 3 - 8; i++) e += fabs(oL[i] - inL[i]);
-      printf("Mix 100, off (empty tail): |out - dry| = %.2e; while on the dry is gone: rms %.4f\n", e, rms(oL, SEC / 2, SEC));
-      CHECK(e == 0.0, "dry not unity after the ramp when off");
-      CHECK(rms(oL, SEC / 2, SEC) < 1e-6, "dry present at Mix 100 while on (empty ring)"); }
+      e = 0; for (i = 0; i < SEC * 3 - 8; i++) e += fabs(oL[i] - inL[i]);
+      printf("empty tail, on then off: |out - dry| = %.2e\n", e);
+      CHECK(e == 0.0, "dry not at full level, on or off"); }
 
     /* 5. Send click-free: a loud tone, the ring fed, Send jumps 100 -> 0 -> 100: the largest sample step stays at the
      *    tone's own, no spike (compare against a Send-constant run) */

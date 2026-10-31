@@ -21,12 +21,12 @@ static int fails;
 static float inL[MAXN], inR[MAXN], outL[MAXN], outR[MAXN];
 static LoState S;
 
-/* knobs in screen units: Gain 0..180, Ceil 0..60, Rels 0..60, Style 0..2, Mix 0..100 */
+/* knobs in screen units (Zoom stays 5): Gain 0..180, Ceil 0..60, Rels 0..60, Style 0..2, Mix 0..100 */
 static void run(int n, float gain, float ceil, float rels, float style, float mix)
 {
-    float u[5];
+    float u[6];
     LoParams P; int b, i;
-    u[0] = gain; u[1] = ceil; u[2] = rels; u[3] = style; u[4] = mix;
+    u[0] = gain; u[1] = ceil; u[2] = 5.0f; u[3] = rels; u[4] = style; u[5] = mix;
     lo_init(&S);
     lo_t_clips = 0;
     for (b = 0; b < n / 8; b++) {
@@ -176,10 +176,11 @@ int main(void)
         ZDL_GetLabel_1(59u, b);  CHECK(!strcmp(b, "-0.1"), "Ceil label %s", b);
         ZDL_GetLabel_1(60u, b);  CHECK(!strcmp(b, "0.0"), "Ceil label %s", b);
         ZDL_GetLabel_1(0u, b);   CHECK(!strcmp(b, "-6.0"), "Ceil label %s", b);
-        ZDL_GetLabel_2(0u, b);   CHECK(!strcmp(b, "AUTO"), "Rels label %s", b);
-        ZDL_GetLabel_2(1u, b);   CHECK(!strcmp(b, "1"), "Rels label %s", b);
-        ZDL_GetLabel_2(60u, b);  CHECK(!strcmp(b, "1000"), "Rels label %s", b);
-        ZDL_GetLabel_3(1u, b);   CHECK(!strcmp(b, "PUNCH"), "Style label %s", b);
+        ZDL_GetLabel_3(0u, b);   CHECK(!strcmp(b, "AUTO"), "Rels label %s", b);
+        ZDL_GetLabel_3(1u, b);   CHECK(!strcmp(b, "1"), "Rels label %s", b);
+        ZDL_GetLabel_3(60u, b);  CHECK(!strcmp(b, "1000"), "Rels label %s", b);
+        ZDL_GetLabel_4(1u, b);   CHECK(!strcmp(b, "PUNCH"), "Style label %s", b);
+        ZDL_GetLabel_2(5u, b);   CHECK(!strcmp(b, "x3.0"), "Zoom label %s", b);
         printf("labels ok\n");
     }
     printf(fails ? "\n%d FAILED\n" : "\nall ok\n", fails);

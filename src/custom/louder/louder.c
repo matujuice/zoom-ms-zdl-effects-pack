@@ -32,10 +32,10 @@
  *   The dry path is delayed by the same 64 samples, so a part Mix never comb-filters.
  *
  * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
- *   A scrolling history of the pushed level (after Gain, the loudest sample of each 1/8 beat, 16
+ *   A scrolling history of the pushed level (after Gain, the loudest sample of each 1/32 beat, 4
  *   beats across), white over the black box down to the ceiling, so what pokes out of the box is
- *   what the limiter takes off. Tags CEIL (the ceiling: over the line, parked under the title when the
- *   line is higher) and GAIN, 1 px frames. Rows: 3 a dB from +3 down to -9 dB, then 1 per 4 dB. Drawn only while the cover is on
+ *   what the limiter takes off. The ceiling line stays mid-meter (tag CEIL over it, GAIN at the
+ *   bottom, 1 px frames): Ceil moves the wave, Zoom (0.5..8 rows a dB) scales it around the line. Drawn only while the cover is on
  *   screen and only on MS-70CDR 2.10 (checked once at state init): elsewhere it costs one max per
  *   block, on screen a frame every 1/15 s at most, rendered 32 bytes a block.
  *
@@ -58,7 +58,7 @@
 #define LO_BLOCK_LOOP()
 #endif
 
-#define LO_MAGIC     0x4C4F5533u            /* "LOU3": change when LoState changes */
+#define LO_MAGIC     0x4C4F5534u            /* "LOU4": change when LoState changes */
 #define LO_DELAY     64u                    /* look-ahead in samples = 8 blocks */
 #define LO_NMIN      9                      /* blocks in the lowest-need window */
 #define LO_NAVG      8                      /* blocks in the mean               */
@@ -161,19 +161,19 @@ static inline void lo_init(LoState *s)
     s->magic = LO_MAGIC;
 }
 
-/* u[] = screen values in manifest order: Gain, Ceil, Rels, Style, Mix. The cached numbers
+/* u[] = screen values in manifest order: Gain, Ceil, Zoom, Rels, Style, Mix. The cached numbers
  * (a few 2^x) are only recomputed when their knob moved. */
 LO_ALWAYS_INLINE(lo_prepare)
 static inline void lo_prepare(LoParams *P, LoState *s, const float *u)
 {
-    unsigned int kg = (unsigned int)(int)u[0], kc = (unsigned int)(int)u[1], kr = (unsigned int)(int)u[2];
-    unsigned int style = (unsigned int)(int)(u[3] + 0.5f);
-    float m = u[4] * 0.01f;
+    unsigned int kg = (unsigned int)(int)u[0], kc = (unsigned int)(int)u[1], kr = (unsigned int)(int)u[3];
+    unsigned int style = (unsigned int)(int)(u[4] + 0.5f);
+    float m = u[5] * 0.01f;
     if (kg != s->k_gain) { s->k_gain = kg; s->gainLin = lo_exp2(u[0] * 0.016609640f); }  /* dB / 6.0206 */
     if (kc != s->k_ceil) { s->k_ceil = kc; s->ceilLin = lo_exp2((u[1] - 60.0f) * 0.016609640f); }
     if (kr != s->k_rels) {                      /* 1 .. 1000 ms over 59 steps; c = 1 - 2^(-0.26171 / ms) */
         s->k_rels = kr;
-        s->cF = 1.0f - lo_exp2(-0.26171f * lo_exp2(-(u[2] - 1.0f) * 0.16891f));
+        s->cF = 1.0f - lo_exp2(-0.26171f * lo_exp2(-(u[3] - 1.0f) * 0.16891f));
     }
     P->gain = s->gainLin; P->ceil = s->ceilLin;
     P->thr = (style == 1u) ? s->ceilLin * 1.15f : s->ceilLin;
@@ -197,37 +197,23 @@ static inline float lo_sat(float x, float a, float xm)
 }
 
 /* ---- meter: rows and tags (custom_covers.meter_geometry, make_v8.row_louder) ----------- */
-/* first wave row of a level: 3 rows a dB from +3 dB (row ZM_TOP) to -9, then 1 row per 4 dB */
-LO_ALWAYS_INLINE(lo_row)
-static inline unsigned int lo_row(float a)
-{
-    float db, y;
-    if (!(a > 1e-6f)) return ZM_EMPTY;
-    db = zm_db(a);
-    y = (db >= -9.0f) ? (float)ZM_TOP + (3.0f - db) * 3.0f : (float)ZM_TOP + 36.0f + (-9.0f - db) * 0.25f;
-    if (y > 64.0f) y = 64.0f;
-    if (y < (float)ZM_TOP) y = (float)ZM_TOP;
-    return (unsigned int)(int)(y + 0.5f);
-}
-
-/* once per on-screen block: history column, box and tags for the Gain / Ceil knobs, frame */
+/* once per on-screen block: history column; line level, zoom and tags for Gain / Ceil / Zoom; frame */
 LO_ALWAYS_INLINE(lo_meter)
 static inline void lo_meter(LoState *s, const float *u)
 {
     ZmState *z = &s->zm;
-    unsigned int kg = (unsigned int)(int)u[0], kc = (unsigned int)(int)u[1], key = kg | (kc << 8);
-    if (zm_column(z)) zm_push(z, lo_row(z->lvl));
+    unsigned int kg = (unsigned int)(int)u[0], kc = (unsigned int)(int)u[1], zo = (unsigned int)(int)u[2];
+    unsigned int key = kg | (kc << 8) | (zo << 16);
+    if (zm_column(z)) zm_push(z);
     if (key != z->key && z->pos >= ZM_RAW) {
         char t[12];
-        unsigned int k = 60u - kc, v = ZM_TOP * 10u + 90u + 3u * k, by = 0u, n;
-        while (v >= 10u) { v -= 10u; by++; }
-        if (v > 5u || (v == 5u && (by & 1u))) by++;           /* half to even, like Python's round */
-        z->by = by; z->key = key; z->dirty = 1u;
+        unsigned int k = 60u - kc, n;
+        zm_scale(z, (float)(int)k * -0.1f, (float)(int)(zo + 1u) * 0.5f);
+        z->key = key; z->dirty = 1u;
         z->tag[0].n = 0u;
         t[0] = 'C'; t[1] = 'E'; t[2] = 'I'; t[3] = 'L'; t[4] = ' '; n = 5u;
         if (k) t[n++] = '-';
-        zm_tag_set(&z->tag[0], t, zm_tenths(k, t, n), 126u,
-                   by - 2u > ZM_TOP + 7u ? by - 2u : ZM_TOP + 7u);   /* above the line, parked under the title */
+        zm_tag_set(&z->tag[0], t, zm_tenths(k, t, n), 126u, ZM_MID - 2u);
         t[0] = 'G'; t[1] = 'A'; t[2] = 'I'; t[3] = 'N'; t[4] = ' '; t[5] = '+';
         zm_tag_set(&z->tag[1], t, zm_tenths(kg, t, 6u), 126u, 62u);
     }
@@ -344,8 +330,16 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return lo_tenths_text(d, out, 1);
 }
 
-/* knob 2 Rels: 0 "AUTO", 1..60 -> 1..1000 ms (log) */
+/* knob 2 Zoom: x0.5 .. x8.0 (meter rows a dB) */
 int ZDL_GetLabel_2(unsigned int value, char *out)
+{
+    if (value > 15u) value = 15u;
+    out[0] = 'x';
+    return lo_tenths_text((value + 1u) * 5u, out, 1);
+}
+
+/* knob 3 Rels: 0 "AUTO", 1..60 -> 1..1000 ms (log) */
+int ZDL_GetLabel_3(unsigned int value, char *out)
 {
     int ms, len = 0, th = 0, h = 0, t = 0;
     if (value == 0u) { out[0] = 'A'; out[1] = 'U'; out[2] = 'T'; out[3] = 'O'; out[4] = 0; return 4; }
@@ -362,8 +356,8 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return len;
 }
 
-/* knob 3 Style: CLEAN / PUNCH / LOUD */
-int ZDL_GetLabel_3(unsigned int value, char *out)
+/* knob 4 Style: CLEAN / PUNCH / LOUD */
+int ZDL_GetLabel_4(unsigned int value, char *out)
 {
     if (value == 0u) { out[0] = 'C'; out[1] = 'L'; out[2] = 'E'; out[3] = 'A'; out[4] = 'N'; out[5] = 0; return 5; }
     if (value == 1u) { out[0] = 'P'; out[1] = 'U'; out[2] = 'N'; out[3] = 'C'; out[4] = 'H'; out[5] = 0; return 5; }
@@ -395,7 +389,7 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     LoState *s;
     LoParams P;
-    float u[5];
+    float u[6];
     unsigned int on;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -429,9 +423,10 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
 
     u[0] = lo_ui(params[LOUDER_GAIN_SLOT],  (float)LOUDER_GAIN_UI_DEFAULT,  180.0f);
     u[1] = lo_ui(params[LOUDER_CEIL_SLOT],  (float)LOUDER_CEIL_UI_DEFAULT,  60.0f);
-    u[2] = lo_ui(params[LOUDER_RELS_SLOT],  (float)LOUDER_RELS_UI_DEFAULT,  60.0f);
-    u[3] = lo_ui(params[LOUDER_STYLE_SLOT], (float)LOUDER_STYLE_UI_DEFAULT, 2.0f);
-    u[4] = lo_ui(params[LOUDER_MIX_SLOT],   (float)LOUDER_MIX_UI_DEFAULT,   100.0f);
+    u[2] = lo_ui(params[LOUDER_ZOOM_SLOT],  (float)LOUDER_ZOOM_UI_DEFAULT,  15.0f);
+    u[3] = lo_ui(params[LOUDER_RELS_SLOT],  (float)LOUDER_RELS_UI_DEFAULT,  60.0f);
+    u[4] = lo_ui(params[LOUDER_STYLE_SLOT], (float)LOUDER_STYLE_UI_DEFAULT, 2.0f);
+    u[5] = lo_ui(params[LOUDER_MIX_SLOT],   (float)LOUDER_MIX_UI_DEFAULT,   100.0f);
 
     lo_prepare(&P, s, u);
     on = zm_begin(&s->zm, params);

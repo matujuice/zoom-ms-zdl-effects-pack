@@ -2,9 +2,10 @@
  * zdl_meter.h - live level meter drawn by the effect on its own cover (LOUDER, Gooey)
  *
  * The whole cover is the meter (docs/NEW-EFFECTS.md "Readouts"): the fixed title on top, then a
- * scrolling level history (one column = 1/8 beat, 16 beats across), a black box down to the
+ * scrolling level history (one column = 1/32 beat, 4 beats across), a black box down to the
  * effect's line (ceiling, threshold) and small tags. Approved look: the v12 (LOUDER) and v16
- * (Gooey) mockups.
+ * (Gooey) mockups. The line stays mid-meter (ZM_MID); the history keeps levels in dB, so turning
+ * the line's knob moves the wave, and the effect's Zoom (rows a dB) scales it around the line.
  *
  * How it gets on screen (MS-70CDR 2.10): the cover draw (0xC00AA3D8) reads imageInfo word 5 (the
  * RLE pointer) on every redraw and decodes it with a bounded decoder (never past 1024 bytes). The
@@ -44,7 +45,10 @@
 #define ZM_EMPTY   64u                      /* wave row of an empty column                   */
 #define ZM_TAGW    40u                      /* widest tag text, pixels                       */
 #define ZM_NONE    0xFFFFFFFFu
-#define ZM_COL     2.41874527e-5f           /* columns per 8-sample block per BPM: 8 a beat  */
+#define ZM_COL     9.67498108e-5f           /* columns per 8-sample block per BPM: 32 a beat */
+#define ZM_MID     ((ZM_TOP + 64u) >> 1)    /* the line: first row under the box             */
+#define ZM_NOLV    0xFFFFu                  /* level of an empty column                       */
+#define ZM_DB0     24.0f                    /* level 0 = +24 dB, 16 levels a dB down          */
 
 typedef char zm_cap_check[(ZM_CAP >= 1536u && ZM_TOP <= 24u) ? 1 : -1];
 
@@ -72,13 +76,14 @@ typedef struct {
     unsigned int on, chk, since, dirty;     /* on screen; blocks to the next check; blocks since the last frame; picture changed */
     unsigned int head, live;                /* history ring: next write; pushes until it is empty again */
     float phase, lvl;                       /* column phase; loudest level since the last column */
+    float lc, k;                            /* level at the line; rows per level (zm_scale)   */
     unsigned int key, by;                   /* knobs the box and tags are drawn for; first row under the box */
     unsigned int pos, o, rc, rn, rh;        /* frame: next raw byte (ZM_RAW = none), out bytes, RLE byte and run, ring start */
     unsigned char *out;                     /* frame: the buffer being written */
     volatile ZM_WORD *info;                 /* the firmware's imageInfo of our slot */
     ZtSync zt;
     ZmTag tag[2];
-    unsigned char wy[256];                  /* history ring: first wave row per column */
+    unsigned short lv[256];                 /* history ring: level per column (zm_level)       */
 } ZmState;
 
 /* Pure reads: is this MS-70CDR 2.10 with a live UI event? Call once, keep the result. */
@@ -203,7 +208,7 @@ ZM_INLINE(zm_clear)
 static inline void zm_clear(ZmState *z)
 {
     unsigned int i;
-    for (i = 0u; i < 256u; i++) z->wy[i] = (unsigned char)ZM_EMPTY;
+    for (i = 0u; i < 256u; i++) z->lv[i] = (unsigned short)ZM_NOLV;
     z->live = 0u; z->lvl = 0.0f; z->phase = 0.0f;
 }
 
@@ -214,7 +219,7 @@ static inline void zm_init(ZmState *z)
     zt_init(&z->zt);
     z->fw = ZM_FW_OK();
     z->on = 0u; z->chk = 1u; z->since = ZM_GAP; z->dirty = 0u; z->head = 0u;
-    z->key = ZM_NONE; z->by = ZM_TOP; z->pos = ZM_RAW; z->o = 0u; z->rc = 0u; z->rn = 0u; z->rh = 0u;
+    z->key = ZM_NONE; z->by = ZM_MID; z->lc = 0.0f; z->k = 0.0f; z->pos = ZM_RAW; z->o = 0u; z->rc = 0u; z->rn = 0u; z->rh = 0u;
     z->out = 0; z->info = 0;
     z->tag[0].n = 0u; z->tag[1].n = 0u;
 }
@@ -236,8 +241,8 @@ static inline unsigned int zm_begin(ZmState *z, const void *params)
     return 1u;
 }
 
-/* 1 when a new history column is due (8 a beat at the held tempo: MIDI clock with MIDISTOMP,
- * else the patch TEMPO); then zm_push the row of zm.lvl */
+/* 1 when a new history column is due (32 a beat at the held tempo: MIDI clock with MIDISTOMP,
+ * else the patch TEMPO); then zm_push */
 ZM_INLINE(zm_column)
 static inline unsigned int zm_column(ZmState *z)
 {
@@ -250,16 +255,46 @@ static inline unsigned int zm_column(ZmState *z)
     return 1u;
 }
 
-/* newest column: first wave row (ZM_TOP..ZM_EMPTY); resets the level */
-ZM_INLINE(zm_push)
-static inline void zm_push(ZmState *z, unsigned int row)
+/* history level of a peak: (ZM_DB0 - dB) x 16, ZM_NOLV under -120 dB */
+ZM_INLINE(zm_level)
+static inline unsigned int zm_level(float a)
 {
-    if (row < ZM_TOP) row = ZM_TOP;
-    if (row > ZM_EMPTY) row = ZM_EMPTY;
-    if (z->live || row < ZM_EMPTY) z->dirty = 1u;                  /* else empty into empty: same picture */
-    z->wy[z->head & 255u] = (unsigned char)row;
+    float c;
+    if (!(a > 1e-6f)) return ZM_NOLV;
+    c = (ZM_DB0 - zm_db(a)) * 16.0f;
+    if (c < 0.0f) c = 0.0f;
+    return (unsigned int)(int)(c + 0.5f);
+}
+
+/* the line at line_db, rpd rows a dB; set between frames (z->pos >= ZM_RAW) */
+ZM_INLINE(zm_scale)
+static inline void zm_scale(ZmState *z, float line_db, float rpd)
+{
+    z->lc = (ZM_DB0 - line_db) * 16.0f;
+    z->k = rpd * 0.0625f;
+}
+
+/* first wave row of a history level (ZM_TOP..ZM_EMPTY) */
+ZM_INLINE(zm_row)
+static inline unsigned int zm_row(const ZmState *z, unsigned int lv)
+{
+    float f;
+    if (lv >= ZM_NOLV) return ZM_EMPTY;
+    f = (float)ZM_MID + ((float)(int)lv - z->lc) * z->k;
+    if (f < (float)ZM_TOP) return ZM_TOP;
+    if (f > 64.0f) return ZM_EMPTY;
+    return (unsigned int)(int)(f + 0.5f);
+}
+
+/* newest column: the level of zm.lvl; resets it */
+ZM_INLINE(zm_push)
+static inline void zm_push(ZmState *z)
+{
+    unsigned int lv = zm_level(z->lvl);
+    if (z->live || lv < ZM_NOLV) z->dirty = 1u;                    /* else empty into empty: same picture */
+    z->lv[z->head & 255u] = (unsigned short)lv;
     z->head++;
-    z->live = (row < ZM_EMPTY) ? 128u : z->live - (z->live != 0u);
+    z->live = (lv < ZM_NOLV) ? 128u : z->live - (z->live != 0u);
     z->lvl = 0.0f;
 }
 
@@ -299,7 +334,7 @@ static inline void zm_render(ZmState *z)
         sh[k] = (sh[k] > 8) ? 8 : (sh[k] < -8 ? -8 : sh[k]);         /* text outside this block: shifts out */
     }
     for (; pos < end; pos++) {
-        unsigned int x = pos & 127u, b = boxm ^ zm_span(p8, (int)z->wy[(z->rh + x) & 255u], 64);
+        unsigned int x = pos & 127u, b = boxm ^ zm_span(p8, (int)zm_row(z, z->lv[(z->rh + x) & 255u]), 64);
         b |= ttl[x] & tm;
         for (k = 0u; k < 2u; k++) {
             const ZmTag *t = &z->tag[k];

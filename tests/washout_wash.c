@@ -16,7 +16,7 @@ static void fresh(int time, int wash, int fdbk, int hi, int lo, int mod, int wid
     memset(se_m + 4096, 0, ARENA);
     params[0] = 1.0f;
     SET(TIME, time); SET(WASH, wash); SET(FDBK, fdbk); SET(HICUT, hi); SET(LOCUT, lo);
-    SET(MOD, mod); SET(WIDTH, width); SET(SEND, send); SET(MIX, mix);
+    SET(MOD, mod); SET(WIDTH, width); SET(SEND, send);
 }
 static unsigned rng = 5u;
 static float noise(void) { rng = rng * 1664525u + 1013904223u; return (float)(int)(rng >> 9) * 2.3841858e-7f - 1.0f; }
@@ -54,7 +54,7 @@ int main(void)
       CHECK(plain < 20 && wash > 50 * (plain + 1), "tail not diffuse");
       CHECK(w2 > w1, "density does not rise over time"); }
 
-    /* 2. bounded: Fdbk 120, Wash 100, noise for 14 s, Mix 100 */
+    /* 2. bounded: Fdbk 120, Wash 100, noise for 14 s */
     { float pk = 0; int bad = 0;
       fresh(109, 100, 120, 0, 0, 100, 100, 100, 100);
       for (i = 0; i < SEC * 14; i++) { inL[i] = 0.7f * noise(); inR[i] = 0.7f * noise(); }
@@ -115,7 +115,7 @@ int main(void)
       printf("Wash 70, 120 BPM: loudest wet sample at %ld (the beat is %ld)\n", pk, (long)(22050 + 8000));
       CHECK(pk > 22050 + 8000 - 400 && pk < 22050 + 8000 + 4000, "wash echo far from the beat"); }
 
-    /* 6. idle: Send 0 and a dead tail: the buffer is left alone (Mix 50 = dry gain 1), and the state is untouched */
+    /* 6. idle: Send 0 and a dead tail: the buffer is left alone, and the state is untouched */
     { WdState *st = (WdState *)(((uintptr_t)(se_m + 4096) + 3u) & ~(uintptr_t)3u); int wp0, wp1; float err = 0;
       fresh(109, 70, 60, 0, 0, 20, 100, 100, 50);
       for (i = 0; i < SEC / 2; i++) { inL[i] = 0.3f * noise(); inR[i] = 0.3f * noise(); }

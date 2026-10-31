@@ -158,11 +158,22 @@ static void eff_block(const float *u, float amp, int b); /* one block: begin, DS
 static ZmState *eff_zm(void);
 static void eff_geom(const float *u, int *by, RefTag *tags, int *ntags);  /* custom_covers.meter_geometry */
 static void eff_randk(float *u);                      /* random box/tag knobs within their ranges */
-static int eff_row(double db);                        /* make_v8.row_*, rounded like the C (ties up) */
-static unsigned int eff_row_c(float a);               /* the effect's own row function */
+static void eff_line(const float *u, double *line_db, double *rpd);  /* the line's level, rows a dB */
 static const char *EFF_NAME;
 static const char *EFF_PREVIEW_DIR;
-#define EFF_NK 7
+#ifndef EFF_NK
+#define EFF_NK 8                                      /* knobs in the manifest */
+#endif
+
+/* reference row of a level: the line mid-meter, rpd rows a dB around it, clamped to the meter */
+static int ref_row(const float *u, double db)
+{
+    double line, rpd;
+    int r;
+    eff_line(u, &line, &rpd);
+    r = (int)floor((double)ZM_MID - (db - line) * rpd + 0.5);
+    return r < (int)ZM_TOP ? (int)ZM_TOP : (r > 64 ? 64 : r);
+}
 
 static void zmt_reset(unsigned int fw, unsigned int screen)
 {
@@ -191,7 +202,7 @@ static int frame_matches(const float *u, int *len_out)
     RefTag tags[2];
     ZmState *z = eff_zm();
     if (!fw_raw(raw)) return 0;
-    for (x = 0; x < 128; x++) rows[x] = z->wy[(z->rh + (unsigned int)x) & 255u];
+    for (x = 0; x < 128; x++) rows[x] = (int)zm_row(z, z->lv[(z->rh + (unsigned int)x) & 255u]);
     eff_geom(u, &by, tags, &nt);
     ref_frame(want, zm_t_blob + 2u * ZM_CAP, (int)ZM_TOP, by, rows, tags, nt);
     if (memcmp(raw, want, 1024) != 0) {
@@ -274,7 +285,7 @@ static void zmt_run(const float *udef)
     CHECK(zm_t_posts == 0u && memcmp(zm_t_blob, COVER_BLOB, COVER_BLOB_LEN) == 0 && z->head == 0u && !z->on,
           "off screen: %u posts, head %u", zm_t_posts, z->head);
 
-    /* ---- on screen at 120 BPM (patch TEMPO): 16 columns a second, at most 15 posts a second,
+    /* ---- on screen at 120 BPM (patch TEMPO): 64 columns a second, at most 15 posts a second,
      * every frame equals the reference and the reference encoder, pointer flips A/B ---- */
     zmt_reset(1u, 1u);
     run_blocks(udef, 64, 0.5f);
@@ -291,21 +302,21 @@ static void zmt_run(const float *udef)
         }
     }
     printf("120 BPM: %u columns, %u posts in 4 s\n", z->head - head, zm_t_posts - posts);
-    CHECK(z->head - head >= 63u && z->head - head <= 65u, "columns in 4 s at 120 BPM: %u, want 64", z->head - head);
+    CHECK(z->head - head >= 255u && z->head - head <= 257u, "columns in 4 s at 120 BPM: %u, want 256", z->head - head);
     CHECK(zm_t_posts - posts >= 56u && zm_t_posts - posts <= 60u, "posts in 4 s: %u, want 56..60", zm_t_posts - posts);
 
-    /* ---- 300 BPM from the MIDISTOMP transport block: 40 columns a second, still 15 posts ---- */
+    /* ---- 300 BPM from the MIDISTOMP transport block: 160 columns a second, still 15 posts ---- */
     zt_host[0] = 0x5A4D5401u; zt_host[1] = 2u; zt_host[2] = 0u; zt_host[5] = 30000u;
     run_blocks(udef, 64, 0.5f);
     head = z->head; posts = zm_t_posts;
     run_blocks(udef, 5512 * 4, 0.5f);
     printf("300 BPM: %u columns, %u posts in 4 s\n", z->head - head, zm_t_posts - posts);
-    CHECK(z->head - head >= 159u && z->head - head <= 161u, "columns in 4 s at 300 BPM: %u, want 160", z->head - head);
+    CHECK(z->head - head >= 639u && z->head - head <= 641u, "columns in 4 s at 300 BPM: %u, want 640", z->head - head);
     CHECK(zm_t_posts - posts <= 60u, "posts in 4 s at 300 BPM: %u", zm_t_posts - posts);
     CHECK(frame_matches(udef, 0), "300 BPM frame differs");
     zt_host[0] = 0u;
 
-    /* ---- silence: the history scrolls out (128 columns = 16 beats), then no more posts ---- */
+    /* ---- silence: the history scrolls out (128 columns = 4 beats), then no more posts ---- */
     run_blocks(udef, 5512 * 9, 0.0f);
     posts = zm_t_posts;
     run_blocks(udef, 5512 * 3, 0.0f);
@@ -319,23 +330,30 @@ static void zmt_run(const float *udef)
         memcpy(u, udef, sizeof u);
         eff_randk(u);
         for (t = 0; t < 256u; t++) {
-            int r = rand() % 6;
-            z->wy[t] = (unsigned char)(r == 0 ? 64 : r == 1 ? ZM_TOP + (unsigned int)(rand() % 3) :
-                                       r == 2 ? 63 : (int)ZM_TOP + rand() % (65 - (int)ZM_TOP));
+            int r = rand() % 6;                          /* levels: empty, extremes, anything in +24..-100 dB */
+            z->lv[t] = (unsigned short)(r == 0 ? ZM_NOLV : r == 1 ? rand() % 3 : r == 2 ? 65534 : rand() % 2000);
         }
-        if (i & 1) for (t = 0; t < 256u; t++) z->wy[t] = z->wy[t & ~1u];   /* pairs: long RLE */
+        if (i & 1) for (t = 0; t < 256u; t++) z->lv[t] = z->lv[t & ~1u];   /* pairs: long RLE */
         z->live = 128u; z->dirty = 1u; z->since = ZM_GAP;
         posts = zm_t_posts;
         for (k = 0; k < 40 && zm_t_posts == posts; k++) eff_block(u, 0.0f, 0);
         if (zm_t_posts == posts) { CHECK(0, "no frame after a knob change"); break; }
         if (!frame_matches(u, &len)) { CHECK(0, "random frame %d differs (u0 %g u1 %g)", i, u[0], u[1]); break; }
         if (len > maxlen) maxlen = len;
+        for (k = -600; k <= 240; k += 37) {          /* the effect's line and zoom vs the reference */
+            double db = k * 0.1 + 0.013;
+            int got = (int)zm_row(z, zm_level((float)pow(10.0, db / 20.0))), want = ref_row(u, db);
+            if (got < want - 1 || got > want + 1) { CHECK(0, "row of %.3f dB at u0 %g u2 %g: %d, want %d", db, u[0], u[2], got, want); i = 3000; break; }
+        }
     }
     /* adversarial: the title in pairs too, history in pairs, so every byte sits in a 2-run */
     {
         unsigned int t;
+        double line, rpd, l63, l3;
         for (t = 0; t < 384u; t++) zm_t_blob[2u * ZM_CAP + t] = (unsigned char)(((t >> 1) & 1) ? 0x5A : 0xA5);
-        for (t = 0; t < 256u; t++) z->wy[t] = (unsigned char)(((t >> 1) & 1) ? 63 : ZM_TOP + 3u);
+        eff_line(udef, &line, &rpd);                     /* levels of rows 63 and ZM_TOP + 3 at the default knobs */
+        l63 = (ZM_DB0 - (line - (63.0 - ZM_MID) / rpd)) * 16.0; l3 = (ZM_DB0 - (line - ((double)ZM_TOP + 3.0 - ZM_MID) / rpd)) * 16.0;
+        for (t = 0; t < 256u; t++) z->lv[t] = (unsigned short)floor((((t >> 1) & 1) ? l63 : l3) + 0.5);
         z->dirty = 1u; z->since = ZM_GAP; posts = zm_t_posts;
         for (k = 0; k < 40 && zm_t_posts == posts; k++) eff_block(udef, 0.0f, 0);
         CHECK(frame_matches(udef, &len), "adversarial frame differs");
@@ -345,16 +363,6 @@ static void zmt_run(const float *udef)
     }
     printf("largest frame: %d RLE bytes of %u\n", maxlen, ZM_CAP);
     CHECK(maxlen <= (int)ZM_CAP, "frame over the cap");
-
-    /* ---- row formulas vs the mockup (make_v8.row_*), clamped to the meter ---- */
-    for (i = -600; i <= 60; i++) {
-        double db = i * 0.1 + 0.013;
-        int want_r = eff_row(db), got;
-        if (want_r < (int)ZM_TOP) want_r = (int)ZM_TOP;
-        if (want_r > 64) want_r = 64;
-        got = (int)eff_row_c((float)pow(10.0, db / 20.0));
-        if (got != want_r) { CHECK(0, "row of %.3f dB: %d, want %d", db, got, want_r); break; }
-    }
 
     /* ---- leaving the screen drops the frame, coming back clears the history ---- */
     run_blocks(udef, 5512, 0.5f);

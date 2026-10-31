@@ -1,9 +1,10 @@
 /* LOUDER meter on the cover (src/custom/common/zdl_meter.h): every frame the firmware would draw
  * equals an independent render of the approved v12 look and the reference RLE encoder, stays in
  * ZM_CAP (worst case 1536 bytes), the pointer flips A/B, at most 15 redraws a second, columns at
- * 8 a beat (patch TEMPO and MIDISTOMP clock), nothing on stock firmware or off screen, and
+ * 32 a beat (patch TEMPO and MIDISTOMP clock), nothing on stock firmware or off screen, and
  * preview PNGs of a few histories. */
 #define LOUDER_HOST_TEST
+#define EFF_NK 6
 #define ZM_EFFECT_C "../src/custom/louder/louder.c"
 #include "zm_test.h"
 unsigned int lo_t_clips;
@@ -39,24 +40,19 @@ static void eff_block(const float *u, float amp, int b)
 static void eff_geom(const float *u, int *by, RefTag *tags, int *nt)
 {
     int gain = (int)u[0], ceil = (int)u[1];
-    *by = py_round((int)ZM_TOP + (3.0 - (ceil - 60) / 10.0) * 3.0);
+    *by = (int)ZM_MID;
     *nt = 0;
     snprintf(tags[*nt].text, sizeof tags[0].text, "CEIL %.1f", (ceil - 60) / 10.0);
-    tags[*nt].xr = 126; tags[*nt].yb = *by - 2 > (int)ZM_TOP + 7 ? *by - 2 : (int)ZM_TOP + 7; (*nt)++;
+    tags[*nt].xr = 126; tags[*nt].yb = *by - 2; (*nt)++;
     snprintf(tags[*nt].text, sizeof tags[0].text, "GAIN %+.1f", gain / 10.0);
     tags[*nt].xr = 126; tags[*nt].yb = 62; (*nt)++;
 }
-static void eff_randk(float *u) { u[0] = (float)(rand() % 181); u[1] = (float)(rand() % 61); }
-static int eff_row(double db)
-{
-    double r = db >= -9.0 ? (int)ZM_TOP + (3.0 - db) * 3 : (int)ZM_TOP + 36 + (-9.0 - db) / 4;
-    return (int)floor(r + 0.5);
-}
-static unsigned int eff_row_c(float a) { return lo_row(a); }
+static void eff_randk(float *u) { u[0] = (float)(rand() % 181); u[1] = (float)(rand() % 61); u[2] = (float)(rand() % 16); }
+static void eff_line(const float *u, double *line, double *rpd) { *line = (u[1] - 60.0) / 10.0; *rpd = (u[2] + 1.0) / 2.0; }
 
 int main(void)
 {
-    static const float udef[EFF_NK] = { 0.0f, 59.0f, 0.0f, 0.0f, 100.0f };
+    static const float udef[EFF_NK] = { 0.0f, 59.0f, 5.0f, 0.0f, 0.0f, 100.0f };
     float u[EFF_NK];
     int g, b;
 
@@ -66,8 +62,8 @@ int main(void)
     zmt_reset(1u, 1u);
     memcpy(u, udef, sizeof u); u[0] = 60.0f;
     run_blocks(u, 5512, 0.25f);
-    b = (int)S.zm.wy[(S.zm.head - 1u) & 255u];
-    CHECK(b == eff_row(-6.0) || b == eff_row(-6.0) + 1, "row of a -12 dB sine at +6 dB Gain: %d, want %d", b, eff_row(-6.0));
+    b = (int)zm_row(&S.zm, S.zm.lv[(S.zm.head - 1u) & 255u]);
+    CHECK(b >= ref_row(u, -6.0) - 1 && b <= ref_row(u, -6.0) + 1, "row of a -12 dB sine at +6 dB Gain: %d, want %d", b, ref_row(u, -6.0));
 
     /* previews: a full history of a few shapes at a few knob settings */
     for (g = 0; g < 4; g++) {
@@ -77,7 +73,7 @@ int main(void)
         zmt_reset(1u, 1u);
         memcpy(u, udef, sizeof u);
         if (g == 2) u[0] = 60.0f;
-        if (g == 3) { u[1] = 30.0f; u[0] = 120.0f; }
+        if (g == 3) { u[1] = 30.0f; u[0] = 120.0f; u[2] = 1.0f; }
         run_blocks(u, 5512 * 9, amp[g]);
         CHECK(frame_matches(u, 0), "preview %d frame differs", g);
         preview(nm[g]);

@@ -1,6 +1,6 @@
 {
   "effect_name": "Washout",
-  "comment": "Washout - a tempo-synced stereo feedback delay with a chain of 4 slowly modulated all-pass diffusers inside the loop, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo; Wash = diffusion, Fdbk 0-120 (100 = 1:1, soft-clipped above), HiCut and LoCut in the loop (0 = off), Mod = diffuser modulation, Width, Send (how much input feeds the wash, smoothed; 0 = only the tail rings), Mix (DJ crossfade). The footswitch is plain on/off with trails: off stops new input and the tail rings out, the dry is untouched. Fdbk 100 + Send 0 + both cuts off holds the cloud.",
+  "comment": "Washout - a tempo-synced stereo feedback delay with a chain of 4 slowly modulated all-pass diffusers inside the loop, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo; Wash = diffusion, Fdbk 0-120 (100 = 1:1, soft-clipped above), HiCut and LoCut in the loop (0 = off), Mod = diffuser modulation, Width, Send (how much input feeds the wash, smoothed; 0 = only the tail rings): the one live control, the dry always passes at full level. The footswitch is plain on/off with trails: off stops new input and the tail rings out, the dry is untouched. Fdbk 100 + Send 0 + both cuts off holds the cloud.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
@@ -26,9 +26,7 @@
     {"name": "Width", "max": 100, "default": 100,
      "comment": "Stereo width of the wet signal: 0 = mono, 100 = as is. Default 100."},
     {"name": "Send", "max": 100, "default": 100,
-     "comment": "How much input feeds the wash, smoothed over about 7 ms. 0 = only the tail keeps ringing. Default 100."},
-    {"name": "Mix", "max": 100, "default": 100,
-     "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. Default 100."}
+     "comment": "How much input feeds the wash, smoothed over about 7 ms. 0 = only the tail keeps ringing. Default 100."}
   ],
   "dsp_cost": 28.0,
   "dsp_cost_comment": "Estimate (the spec says 25-30): per side per sample a 2-tap interpolated ring read (crossfaded), 4 interpolated all-pass stages, 2 optional one-poles, a soft clip and a ring write. Idle (off or Send 0 and the tail died) costs about nothing. Re-measure on the pedal."

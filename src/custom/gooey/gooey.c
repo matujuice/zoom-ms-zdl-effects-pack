@@ -4,7 +4,7 @@
  * Glue for a whole mix. One character, done well. Spec: docs/NEW-EFFECTS.md, COMP.
  *
  * KNOBS (screen values)
- *   0 Thrsh 0..40   -40 .. 0 dB, 1 dB steps (default 40 = 0 dB = OFF: the effect is bypassed)
+ *   0 Thrsh 0..400  -40 .. 0 dB, 0.1 dB steps (default 400 = 0 dB = OFF: the effect is bypassed)
  *   1 Ratio 0..3    1.5 / 2 / 4 / 10 (default 2 = 4:1)
  *   2 Attck 0..5    0.1 / 0.3 / 1 / 3 / 10 / 30 ms (default 4 = 10 ms)
  *   3 Rels  0..4    0.1 / 0.3 / 0.6 / 1.2 s / AUTO (default 4 = AUTO)
@@ -24,13 +24,14 @@
  *   single peak lets go in 0.1 s, a long loud passage in about 1.2 s, and it does not pump.
  *   MkUp AUTO adds back the average gain reduction (1 s average). Fixed MkUp is a plain gain.
  *   Output gain per block = dryG + wetG * 2^(makeup - reduction), moved in a straight line over
- *   the block (no zipper). Thrsh at 0 (or Mix 0) bypasses everything: the gain ramps to 1, then
+ *   the block (no zipper). Thrsh moves 0.1 dB a step. Thrsh at 0 dB (or Mix 0) bypasses everything: the gain ramps to 1, then
  *   the block is skipped entirely (the cost is a compare). SC HP is skipped when OFF.
  *
  * METER (the whole cover; docs/NEW-EFFECTS.md "Readouts", src/custom/common/zdl_meter.h)
  *   A scrolling history of the output level (after the gain, also in bypass; the loudest sample
- *   of each 1/8 beat, 16 beats across), 1 row a dB from 0 dB down, white over the black box down
- *   to the threshold, with a THRSH tag over the line (parked under the title when the line is higher). Drawn only while the
+ *   of each 1/32 beat, 4 beats across), white over the black box down to the threshold line, which
+ *   stays mid-meter with a THRSH tag over it: Thrsh moves the wave, Zoom (0.5..8 rows a dB) scales
+ *   it around the line. Drawn only while the
  *   cover is on screen and only on MS-70CDR 2.10 (checked once at state init): off screen it costs
  *   nothing, on screen one 8-sample peak scan a block and a frame every 1/15 s at most, rendered
  *   32 bytes a block.
@@ -54,7 +55,7 @@
 #define GO_BLOCK_LOOP()
 #endif
 
-#define GO_MAGIC     0x474F4F33u            /* "GOO3": change when GoState changes */
+#define GO_MAGIC     0x474F4F34u            /* "GOO4": change when GoState changes */
 #define GO_KEY_NONE  0xFFFFFFFFu
 #define GO_DPK       0.99638f               /* peak follower fall per block: 50 ms         */
 #define GO_CMS       0.03563f               /* mean-square follower per block: 5 ms        */
@@ -103,6 +104,17 @@ static inline float go_ui(float raw, float def_ui, float max_ui)
     ui = (float)(int)(ui + 0.5f);
     if (ui > max_ui) ui = max_ui;
     if (ui < 0.0f) ui = 0.0f;
+    return ui;
+}
+
+/* Thrsh (0..400): the pedal passes screen / 100 (0..4.00); always scale by 100, as Scrub's Pos */
+GO_ALWAYS_INLINE(go_ui_thr)
+static inline float go_ui_thr(float raw, float def_ui)
+{
+    float ui;
+    if (!(raw >= 0.0f && raw <= 4.005f)) ui = def_ui;
+    else ui = (float)(int)(raw * 100.0f + 0.5f);
+    if (ui > 400.0f) ui = 400.0f;
     return ui;
 }
 
@@ -182,14 +194,14 @@ static inline float go_rel_inv(unsigned int i)
     return (i == 0u) ? 0.01f : (i == 1u) ? 0.0033333333f : (i == 2u) ? 0.0016666667f : (i == 3u) ? 0.00083333333f : 0.01f;
 }
 
-/* u[] = screen values in manifest order: Thrsh, Ratio, Attck, Rels, MkUp, Mix, SC HP. The cached
+/* u[] = screen values in manifest order: Thrsh, Ratio, Zoom, Attck, Rels, MkUp, Mix, SC HP. The cached
  * numbers (a few 2^x) are only recomputed when their knob moved. */
 GO_ALWAYS_INLINE(go_prepare)
 static inline void go_prepare(GoParams *P, GoState *s, const float *u)
 {
-    unsigned int thr = (unsigned int)(int)u[0], rat = (unsigned int)(int)u[1], ka = (unsigned int)(int)u[2];
-    unsigned int kr = (unsigned int)(int)u[3], mk = (unsigned int)(int)u[4], kh = (unsigned int)(int)u[6];
-    float m = u[5] * 0.01f;
+    unsigned int thr = (unsigned int)(int)u[0], rat = (unsigned int)(int)u[1], ka = (unsigned int)(int)u[3];
+    unsigned int kr = (unsigned int)(int)u[4], mk = (unsigned int)(int)u[5], kh = (unsigned int)(int)u[7];
+    float m = u[6] * 0.01f;
     if (ka != s->k_att) { s->k_att = ka; s->cA = 1.0f - go_exp2(-0.26171f * go_att_inv(ka)); }
     if (kr != s->k_rel) { s->k_rel = kr; s->cR = 1.0f - go_exp2(-0.26171f * go_rel_inv(kr)); }
     if (kh != s->k_hp) {                        /* f = 20 .. 300 Hz; a = 1 - exp(-2 pi f / 44100) */
@@ -198,8 +210,8 @@ static inline void go_prepare(GoParams *P, GoState *s, const float *u)
     }
     P->dryG = 1.0f - m;
     P->wetG = m;
-    P->off = (thr >= 40u) || (P->wetG <= 0.0f);
-    P->t2 = ((float)(int)thr - 40.0f) * GO_DB2LOG;
+    P->off = (thr >= 400u) || (P->wetG <= 0.0f);
+    P->t2 = ((float)(int)thr - 400.0f) * (0.1f * GO_DB2LOG);
     P->slope = (rat == 0u) ? 0.33333333f : (rat == 1u) ? 0.5f : (rat == 2u) ? 0.75f : 0.9f;
     P->cA = s->cA; P->cR = s->cR; P->hpa = s->hpa;
     P->autor = (kr >= 4u);
@@ -226,32 +238,20 @@ static inline void go_meter_level(GoState *s, const float *buf)
     s->zm.lvl = m;
 }
 
-/* first wave row of a level: 1 row a dB from 0 dB (row ZM_TOP) down */
-GO_ALWAYS_INLINE(go_row)
-static inline unsigned int go_row(float a)
-{
-    float y;
-    if (!(a > 1e-6f)) return ZM_EMPTY;
-    y = (float)ZM_TOP - zm_db(a);
-    if (y > 64.0f) y = 64.0f;
-    if (y < (float)ZM_TOP) y = (float)ZM_TOP;
-    return (unsigned int)(int)(y + 0.5f);
-}
-
-/* once per on-screen block: history column, box and tag for the Thrsh knob, frame */
+/* once per on-screen block: history column; the line's level, zoom and tag for Thrsh/Zoom; frame */
 GO_ALWAYS_INLINE(go_meter)
 static inline void go_meter(GoState *s, const float *u)
 {
     ZmState *z = &s->zm;
-    unsigned int thr = (unsigned int)(int)u[0];
-    if (zm_column(z)) zm_push(z, go_row(z->lvl));
-    if (thr != z->key && z->pos >= ZM_RAW) {
+    unsigned int thr = (unsigned int)(int)u[0], zo = (unsigned int)(int)u[2], key = thr | (zo << 16);
+    if (zm_column(z)) zm_push(z);
+    if (key != z->key && z->pos >= ZM_RAW) {
         char t[12];
-        z->by = ZM_TOP + 40u - thr; z->key = thr; z->dirty = 1u;
+        zm_scale(z, ((float)(int)thr - 400.0f) * 0.1f, (float)(int)(zo + 1u) * 0.5f);
+        z->key = key; z->dirty = 1u;
         z->tag[0].n = 0u; z->tag[1].n = 0u;
         t[0] = 'T'; t[1] = 'H'; t[2] = 'R'; t[3] = 'S'; t[4] = 'H'; t[5] = ' '; t[6] = '-';
-        zm_tag_set(&z->tag[0], t, zm_tenths((40u - thr) * 10u, t, thr < 40u ? 7u : 6u), 126u,
-                   z->by - 2u > ZM_TOP + 7u ? z->by - 2u : ZM_TOP + 7u);   /* parked under the title */
+        zm_tag_set(&z->tag[0], t, zm_tenths(400u - thr, t, thr < 400u ? 7u : 6u), 126u, ZM_MID - 2u);
     }
     zm_frame(z);
 }
@@ -366,13 +366,13 @@ static inline int go_int_text(int n, char *out, int len)
     return len;
 }
 
-/* knob 0 Thrsh: 0..40 -> "-40".."0" (dB) */
+/* knob 0 Thrsh: 0..400 -> "-40.0".."0" (dB, 0.1 a step) */
 int ZDL_GetLabel_0(unsigned int value, char *out)
 {
-    if (value > 40u) value = 40u;
-    if (value == 40u) { out[0] = '0'; out[1] = 0; return 1; }
+    if (value > 400u) value = 400u;
+    if (value == 400u) { out[0] = '0'; out[1] = 0; return 1; }
     out[0] = '-';
-    return go_int_text((int)(40u - value), out, 1);
+    return go_tenths_text(400u - value, out, 1);
 }
 
 /* knob 1 Ratio: 1.5:1 / 2:1 / 4:1 / 10:1 */
@@ -385,8 +385,16 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return n;
 }
 
-/* knob 2 Attck: 0.1 / 0.3 / 1 / 3 / 10 / 30 ms */
+/* knob 2 Zoom: x0.5 .. x8.0 (meter rows a dB) */
 int ZDL_GetLabel_2(unsigned int value, char *out)
+{
+    if (value > 15u) value = 15u;
+    out[0] = 'x';
+    return go_tenths_text((value + 1u) * 5u, out, 1);
+}
+
+/* knob 3 Attck: 0.1 / 0.3 / 1 / 3 / 10 / 30 ms */
+int ZDL_GetLabel_3(unsigned int value, char *out)
 {
     int n;
     if (value == 0u || value == 1u) { out[0] = '0'; out[1] = '.'; out[2] = (char)('1' + 2 * (int)value); n = 3; }
@@ -395,8 +403,8 @@ int ZDL_GetLabel_2(unsigned int value, char *out)
     return n;
 }
 
-/* knob 3 Rels: 0.1s / 0.3s / 0.6s / 1.2s / AUTO */
-int ZDL_GetLabel_3(unsigned int value, char *out)
+/* knob 4 Rels: 0.1s / 0.3s / 0.6s / 1.2s / AUTO */
+int ZDL_GetLabel_4(unsigned int value, char *out)
 {
     if (value >= 4u) { out[0] = 'A'; out[1] = 'U'; out[2] = 'T'; out[3] = 'O'; out[4] = 0; return 4; }
     out[0] = (value == 3u) ? '1' : '0'; out[1] = '.';
@@ -405,8 +413,8 @@ int ZDL_GetLabel_3(unsigned int value, char *out)
     return 4;
 }
 
-/* knob 4 MkUp: AUTO / OFF / +0.5 .. +20.0 dB */
-int ZDL_GetLabel_4(unsigned int value, char *out)
+/* knob 5 MkUp: AUTO / OFF / +0.5 .. +20.0 dB */
+int ZDL_GetLabel_5(unsigned int value, char *out)
 {
     if (value == 0u) { out[0] = 'A'; out[1] = 'U'; out[2] = 'T'; out[3] = 'O'; out[4] = 0; return 4; }
     if (value == 1u) { out[0] = 'O'; out[1] = 'F'; out[2] = 'F'; out[3] = 0; return 3; }
@@ -415,8 +423,8 @@ int ZDL_GetLabel_4(unsigned int value, char *out)
     return go_tenths_text((value - 1u) * 5u, out, 1);
 }
 
-/* knob 6 SC HP: OFF, then 20 .. 300 Hz (log) */
-int ZDL_GetLabel_6(unsigned int value, char *out)
+/* knob 7 SC HP: OFF, then 20 .. 300 Hz (log) */
+int ZDL_GetLabel_7(unsigned int value, char *out)
 {
     int n;
     if (value == 0u) { out[0] = 'O'; out[1] = 'F'; out[2] = 'F'; out[3] = 0; return 3; }
@@ -450,7 +458,7 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     GoState *s;
     GoParams P;
-    float u[7];
+    float u[8];
     unsigned int on;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -477,13 +485,14 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
     if (s->magic != GO_MAGIC) go_init(s);
     if (s->was_off) { go_reset(s); s->gm = 1.0f; s->was_off = 0u; }
 
-    u[0] = go_ui(params[GOOEY_THRSH_SLOT], (float)GOOEY_THRSH_UI_DEFAULT, 40.0f);
+    u[0] = go_ui_thr(params[GOOEY_THRSH_SLOT], (float)GOOEY_THRSH_UI_DEFAULT);
     u[1] = go_ui(params[GOOEY_RATIO_SLOT], (float)GOOEY_RATIO_UI_DEFAULT, 3.0f);
-    u[2] = go_ui(params[GOOEY_ATTCK_SLOT], (float)GOOEY_ATTCK_UI_DEFAULT, 5.0f);
-    u[3] = go_ui(params[GOOEY_RELS_SLOT],  (float)GOOEY_RELS_UI_DEFAULT,  4.0f);
-    u[4] = go_ui(params[GOOEY_MKUP_SLOT],  (float)GOOEY_MKUP_UI_DEFAULT,  41.0f);
-    u[5] = go_ui(params[GOOEY_MIX_SLOT],   (float)GOOEY_MIX_UI_DEFAULT,   100.0f);
-    u[6] = go_ui(params[GOOEY_SC_HP_SLOT], (float)GOOEY_SC_HP_UI_DEFAULT, 20.0f);
+    u[2] = go_ui(params[GOOEY_ZOOM_SLOT],  (float)GOOEY_ZOOM_UI_DEFAULT,  15.0f);
+    u[3] = go_ui(params[GOOEY_ATTCK_SLOT], (float)GOOEY_ATTCK_UI_DEFAULT, 5.0f);
+    u[4] = go_ui(params[GOOEY_RELS_SLOT],  (float)GOOEY_RELS_UI_DEFAULT,  4.0f);
+    u[5] = go_ui(params[GOOEY_MKUP_SLOT],  (float)GOOEY_MKUP_UI_DEFAULT,  41.0f);
+    u[6] = go_ui(params[GOOEY_MIX_SLOT],   (float)GOOEY_MIX_UI_DEFAULT,   100.0f);
+    u[7] = go_ui(params[GOOEY_SC_HP_SLOT], (float)GOOEY_SC_HP_UI_DEFAULT, 20.0f);
 
     go_prepare(&P, s, u);
     on = zm_begin(&s->zm, params);

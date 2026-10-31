@@ -109,7 +109,7 @@ def main() -> None:
         flags_byte=manifest.get("flags_byte", 0x01),
         dsp_cost=manifest.get("dsp_cost", 20.0),
         audio_nop=manifest.get("audio_nop", False),
-        knob_positions=[(2, 14, 46), (3, 55, 46), (4, 96, 46)],
+        knob_positions=[(0, 0, 0)] * 3,   # no value boxes: the meter takes the whole cover
         use_object_edit_handlers=False,
         synthesize_linesel_edit_handlers=True,
         synth_edit_start_index=2,

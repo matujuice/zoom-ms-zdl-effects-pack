@@ -24,13 +24,12 @@
  * SEND 0..100: how much input feeds the wash, smoothed (about 7 ms), so turning it up and back
  *   down is the "throw". 0 = only the tail keeps ringing.
  * WIDTH 0..100: mid/side on the wet output only, 0 = mono, 100 = as is.
- * MIX: DJ crossfade, dry min(1, 2 - 2m), wet min(1, 2m).
+ * DRY: always passes at full level (no Mix knob): Send is the one control, a live one-knob throw.
  *
  * FOOTSWITCH: plain on/off with trails. OFF: nothing new goes in (Send ramps to 0), the tail
- *   rings out (Fdbk capped at 95 so it dies) and the dry passes untouched (the dry gain ramps
- *   to 1 over about 6 ms, so a Mix below 50 does not click).
+ *   rings out (Fdbk capped at 95 so it dies) and the dry passes untouched.
  * IDLE: when nothing goes in (off, or Send 0) and the ring has been silent (under 2 LSB of the
- *   16-bit ring) for longer than the delay, the effect does no work: it only applies the dry gain.
+ *   16-bit ring) for longer than the delay, the effect does no work: the dry passes as is.
  *
  * TIME (as GRDELAY): 0..100 free, ms = 12 + 0.0988 x screen^2 (12 ms .. 1 s);
  *   101..113 synced: 1/32 1/16T 1/16 1/8T 1/16. 1/8 1/4T 1/8. 1/4 1/4. 1/2 1bar 2bar at the pedal's
@@ -41,10 +40,10 @@
  * MEMORY: 2 x 170000 16-bit samples (680 KB, scale 16384) + 16 KB of diffuser lines + state,
  *   under the 705 KB arena. Cleared 2048 samples per block after loading (dry meanwhile).
  *
- * KNOBS (screen values; 9, 3 pages; Time carries the tap flag, manifest flags 40)
+ * KNOBS (screen values; 8, 3 pages; Time carries the tap flag, manifest flags 40)
  *   0 Time 0..113   1 Wash 0..100 (70)   2 Fdbk 0..120 (60)   3 HiCut 0..100 (0)
- *   4 LoCut 0..100 (0)   5 Mod 0..100 (20)   6 Width 0..100 (100)   7 Send 0..100 (100)
- *   8 Mix 0..100 (100). Inside the code u[9] is the pedal's BPM.
+ *   4 LoCut 0..100 (0)   5 Mod 0..100 (20)   6 Width 0..100 (100)   7 Send 0..100 (100).
+ *   Inside the code u[9] is the pedal's BPM.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -66,7 +65,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F32u        /* "WDO2": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F33u        /* "WDO3": change whenever WdState changes      */
 #define WD_N          170000             /* ring length per side                        */
 #define WD_MAXD       168000.0f          /* longest delay (samples)                     */
 #define WD_CLEAR_BLK  2048
@@ -76,7 +75,6 @@
 #define WD_XF_STEP    9.765625e-4f       /* Time crossfade: 1024 samples = 23 ms */
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* Send smoothing, about 7.5 ms */
-#define WD_DG_STEP    0.004f             /* dry gain ramp per sample, 1.0 in 6 ms */
 #define WD_APN        512                /* all-pass line length (power of 2)           */
 #define WD_APCOMP     853.0f             /* mean total all-pass delay (samples)         */
 #define WD_QUIET      2.0f               /* ring "silent" below this (16384 scale)      */
@@ -90,7 +88,7 @@ typedef struct {
     int   quiet;           /* samples the ring has been silent (capped)          */
     float dCur, dOld, xf;  /* read delay now / before a Time change; crossfade 0..1 */
     float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part      */
-    float sg, dg;          /* Send gain and dry gain, smoothed                   */
+    float sg;              /* Send gain, smoothed                                */
     float lfo[4];          /* diffuser LFO phases 0..1                           */
     float ip[2][4];        /* all-pass interpolator state per side and stage       */
     ZtSync zt;
@@ -100,7 +98,7 @@ typedef struct {
 
 typedef struct {
     int   hc, lc, ap;
-    float dT, fb, cl, ch, g, amp, W, inT, dryT, wetG;
+    float dT, fb, cl, ch, g, amp, W, inT;
 } WdParams;
 
 WD_ALWAYS_INLINE(wd_ui)
@@ -212,7 +210,7 @@ static inline void wd_init(WdState *s)
     s->clr = 0; s->wp = 0; s->apw = 0; s->apOn = 0; s->quiet = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f;
-    s->sg = 0.0f; s->dg = 1.0f;
+    s->sg = 0.0f;
     for (k = 0; k < 8; k++) s->ip[k >> 2][k & 3] = 0.0f;
     for (k = 0; k < 4; k++) s->lfo[k] = 0.25f * (float)k;
     zt_init(&s->zt);
@@ -234,7 +232,7 @@ WD_ALWAYS_INLINE(wd_prepare)
 static inline void wd_prepare(WdParams *P, const float *u, int on)
 {
     int n = (int)(u[0] + 0.5f);
-    float d, m = u[8] * 0.01f, fbG = u[2] * 0.01f, nb;
+    float d, fbG = u[2] * 0.01f, nb;
     P->ap = (u[1] > 0.0f);
     P->g = 0.007f * u[1];
     P->amp = 0.1f * u[5];
@@ -255,33 +253,24 @@ static inline void wd_prepare(WdParams *P, const float *u, int on)
     if (!on && fbG > 0.95f) fbG = 0.95f;         /* switched off: the tail dies */
     P->fb = fbG;
     P->inT = on ? u[7] * 0.01f : 0.0f;
-    P->dryT = 2.0f - 2.0f * m; if (P->dryT > 1.0f) P->dryT = 1.0f;
-    P->wetG = 2.0f * m;        if (P->wetG > 1.0f) P->wetG = 1.0f;
-    if (!on) P->dryT = 1.0f;
 }
 
 WD_ALWAYS_INLINE(wd_process)
 static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
-    float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, dg = s->dg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], dc[8], xe[8], sgv[8], dgv[8], y[8], wo[2][8], md[2][4], eta[2][4], dl[8], dr[8];
+    float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
+    float xs[2][8], dc[8], xe[8], sgv[8], y[8], wo[2][8], md[2][4], eta[2][4], dl[8], dr[8];
     int ia[2][4];
-    const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, dryT = P->dryT, wetG = P->wetG, W = P->W;
+    const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
     short * restrict sb = s->buf;
 
-    /* nothing goes in and the ring has been silent for longer than the delay: dry gain only */
+    /* nothing goes in and the ring has been silent for longer than the delay: the dry passes as is */
     if (inT == 0.0f && sg == 0.0f && xf >= 1.0f) {
         float md0 = (dCur > P->dT) ? dCur : P->dT;
         if (s->quiet > (int)(md0 + 4096.0f)) {
             s->dCur = P->dT;
-            for (i = 0; i < 8; i++) {
-                dg = (dg < dryT) ? ((dg + WD_DG_STEP > dryT) ? dryT : dg + WD_DG_STEP)
-                                 : ((dg - WD_DG_STEP < dryT) ? dryT : dg - WD_DG_STEP);
-                if (dg != 1.0f) { buf[i] *= dg; buf[i + 8] *= dg; }
-            }
-            s->dg = dg;
             return;
         }
     }
@@ -315,17 +304,15 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         eta[c][k] = (1.0f - fr) * wd_recip(1.0f + fr);
     }
 
-    /* per-sample ramps: Send, dry gain, Time crossfade */
+    /* per-sample ramps: Send, Time crossfade */
     WD_EIGHT
     for (i = 0; i < 8; i++) {
         float xl = buf[i], xr = buf[i + 8];
         sg += (inT - sg) * WD_SG_RATE;
         sg = (inT == 0.0f && sg < 1e-5f) ? 0.0f : sg;
-        dg = (dg < dryT) ? ((dg + WD_DG_STEP > dryT) ? dryT : dg + WD_DG_STEP)
-                         : ((dg - WD_DG_STEP < dryT) ? dryT : dg - WD_DG_STEP);
         dl[i] = xl; dr[i] = xr;
         xs[0][i] = xl; xs[1][i] = xr;
-        sgv[i] = sg; dgv[i] = dg; dc[i] = dCur; xe[i] = xf;
+        sgv[i] = sg; dc[i] = dCur; xe[i] = xf;
         xf = (xf < 1.0f) ? ((xf + WD_XF_STEP > 1.0f) ? 1.0f : xf + WD_XF_STEP) : xf;
     }
 
@@ -377,13 +364,13 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     for (i = 0; i < 8; i++) {
         float wL = wo[0][i], wR = wo[1][i], mm, ss;
         if (W < 1.0f) { mm = 0.5f * (wL + wR); ss = 0.5f * W * (wL - wR); wL = mm + ss; wR = mm - ss; }
-        buf[i] = dgv[i] * dl[i] + wetG * wL;
-        buf[i + 8] = dgv[i] * dr[i] + wetG * wR;
+        buf[i] = dl[i] + wL;
+        buf[i + 8] = dr[i] + wR;
     }
     wp0 += 8;
     s->wp = (wp0 >= WD_N) ? wp0 - WD_N : wp0;
     s->apw = (apw + 8) & (WD_APN - 1);
-    s->sg = sg; s->dg = dg; s->dCur = dCur; s->xf = xf;
+    s->sg = sg; s->dCur = dCur; s->xf = xf;
 }
 
 /* ------------------------------------------------------------------ */
@@ -488,7 +475,6 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     u[5] = wd_ui(params[WASHOUT_MOD_SLOT],   (float)WASHOUT_MOD_UI_DEFAULT,   100.0f);
     u[6] = wd_ui(params[WASHOUT_WIDTH_SLOT], (float)WASHOUT_WIDTH_UI_DEFAULT, 100.0f);
     u[7] = wd_ui(params[WASHOUT_SEND_SLOT],  (float)WASHOUT_SEND_UI_DEFAULT,  100.0f);
-    u[8] = wd_ui(params[WASHOUT_MIX_SLOT],   (float)WASHOUT_MIX_UI_DEFAULT,   100.0f);
 
     if (s->magic != WD_MAGIC) wd_init(s);
     u[9] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM */

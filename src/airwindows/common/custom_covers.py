@@ -567,15 +567,14 @@ def meter_frame(title, by, tags, rows=None):
 
 def meter_geometry(folder, knobs):
     """(by, tags) of the effect's meter at these knob values (screen values, manifest order).
-    Same numbers as the C (lo_meter_tags / go_meter_tags)."""
+    Same numbers as the C (lo_meter / go_meter): the line stays mid-meter (ZM_MID)."""
     if folder == "louder":
         top, gain, ceil = 16, knobs[0], knobs[1]
-        by = round(top + (3 - (ceil - 60) / 10) * 3)          # 3 rows a dB under +3 dB; Python rounds half to even, so does the C
-        tags = [(f"CEIL {(ceil - 60) / 10:.1f}", 126, max(by - 2, top + 7))]   # above the line, parked under the title
-        return by, tags + [(f"GAIN {gain / 10:+.1f}", 126, 62)]
+        by = (top + 64) // 2
+        return by, [(f"CEIL {(ceil - 60) / 10:.1f}", 126, by - 2), (f"GAIN {gain / 10:+.1f}", 126, 62)]
     top, thr = 17, knobs[0]
-    by = top + 40 - thr                                       # 1 row a dB under 0 dB
-    return by, [(f"THRSH {thr - 40:.1f}", 126, max(by - 2, top + 7))]
+    by = (top + 64) // 2
+    return by, [(f"THRSH {(thr - 400) / 10:.1f}", 126, by - 2)]
 
 
 def meter_title(folder):

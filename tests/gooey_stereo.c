@@ -37,7 +37,7 @@ int main(void)
     if (off != 0.0f) { puts("FAIL: switched off but the buffer changed"); fails++; }
     params[0] = 1.0f;
 
-    params[GOOEY_THRSH_SLOT] = 0.10f;                                  /* -30 dB */
+    params[GOOEY_THRSH_SLOT] = 1.00f;                                  /* -30 dB */
     params[GOOEY_ATTCK_SLOT] = 0.02f;                                  /* 1 ms */
     for (b = 0; b < 2000; b++) {
         float in[16];

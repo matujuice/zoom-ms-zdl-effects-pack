@@ -12,6 +12,8 @@
      "comment": "Push into the limiter, 0.0 to +18.0 dB in 0.1 dB steps. Default 0."},
     {"name": "Ceil", "max": 60, "default": 59,
      "comment": "Ceiling, -6.0 to 0.0 dB in 0.1 dB steps (0 = -6.0, 60 = 0.0). Nothing comes out above it, at any Mix. Default 59 = -0.1 dB."},
+    {"name": "Zoom", "max": 15, "default": 5,
+     "comment": "Meter zoom (the cover meter on 2.10 only; no effect on the sound): 0..15 = x0.5 to x8.0 rows a dB around the ceiling line, which stays mid-meter. Default x3.0."},
     {"name": "Rels", "max": 60, "default": 0,
      "comment": "Release. 0 = AUTO (program-dependent: a 30 ms stage for single peaks and a 250 ms stage for sustained level). 1..60 = 1 to 1000 ms on a log scale. Default AUTO."},
     {"name": "Style", "max": 2, "default": 0,
