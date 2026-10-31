@@ -2,26 +2,28 @@
  * Takeoff - risers and downlifters (Zoom MS, custom ZDL). It only ADDS sound on top, like DubSiren:
  * the input passes through in stereo, never touched (no Mix knob, Vol instead).
  *
- *   input ------------------------------------------------------------------+
- *   noise --> 2 resonant filters (L, R, sweep) --+                          v
- *   3 detuned saws (L / R spread) ---------------+--> x swell x Vol --> (+) --> out
- *   sine ----------------------------------------+        |                ^
- *                                                          +--> Space: 4 all-pass diffusers
- *                                                               in a feedback ring (reverb)
- *   One position x runs 0..1 (UP) or 1..0 (DOWN). The frequency is f0 * 2^(Range * x) (exponential),
+ *   input ---------------------------------------------------------------+
+ *   noise --> 2 resonant filters (L, R, sweep) --> x swell x Vol --> (+) --> out
+ *                                                       |                ^
+ *                                                       +--> Space: 4 all-pass diffusers
+ *                                                            in a feedback ring (reverb)
+ *   One position x runs 0..1 (UP) or 1..0 (DOWN). The frequency is f0 * 2^(range * curve(x)) (exponential),
  *   the volume swells as x^2, the stereo width grows with x (0.2 .. 1).
- *   f0 = the key note in the octave C1..B1 (FREE: 50 Hz). Saws play an octave up, the noise
- *   filter sits at 8 x f0, so the sweep starts and ends on the note. SINE + DOWN + Range 1 = sub drop.
- *   UP cuts at the top (a 1.5 ms fade, no click); DOWN falls to silence by itself.
+ *   f0 = the key note in the octave C1..B1 (FREE: 50 Hz); the noise filter sits at 8 x f0, so the sweep
+ *   starts and ends on the note. UP cuts at the top (a 1.5 ms fade, no click); DOWN falls to silence.
  *
  * KNOBS (screen values, param order)
  *   0 Dir    UP (default) / DOWN
  *   1 Len    0..4 = 1/2/4/8/16 bars at the pedal's tempo (zmt.h), 5..35 = FREE, 1..31 seconds. Default 2 = 4 bars
- *   2 Sound  NOISE / SAW / N+SAW / SINE / N+SIN
- *   3 Color  noise band width: 0 = a narrow whistle, 100 = wide air (level compensated). Default 25
- *   4 Wind   slow random gusts on the noise's level and filter, L and R apart (organic). Default 40
- *   5 Grain  noise grit: random sample-and-hold, smooth (0) to crackle (100). Default 0
- *   6 Range  0..3 = 1..4 octaves (default 2 = 3 octaves)
+ *   2 Color  noise band width: 0 = a narrow whistle, 100 = wide air (level compensated). Default 25
+ *   3 Wind   slow random gusts on the noise's level and filter, L and R apart (organic). Default 40
+ *   4 Grain  noise grit: random sample-and-hold, smooth (0) to crackle (100). Default 0
+ *   5 Range  how far the filter travels, 0..100 = 0..5 octaves: small = a subtle lift, 100 = rumble to air.
+ *            Default 60 = 3 octaves
+ *   6 Var    how much each takeoff differs from the last (default 35). Drawn once when a sweep starts, scaled
+ *            by Var: Range x (1 +-0.35), start pitch +-5 semitones, curve bend +-0.6, Color / Wind / Grain +-30,
+ *            a pan drift across the sweep +-0.25. Never Len, Dir or Vol. Var 0 = the same takeoff every time
+ *            (noise, gusts and filters restart from the same seeds).
  *   7 Space  reverb tail on the riser's own sound, 0 = off (default)
  *   8 Vol    level of the added sound (default 50)
  *
@@ -32,8 +34,9 @@
  *   line counts as on it (the sweep joins in sync). A flip while armed
  *   cancels; a flip during a sweep drops it (a fast fade). UP cuts at the end. If word 6 is still 1 0.5 s
  *   after the flip it is a hold: the sweep goes on at Len speed, sits at its end if it gets there and drops
- *   when word 6 goes to 0 (released before the line: cancelled). The flip a momentary HOLD FOR makes on
- *   release (with or up to 40 ms after word 6 falls, or while word 6 is still 1) is ignored: a release
+ *   when word 6 goes to 0 (released before the line: cancelled). Word 6 rises up to 16 ms before the press flip;
+ *   the first flip of a press always counts. Its second flip, the one a momentary HOLD FOR makes on
+ *   release (with or up to 40 ms after word 6 falls, or while word 6 is still 1), is ignored: a release
  *   never starts a new sweep. Every block the effect writes its params pointer (ctx[1]) into word 7 (the hold
  *   claim; only while the transport block's magic is there, so stock firmware is never touched). Stock
  *   firmware: holding opens the tuner, so press only. MIDI: an OFF during a sweep drops it.
@@ -75,7 +78,7 @@
 #define TK_CODE_SECTION(fn)
 #endif
 
-#define TK_MAGIC     0x544B4F33u         /* "TKO3": change whenever TkState changes */
+#define TK_MAGIC     0x544B4F35u         /* "TKO5": change whenever TkState changes */
 #define HZ_TO_INC    2.2675737e-5f       /* 1 / 44100 */
 #define RV_N         2048                /* reverb ring per side */
 #define RV_M         2047
@@ -112,11 +115,11 @@ static unsigned int tk_svc_host[32];     /* host tests: no firmware; tests fill 
 typedef struct {
     unsigned int magic;
     int   rvClr, inited, prev_foot, state, holdT, chk, note, autoNote, quiet, apw, rw, lgn;
-    int   prev_hold, rel, hl, ref, late, pwm, led, wt;
-    unsigned int rngL, rngR, rngW;
+    int   prev_hold, rel, hl, ref, late, pwm, led, wt, pf, ff;   /* pf: this press already flipped, ff: blocks since a flip */
+    unsigned int rngL, rngR, rngW, rngV;
     float x, g, cph;               /* position, gain, Len cycle phase 0..1 */
     float nh[2], gw[4], gt[2];     /* held noise (Grain), gust smoothers L1 L2 R1 R2, gust targets */
-    float ph[3], sph;
+    float vR, vP, vC, vCo, vWi, vGr, vS;   /* Var draws: Range factor, pitch st, curve, Color/Wind/Grain, pan */
     float svL[2], svR[2], lpv[2];
     float ls[3];                   /* listener: two low-passes, high-pass state (kick) */
     float gc[NBIN], gs1[NBIN], gs2[NBIN], chroma[12];
@@ -125,10 +128,9 @@ typedef struct {
 } TkState;
 
 typedef struct {
-    int   act, noise, saw, sine, rv;
+    int   act, rv;
     unsigned int gth;              /* Grain: refresh threshold of 65536 */
     float lvl, gT, w, ng, tg, svf, fL, fR, aL, aR, dmp;
-    float inc0, inc1, inc2, sinc;
     float fb, wetG;
 } TkParams;
 
@@ -215,12 +217,12 @@ static inline void tk_init(TkState *s)
     int k;
     s->rvClr = 0; s->inited = 0; s->prev_foot = 0; s->state = ST_IDLE; s->holdT = 0; s->chk = 0;
     s->note = -1; s->autoNote = -1; s->quiet = QUIET_BLOCKS; s->apw = 0; s->rw = 0; s->lgn = 0;
-    s->prev_hold = 0; s->rel = 0; s->hl = 0; s->ref = 0; s->late = 0; s->pwm = 0; s->led = -1; s->wt = 0;
-    s->rngL = 12345u; s->rngR = 987654321u; s->rngW = 4242u;
+    s->prev_hold = 0; s->rel = 0; s->hl = 0; s->ref = 0; s->late = 0; s->pwm = 0; s->led = -1; s->wt = 0; s->pf = 0; s->ff = HOLD_GUARD;
+    s->rngL = 12345u; s->rngR = 987654321u; s->rngW = 4242u; s->rngV = 2718281u;
+    s->vR = 1.0f; s->vP = 0.0f; s->vC = 0.0f; s->vCo = 0.0f; s->vWi = 0.0f; s->vGr = 0.0f; s->vS = 0.0f;
     s->x = 0.0f; s->g = 0.0f; s->cph = 0.0f;
     s->nh[0] = 0.0f; s->nh[1] = 0.0f; s->gt[0] = 0.0f; s->gt[1] = 0.0f;
     for (k = 0; k < 4; k++) s->gw[k] = 0.0f;
-    s->ph[0] = 0.0f; s->ph[1] = 0.33f; s->ph[2] = 0.66f; s->sph = 0.0f;
     for (k = 0; k < 2; k++) { s->svL[k] = 0.0f; s->svR[k] = 0.0f; s->lpv[k] = 0.0f; s->ls[k] = 0.0f; }
     s->ls[2] = 0.0f;
     for (k = 0; k < 12; k++) s->chroma[k] = 0.0f;
@@ -272,20 +274,56 @@ static inline void tk_listen(TkState *s, const float *buf)
     }
 }
 
+TK_ALWAYS_INLINE(tk_rnd)
+static inline float tk_rnd(unsigned int *r)      /* -1..1 */
+{
+    *r = *r * 1664525u + 1013904223u;
+    return (float)(int)*r * 4.656613e-10f;
+}
+
+TK_ALWAYS_INLINE(tk_clampf)
+static inline float tk_clampf(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+/* once per sweep start: this takeoff's offsets around the knobs, scaled by Var (0..100) */
+TK_ALWAYS_INLINE(tk_vary)
+static inline void tk_vary(TkState *s, int var)
+{
+    float v = 0.01f * (float)var;
+    unsigned int seed;
+    int k;
+    s->vR  = 1.0f + 0.35f * v * tk_rnd(&s->rngV);
+    s->vP  = 5.0f * v * tk_rnd(&s->rngV);
+    s->vC  = 0.6f * v * tk_rnd(&s->rngV);
+    s->vCo = 30.0f * v * tk_rnd(&s->rngV);
+    s->vWi = 30.0f * v * tk_rnd(&s->rngV);
+    s->vGr = 30.0f * v * tk_rnd(&s->rngV);
+    s->vS  = 0.25f * v * tk_rnd(&s->rngV);
+    seed = var ? s->rngV : 0u;
+    if (s->g <= 0.0f) {                          /* a fresh start: Var 0 = the same noise every time */
+        s->rngL = 12345u ^ seed; s->rngR = 987654321u ^ seed; s->rngW = 4242u ^ seed; s->wt = 0;
+        s->nh[0] = 0.0f; s->nh[1] = 0.0f; s->gt[0] = 0.0f; s->gt[1] = 0.0f;
+        for (k = 0; k < 4; k++) s->gw[k] = 0.0f;
+        for (k = 0; k < 2; k++) { s->svL[k] = 0.0f; s->svR[k] = 0.0f; }
+    }
+}
+
 /* once per block: knobs u[] (screen ints), foot = on/off flag, hold = footswitch down (word 6),
  * run = the MIDI clock runs (zmt.h), bpm */
 TK_ALWAYS_INLINE(tk_prepare)
 static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, int hold, int run, float bpm)
 {
-    int   up = (u[0] == 0), snd = u[2], n = u[1], flip, both, wrap, go = 0;
-    float dx, vol, fz, f, fc, np, q, wd, gr;
+    int   up = (u[0] == 0), n = u[1], flip, wrap, go = 0;
+    float dx, vol, fz, f, fc, np, q, wd, gr, col, grn, xc, pan;
 
     if (!s->inited) { s->prev_foot = foot; s->prev_hold = hold; s->inited = 1; }
     flip = (foot != s->prev_foot);
     s->prev_foot = foot;
+    if (!s->prev_hold && hold) s->pf = (s->ff < HOLD_GUARD);        /* the switch went down (a flip just before = this press) */
     if (s->prev_hold && !hold) s->rel = HOLD_GUARD;                 /* the switch came up */
-    if (flip && (s->rel > 0 || (s->prev_hold && hold))) { flip = 0; s->rel = 0; }   /* a momentary release flip */
-    if (s->rel > 0) s->rel--;
+    if (flip && s->pf && (hold || s->rel > 0)) { flip = 0; s->rel = 0; s->pf = 0; }   /* this press's 2nd flip: the release */
+    else if (flip && hold) s->pf = 1;                               /* word 6 rises before the press flip: that one counts */
+    if (s->rel > 0) { s->rel--; if (s->rel == 0 && !hold) s->pf = 0; }
+    s->ff = flip ? 0 : (s->ff < HOLD_GUARD ? s->ff + 1 : HOLD_GUARD);
     s->prev_hold = hold;
 
     dx = (n < 5) ? bpm * 7.5586e-7f * tk_inv2n(n) : 1.8141e-4f * tk_recip((float)(n - 4));
@@ -327,6 +365,7 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
             s->state = s->hl ? ST_HOLD : ST_SWEEP;
             s->x = up ? s->cph - dx : 1.0f - s->cph + dx;           /* on the cycle: ends on the next line */
             s->note = s->autoNote;
+            tk_vary(s, u[6]);
         }
     }
     if (s->state == ST_SWEEP || s->state == ST_HOLD) {
@@ -347,27 +386,22 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
     P->act = ((P->gT > 0.0f || s->g > 0.0f) && P->lvl > 1.0e-7f);
     if (!P->act) s->g = P->gT;                   /* silent anyway: no ramp needed */
 
-    P->noise = (snd == 0 || snd == 2 || snd == 4);
-    P->saw   = (snd == 1 || snd == 2);
-    P->sine  = (snd == 3 || snd == 4);
-    both = (snd == 2 || snd == 4);
-    q = 0.12f + 0.0088f * (float)u[3];           /* Color: damping q^2, level kept by q (noise power ~ 1/damping) */
+    col = tk_clampf((float)u[2] + s->vCo, 0.0f, 100.0f);
+    grn = tk_clampf((float)u[4] + s->vGr, 0.0f, 100.0f);
+    q = 0.12f + 0.0088f * col;                   /* Color: damping q^2, level kept by q (noise power ~ 1/damping) */
     P->dmp = q * q;
-    P->ng = NOISE_GAIN * 2.887f * q * (both ? 0.7f : 1.0f) 
-            * (1.0f + 0.0001f * (float)(u[5] * (100 - u[3])));   /* Grain loses ~6 dB at dark Color */
-    gr = 1.0f - 0.01f * (float)u[5];             /* Grain: chance a sample takes a new random value */
+    P->ng = NOISE_GAIN * 2.887f * q * (1.0f + 0.0001f * grn * (100.0f - col));   /* Grain loses ~6 dB at dark Color */
+    gr = 1.0f - 0.01f * grn;                     /* Grain: chance a sample takes a new random value */
     P->gth = (unsigned int)(int)((0.03f + 0.97f * gr * gr) * 65536.0f);
-    P->tg = (P->sine ? 0.7f : 0.5f) * (both ? 0.7f : 1.0f);
 
     if (P->act) {
-        fz = (s->note >= 0) ? 32.703f * semis_to_ratio((float)s->note) : 50.0f;
-        f  = fz * exp2_oct((float)(u[6] + 1) * s->x);
-        P->sinc = f * HZ_TO_INC;
-        P->inc1 = 2.0f * P->sinc; P->inc0 = P->inc1 * 0.994f; P->inc2 = P->inc1 * 1.006f;
+        fz = (s->note >= 0) ? 32.703f * semis_to_ratio((float)s->note + s->vP) : 50.0f * semis_to_ratio(s->vP);
+        xc = s->x * (1.0f + s->vC * (1.0f - s->x));  /* curve bend, still 0..1 and rising */
+        f  = fz * exp2_oct(0.05f * (float)u[5] * s->vR * xc);   /* Range: 0..5 octaves */
         fc = 8.0f * f; if (fc > 6000.0f) fc = 6000.0f;
         P->svf = 2.0f * sine_of(0.5f * fc * HZ_TO_INC);
         P->w = 0.2f + 0.8f * s->x;
-        if (P->noise) {                          /* Wind: a new random gust target every 186 ms, two smoothers */
+        {                                        /* Wind: a new random gust target every 186 ms, two smoothers */
             unsigned int r = s->rngW;
             if (((++s->wt) & 1023) == 0) {
                 r = r * 1664525u + 1013904223u; s->gt[0] = (float)(int)r * 4.656613e-10f;
@@ -376,11 +410,12 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
             }
             s->gw[0] += 0.0015f * (s->gt[0] - s->gw[0]); s->gw[1] += 0.0015f * (s->gw[0] - s->gw[1]);
             s->gw[2] += 0.0015f * (s->gt[1] - s->gw[2]); s->gw[3] += 0.0015f * (s->gw[2] - s->gw[3]);
-            wd = 0.01f * (float)u[4];
+            wd = 0.01f * tk_clampf((float)u[3] + s->vWi, 0.0f, 100.0f);
+            pan = s->vS * (s->x + s->x - 1.0f);  /* Var: the sound drifts across L / R during the sweep */
             P->fL = P->svf * (1.0f + 0.45f * wd * s->gw[1]); if (P->fL > 0.95f) P->fL = 0.95f;
             P->fR = P->svf * (1.0f + 0.45f * wd * s->gw[3]); if (P->fR > 0.95f) P->fR = 0.95f;
-            P->aL = 1.0f + 0.6f * wd * s->gw[1];
-            P->aR = 1.0f + 0.6f * wd * s->gw[3];
+            P->aL = (1.0f + 0.6f * wd * s->gw[1]) * (1.0f + pan);
+            P->aR = (1.0f + 0.6f * wd * s->gw[3]) * (1.0f - pan);
         }
     }
     P->rv = (u[7] > 0);
@@ -423,8 +458,7 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
 
     if (P->act) {
         float g = s->g, gs = P->gT > g ? 0.0078125f : -0.015625f;   /* up 3 ms, down 1.5 ms */
-        for (i = 0; i < 8; i++) { mb[i] = 0.0f; sb[i] = 0.0f; }
-        if (P->noise) {
+        {
             float fL = P->fL, fR = P->fR, d = P->dmp, aL = 0.5f * P->ng * P->aL, aR = 0.5f * P->ng * P->aR;
             float lL = s->svL[0], bL = s->svL[1], lR = s->svR[0], bR = s->svR[1], nl = s->nh[0], nr = s->nh[1];
             unsigned int rL = s->rngL, rR = s->rngR, gth = P->gth;
@@ -440,29 +474,6 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
             }
             s->svL[0] = lL; s->svL[1] = bL; s->svR[0] = lR; s->svR[1] = bR; s->rngL = rL; s->rngR = rR;
             s->nh[0] = nl; s->nh[1] = nr;
-        }
-        if (P->saw) {
-            float p0 = s->ph[0], p1 = s->ph[1], p2 = s->ph[2];
-            TK_ITER8
-            for (i = 0; i < 8; i++) {
-                float v0, v1, v2;
-                p0 += P->inc0; p0 -= (p0 >= 1.0f) ? 1.0f : 0.0f;
-                p1 += P->inc1; p1 -= (p1 >= 1.0f) ? 1.0f : 0.0f;
-                p2 += P->inc2; p2 -= (p2 >= 1.0f) ? 1.0f : 0.0f;
-                v0 = p0 + p0 - 1.0f; v1 = p1 + p1 - 1.0f; v2 = p2 + p2 - 1.0f;
-                mb[i] += (v0 + v1 + v2) * (0.3333333f * P->tg);
-                sb[i] += (v2 - v0) * (0.5f * P->tg);
-            }
-            s->ph[0] = p0; s->ph[1] = p1; s->ph[2] = p2;
-        }
-        if (P->sine) {
-            float p = s->sph;
-            TK_ITER8
-            for (i = 0; i < 8; i++) {
-                p += P->sinc; p -= (p >= 1.0f) ? 1.0f : 0.0f;
-                mb[i] += P->tg * sine_of(p);
-            }
-            s->sph = p;
         }
         TK_ITER8
         for (i = 0; i < 8; i++) {
@@ -563,23 +574,6 @@ int ZDL_GetLabel_1(unsigned int value, char *out)
     return len;
 }
 
-/* 2 Sound: NOISE SAW N+SAW SINE N+SIN */
-int ZDL_GetLabel_2(unsigned int value, char *out)
-{
-    if (value == 0u) return tk_put(out, 'N', 'O', 'I', 'S', 'E');
-    if (value == 1u) return tk_put(out, 'S', 'A', 'W', 0, 0);
-    if (value == 2u) return tk_put(out, 'N', '+', 'S', 'A', 'W');
-    if (value == 3u) return tk_put(out, 'S', 'I', 'N', 'E', 0);
-    return tk_put(out, 'N', '+', 'S', 'I', 'N');
-}
-
-/* 6 Range: 1oct .. 4oct */
-int ZDL_GetLabel_6(unsigned int value, char *out)
-{
-    if (value > 3u) value = 3u;
-    return tk_put(out, '1' + (int)value, 'o', 'c', 't', 0);
-}
-
 /* 7 Space: Off, then 1..100 */
 int ZDL_GetLabel_7(unsigned int value, char *out)
 {
@@ -612,7 +606,7 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     TkState *s;
     TkParams P;
-    int u[9], foot, hold = 0, run, start;
+    int u[9], k, foot, hold = 0, run, start;
     float beats, bpm;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -637,22 +631,16 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
 
     u[0] = tk_ui(params[TAKEOFF_DIR_SLOT],   TAKEOFF_DIR_UI_DEFAULT);
     u[1] = tk_ui(params[TAKEOFF_LEN_SLOT],   TAKEOFF_LEN_UI_DEFAULT);
-    u[2] = tk_ui(params[TAKEOFF_SOUND_SLOT], TAKEOFF_SOUND_UI_DEFAULT);
-    u[3] = tk_ui(params[TAKEOFF_COLOR_SLOT], TAKEOFF_COLOR_UI_DEFAULT);
-    u[4] = tk_ui(params[TAKEOFF_WIND_SLOT],  TAKEOFF_WIND_UI_DEFAULT);
-    u[5] = tk_ui(params[TAKEOFF_GRAIN_SLOT], TAKEOFF_GRAIN_UI_DEFAULT);
-    u[6] = tk_ui(params[TAKEOFF_RANGE_SLOT], TAKEOFF_RANGE_UI_DEFAULT);
+    u[2] = tk_ui(params[TAKEOFF_COLOR_SLOT], TAKEOFF_COLOR_UI_DEFAULT);
+    u[3] = tk_ui(params[TAKEOFF_WIND_SLOT],  TAKEOFF_WIND_UI_DEFAULT);
+    u[4] = tk_ui(params[TAKEOFF_GRAIN_SLOT], TAKEOFF_GRAIN_UI_DEFAULT);
+    u[5] = tk_ui(params[TAKEOFF_RANGE_SLOT], TAKEOFF_RANGE_UI_DEFAULT);
+    u[6] = tk_ui(params[TAKEOFF_VAR_SLOT],   TAKEOFF_VAR_UI_DEFAULT);
     u[7] = tk_ui(params[TAKEOFF_SPACE_SLOT], TAKEOFF_SPACE_UI_DEFAULT);
     u[8] = tk_ui(params[TAKEOFF_VOL_SLOT],   TAKEOFF_VOL_UI_DEFAULT);
     if (u[0] > 1) u[0] = 1;
     if (u[1] > 35) u[1] = 35;
-    if (u[2] > 4) u[2] = 4;
-    if (u[3] > 100) u[3] = 100;
-    if (u[4] > 100) u[4] = 100;
-    if (u[5] > 100) u[5] = 100;
-    if (u[6] > 3) u[6] = 3;
-    if (u[7] > 100) u[7] = 100;
-    if (u[8] > 100) u[8] = 100;
+    for (k = 2; k < 9; k++) if (u[k] > 100) u[k] = 100;
     bpm = zt_update(&s->zt, &run, &beats, &start);
     zw = (volatile unsigned int *)ZT_ADDR;
     if (zw[0] == ZT_MAGIC) {                     /* MOD firmware: footswitch down (6), our hold claim (7) */

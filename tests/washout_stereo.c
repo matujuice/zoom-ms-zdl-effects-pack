@@ -1,5 +1,5 @@
-/* Washout stereo and switching: L and R stay apart, Width 0 is mono, the footswitch keeps the tail and leaves
- * the dry untouched with no clicks on or off, Send changes are click-free. */
+/* Washout stereo and switching: L and R stay apart, Width 0 is mono, the footswitch keeps the tail and gives
+ * back the full dry with no clicks on or off, Send is an equal-power crossfade-send and click-free. */
 #include <stdio.h>
 #include <math.h>
 #include "stereo_entry.h"
@@ -88,7 +88,7 @@ int main(void)
       printf("off with an empty ring: output - dry = %.2e\n", dryerr);
       CHECK(dryerr == 0.0, "dry changed when off"); }
 
-    /* 4. no Mix knob: the dry passes at full level on and off; run with no tail (Send 0) to see the dry alone */
+    /* 4. Send 0: the dry passes at full level on and off; run with no tail to see the dry alone */
     { double e; long t;
       fresh(109, 70, 60, 100, 0, 100);
       for (i = 0; i < SEC * 3; i++) { inL[i] = 0.3f * noise(); inR[i] = 0.3f * noise(); }
@@ -110,6 +110,33 @@ int main(void)
       s1 = maxstep(oL, SEC / 2, SEC * 2);
       printf("Send 100->0->100: largest step %.4f (constant Send %.4f)\n", s0, s1);
       CHECK(s0 < s1 * 1.2f + 0.002f, "Send change clicks"); }
+
+    /* 6. crossfade-send: Fdbk 0, Wash 0, Time 1/4 (0.5 s) so dry and wash are apart in time; a burst in the
+     *    first 0.25 s. Dry part = output in the burst, wash part = the echo. Send 100: no dry; Send 50: both at
+     *    sin/cos 45 degrees (0.707); off: full dry */
+    { int sd; static const int sends[3] = { 100, 50, 0 };
+      for (sd = 0; sd < 3; sd++) {
+          double dry, wet, ref; long t;
+          fresh(109, 0, 0, 100, sends[sd], 100);
+          for (i = 0; i < SEC * 2; i++) { inL[i] = (i < SEC / 4) ? 0.3f * noise() : 0; inR[i] = inL[i]; }
+          for (b = 0; b < SEC * 2 / 8; b++) { t = b * 8; blk(t, 1); }
+          ref = rms(inL, 8000, SEC / 4);                 /* after the ring clear (~30 ms) and the Send ramp */
+          dry = rms(oL, 8000, SEC / 4) / ref;
+          wet = rms(oL, SEC / 2 + 2000, SEC * 3 / 4) / ref;
+          printf("Send %d: dry gain %.3f, wash gain %.3f (want %s)\n", sends[sd], dry, wet,
+                 sd == 0 ? "0, 1" : sd == 1 ? "0.707, 0.707" : "1, 0");
+          if (sd == 0) CHECK(dry < 1e-6 && fabs(wet - 1.0) < 0.02, "Send 100 is not wash only");
+          if (sd == 1) CHECK(fabs(dry - 0.7071) < 0.02 && fabs(wet - 0.7071) < 0.02, "Send 50 is not equal power");
+          if (sd == 2) CHECK(fabs(dry - 1.0) < 1e-9 && wet < 1e-9, "Send 0 is not dry only");
+      }
+      /* switched off at Send 100: the dry comes back to full level within ~50 ms */
+      { double e = 0; long t;
+        fresh(109, 0, 0, 100, 100, 100);
+        for (i = 0; i < SEC * 2; i++) { inL[i] = (i < SEC / 4) ? 0 : 0.3f * noise(); inR[i] = inL[i]; }
+        for (b = 0; b < SEC * 2 / 8; b++) { t = b * 8; blk(t, t < SEC / 4); }   /* on, silent; off when the noise starts */
+        for (i = SEC / 4 + 2205; i < SEC * 3 / 4 - 200; i++) { double d = fabs(oL[i] - inL[i]); e = d > e ? d : e; }
+        printf("off at Send 100: largest |out - dry| 50 ms after off, before the echo %.2e\n", e);
+        CHECK(e < 1e-4, "dry does not come back to full level when off"); } }
 
     printf("state %u bytes\n", (unsigned)sizeof(WdState));
     return fails;

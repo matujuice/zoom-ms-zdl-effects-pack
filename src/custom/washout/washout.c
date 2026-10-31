@@ -21,13 +21,14 @@
  * FDBK 0..120: gain into the loop = screen / 100, so 100 = 1:1. The diffusers lose no level, so
  *   Fdbk 100 + Send 0 + both cuts off holds the cloud. Above 100 it grows until the soft clip
  *   (transparent below 0.7, flat at 1.0) holds it, so it stays bounded.
- * SEND 0..100: how much input feeds the wash, smoothed (about 7 ms), so turning it up and back
- *   down is the "throw". 0 = only the tail keeps ringing.
+ * SEND 0..100: a crossfade-send (no Mix knob), smoothed (about 7 ms): turning it up sends more
+ *   input into the wash and fades the dry down, equal power (send = sin, dry = cos of Send x 90
+ *   degrees). 0 = dry only at full level, the tail keeps ringing; 100 = wash only, dry silent.
  * WIDTH 0..100: mid/side on the wet output only, 0 = mono, 100 = as is.
- * DRY: always passes at full level (no Mix knob): Send is the one control, a live one-knob throw.
  *
- * FOOTSWITCH: plain on/off with trails. OFF: nothing new goes in (Send ramps to 0), the tail
- *   rings out (Fdbk capped at 95 so it dies) and the dry passes untouched.
+ * FOOTSWITCH: plain on/off with trails. OFF: Send ramps to 0, so nothing new goes in and the
+ *   dry comes back to full level (as a stock effect that is off); the tail rings out (Fdbk capped
+ *   at 95 so it dies).
  * IDLE: when nothing goes in (off, or Send 0) and the ring has been silent (under 2 LSB of the
  *   16-bit ring) for longer than the delay, the effect does no work: the dry passes as is.
  *
@@ -174,6 +175,14 @@ static inline float wd_lfo(float p)
     return -4.0f * t * (1.0f - a);
 }
 
+/* sin(x * 90 degrees) for x in 0..1 (odd polynomial, exactly 0 at 0 and 1 at 1, within 0.02 %) */
+WD_ALWAYS_INLINE(wd_eqp)
+static inline float wd_eqp(float x)
+{
+    float q = x * x;
+    return x * (1.570796f + q * (-0.645964f + q * (0.079693f - 0.004525f * q)));
+}
+
 /* soft clip: transparent up to 0.7, flat at 1.0 from 1.3 */
 WD_ALWAYS_INLINE(wd_sat)
 static inline float wd_sat(float x)
@@ -260,7 +269,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], dc[8], xe[8], sgv[8], y[8], wo[2][8], md[2][4], eta[2][4], dl[8], dr[8];
+    float xs[2][8], dc[8], xe[8], sgv[8], dgv[8], y[8], wo[2][8], md[2][4], eta[2][4], dl[8], dr[8];
     int ia[2][4];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
@@ -304,15 +313,16 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         eta[c][k] = (1.0f - fr) * wd_recip(1.0f + fr);
     }
 
-    /* per-sample ramps: Send, Time crossfade */
+    /* per-sample ramps: Send (wash and dry gains), Time crossfade */
     WD_EIGHT
     for (i = 0; i < 8; i++) {
         float xl = buf[i], xr = buf[i + 8];
         sg += (inT - sg) * WD_SG_RATE;
-        sg = (inT == 0.0f && sg < 1e-5f) ? 0.0f : sg;
+        sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Send 100 = dry silent */
         dl[i] = xl; dr[i] = xr;
         xs[0][i] = xl; xs[1][i] = xr;
-        sgv[i] = sg; dc[i] = dCur; xe[i] = xf;
+        sgv[i] = wd_eqp(sg); dgv[i] = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);   /* equal-power crossfade */
+        dc[i] = dCur; xe[i] = xf;
         xf = (xf < 1.0f) ? ((xf + WD_XF_STEP > 1.0f) ? 1.0f : xf + WD_XF_STEP) : xf;
     }
 
@@ -364,8 +374,8 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     for (i = 0; i < 8; i++) {
         float wL = wo[0][i], wR = wo[1][i], mm, ss;
         if (W < 1.0f) { mm = 0.5f * (wL + wR); ss = 0.5f * W * (wL - wR); wL = mm + ss; wR = mm - ss; }
-        buf[i] = dl[i] + wL;
-        buf[i + 8] = dr[i] + wR;
+        buf[i] = dgv[i] * dl[i] + wL;
+        buf[i + 8] = dgv[i] * dr[i] + wR;
     }
     wp0 += 8;
     s->wp = (wp0 >= WD_N) ? wp0 - WD_N : wp0;
