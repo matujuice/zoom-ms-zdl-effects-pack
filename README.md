@@ -13,20 +13,20 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **DubSiren** | A dub siren on the footswitch with a tape-style echo. The rate can sync to tempo. |
 | **S.GN_L** | A broken digital line: packets drop out and get replaced by silence, a buzzing replay, a fade or hiss, with codec damage on top. |
 | **Scrub** | Records the last 7.9 seconds and scrubs the last 6; a knob moves a read head through them, and where you stop, the grain under the head loops forever (a freeze). |
-| **GRDELAY** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. New, not in a release yet. |
-| **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. New, not in a release yet. |
-| **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. New, not in a release yet. |
-| **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. New, not in a release yet. |
-| **LOUDER** | Transparent look-ahead mastering limiter for the end of the chain: Gain, Ceil, Rels (AUTO or 1-1000 ms), Style (CLEAN, PUNCH, LOUD), Mix. One gain for both sides, hard clip at the ceiling. New, not in a release yet. |
-| **DJFilter** | The DJ mixer filter you ride by hand, plus a kick kill: LP, HP and a one-knob DJ filter (each off at 0), Reso that follows the sweep, Kill (24 dB/oct low cut, 20-300 Hz), Slope 12/24, Glide, Level, Mix. The footswitch is the kick kill. New, not in a release yet. |
-| **Washout** | A tempo-synced stereo delay whose loop smears the repeats into a reverb-like cloud (4 slow all-pass diffusers in the feedback): Time, Wash, Fdbk up to 120, HiCut, LoCut, Mod, Width, Send (the throw; the dry always passes at full level). The footswitch is on/off with trails. New, not in a release yet. |
-| **Takeoff** | Risers and downlifters that only add sound on top: noise sweeps with swelling volume and growing width, Dir UP/DOWN, Len in bars or seconds, Color, Wind and Grain to shape the noise, Range, Var so no two takeoffs sound the same, Space reverb tail; the key follows your input. A footswitch flip fires a sweep (on the next bar line when the MIDI clock runs), a hold rises while held, and on MIDISTOMP v2.0 the LED shows it. New, not in a release yet. |
-| **Gooey** | SSL G-bus style mix bus compressor: Thrsh (0 = off), Ratio, Attck, Rels (AUTO is program-dependent), MkUp (AUTO adds back the average reduction), Mix (parallel), SC HP (sidechain high-pass). One gain for both sides. New, not in a release yet. |
-| **Looper** | A bar-synced stereo looper on the song grid: the footswitch records Length bars, stops, plays and (double press) deletes, each on the next beat, bar or cycle; latched beat Roll; the loop stays on the grid when the tempo changes. Test build for MIDISTOMP v2.0: with the MIDISTOMP looper services (v2.0 step 2, in test) it holds 8 bars stereo from 79 BPM, the footswitch no longer flips it and the LED shows its state; on older firmware about 10 s mono. Not in a release. |
+| **GRDELAY** | One tempo-synced delay with six engines on a Type knob (clean, tape, dub, reverse, multitap, lo-fi), Duck, and a Tail switch so repeats ring out when you switch it off. |
+| **Breather** | Tempo-synced pump with a built-in reverb: duck, gate or swell your sound, the reverb, both, or what feeds the reverb, on every beat. |
+| **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. |
+| **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. |
+| **LOUDER** | Transparent look-ahead mastering limiter for the end of the chain: Gain, Ceil, Zoom (cover meter), Rels (AUTO or 1-1000 ms), Style (CLEAN, PUNCH, LOUD), Mix. One gain for both sides, hard clip at the ceiling. |
+| **DJFilter** | The DJ mixer filter you ride by hand, plus a kick kill: LP, HP and a one-knob DJ filter (each off at 0), Reso that follows the sweep, Kill (24 dB/oct low cut, 20-300 Hz), Slope 12/24, Glide, Level, Mix. The footswitch is the kick kill. |
+| **Washout** | A tempo-synced stereo delay whose loop smears the repeats into a reverb-like cloud (4 slow all-pass diffusers in the feedback): Time, Wash, Fdbk up to 120, HiCut, LoCut, Mod, Width, Send (a crossfade-send, no Mix knob). The footswitch is on/off with trails. |
+| **Takeoff** | Risers and downlifters that only add sound on top: noise sweeps with swelling volume and growing width, Dir UP/DOWN, Len in bars or seconds, Color, Wind and Grain to shape the noise, Range, Var so no two takeoffs sound the same, Space reverb tail; the key follows your input. A footswitch flip fires a sweep (on the next bar line when the MIDI clock runs), a hold rises while held, and on MIDISTOMP v2.0 the LED shows it. |
+| **Gooey** | SSL G-bus style mix bus compressor: Thrsh (0.1 dB steps, 0 = off), Ratio, Zoom (cover meter), Attck, Rels (AUTO is program-dependent), MkUp (AUTO adds back the average reduction), Mix (parallel), SC HP (sidechain high-pass). One gain for both sides. |
+| **GRDLOOP** | A bar-synced stereo looper on the song grid: the footswitch records, stops, plays and (double press) deletes, on the next beat, bar or cycle (Next); Sync OWN or SLAVE; latched beat Roll; the loop stays on the grid when the tempo changes. Made for MIDISTOMP v2.0: its looper services give 8 bars stereo from 79 BPM, a footswitch that never flips the effect and the LED state; on stock firmware about 10 s mono. |
 
 Every knob is explained in [docs/EFFECTS.md](docs/EFFECTS.md).
 
-**Tempo and MIDI sync (on `main`, not in a release yet):** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
+**Tempo and MIDI sync:** the tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom MS-50G firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later). They have no Tempo knob: they follow the pedal's tempo (MIDI clock, tap or patch tempo), restart on MIDI Start and stay on the clock's grid; after Stop they keep running at the last tempo. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with their own Tempo knob and the iPhone (Mozaic) bar sync. Details: [docs/TEMPO-SYNC.md](docs/TEMPO-SYNC.md) section 10.
 
 **Tested on:** a Zoom MS-60B running MS-50G firmware. The MS-50G, MS-70CDR and other MS pedals are untested; if you try one, please open an issue and say whether the effects load and work.
 
@@ -37,9 +37,9 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-The effects marked new are on `main` but not in a release yet: take the tested builds from [dist/](dist/) or build them from source (below) until the next release.
+Release v2.0 has all seventeen effects, made for MIDISTOMP v2.0 and working on stock firmware too. To try newer changes on `main`, build them from source (below).
 
-Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 Looper, 501 Gooey, 502 DJFilter). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 GRDLOOP, 501 Gooey, 502 DJFilter). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## Build from source
 
@@ -51,7 +51,7 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly`. Probes (`tempoprb`, `dryprb`, `routeprb`) are built only when named.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly` (GRDELAY), `looper` (GRDLOOP), `louder`, `djfilter`, `washout`, `takeoff`, `gooey`. Probes (`tempoprb`, `dryprb`, `routeprb`) are built only when named.
 
 ## Repository layout
 

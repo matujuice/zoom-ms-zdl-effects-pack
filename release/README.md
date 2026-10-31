@@ -1,8 +1,8 @@
 # Matujuice Zoom MS ZDL effects pack
 
-Eleven free effects for Zoom MS pedals, made for synths and drum machines.
+Seventeen free effects for Zoom MS pedals, made for synths and drum machines.
 
-WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub, DIRTBOX, Breather, GRDELAY, Sweep, LOUDER, DJFilter, Washout, Takeoff and Gooey. Free to use and share (MIT licence, see LICENSE).
+WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub, DIRTBOX, Breather, GRDELAY, Sweep, LOUDER, DJFilter, Washout, Takeoff, Gooey and GRDLOOP. Free to use and share (MIT licence, see LICENSE).
 
 Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other MS pedals are untested, so reports are welcome.
@@ -13,7 +13,7 @@ Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other 
 2. In Zoom Effect Manager open Settings, choose "Read Effects from folder" and select the folder with the `.ZDL` files. Then turn on "Effects from devices" and "From Folder", add the effects you want and write them to the pedal.
 3. Delete GridDly.ZDL from the pedal before adding GRDELAY.ZDL (same effect, new name; old patches load it).
 
-On the MS-70CDR (real stereo input) EuGate, Sweep, Breather, S.GN_L, Scrub, GRDELAY and Choral are stereo; WaveFold, DualShft, DirtBox and DubSiren hear the two inputs added together and keep the dry in stereo; the Looper is stereo. On the MS-50G and MS-60B everything works as before. The footswitch turns the effect on and off like normal.
+On the MS-70CDR (real stereo input) EuGate, Sweep, Breather, S.GN_L, Scrub, GRDELAY and Choral are stereo; WaveFold, DualShft, DirtBox and DubSiren hear the two inputs added together and keep the dry in stereo; GRDLOOP is stereo. On the MS-50G and MS-60B everything works as before. The footswitch turns the effect on and off like normal.
 
 ## How the knobs work
 
@@ -210,11 +210,12 @@ For the end of the chain (after MIX); stereo in and out. A transparent look-ahea
 
 | Knob | Range | What it does |
 |---|---|---|
-| Gain | 0.0 .. +18.0 dB | Push into the limiter. Default 0. |
-| Ceil | -6.0 .. 0.0 dB | Nothing comes out above it. Default -0.1 dB. |
-| Rels | AUTO, 1 .. 1000 ms | Release. AUTO is program-dependent (fast after single peaks, slow after sustained level, no pumping). |
-| Style | CLEAN, PUNCH, LOUD | Saturation before the limiter and how much transient gets through (never the release). |
-| Mix | 0..100 | Dry/wet crossfade, DJ style; the dry is delayed like the wet, so no comb filter. |
+| Gain | 0.0 .. +18.0 dB | How hard the sound is pushed into the limiter, 0.1 dB steps. Default 0. |
+| Ceil | -6.0 .. 0.0 dB | The ceiling: nothing comes out above it. 0.1 dB steps. Default -0.1 dB. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the ceiling line. Default x3. |
+| Rels | AUTO, 1 .. 1000 ms | Release. AUTO is program-dependent: a fast stage (30 ms) lets go after single peaks, a slow one (250 ms) after sustained level, so it does not pump. A number is one stage with that time. |
+| Style | CLEAN, PUNCH, LOUD | Only the saturation before the limiter and how much transient gets through (never the release). CLEAN has none, PUNCH adds a little and lets transients through a little, LOUD is the densest. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style (parallel limiting). The dry is delayed like the wet, so a part Mix never sounds like a comb filter. |
 
 ### DJFilter: a DJ filter and kick kill
 Stereo in and out. Not tested on a pedal yet.
@@ -233,17 +234,10 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 | Level | -12.0..+6.0 dB | Output trim. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
-## Credits
-
-- Built with the ZoomMultistompZDL toolchain by themanro (https://github.com/themanro/ZoomMultistompZDL).
-- WaveFold's curve is from "Virtual Analog Buchla 259 Wavefolder" (Esqueda, Pontynen, Valimaki, Parker; DAFx-2017).
-- DIRTBOX's circuit models follow the analyses and open models linked in its section (guitarix, ElectroSmash, DS1.lv2, Proco-Rat, MetalTone).
-- The rest is original work.
-
 ### Washout: a delay that melts into a cloud
 Stereo in and out. Not tested on a pedal yet.
 
-A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. The footswitch is a plain on/off with trails: off stops new sound going in and the tail rings out, the dry is untouched. When the tail has died and nothing goes in, it costs next to nothing.
+A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. There is no Mix knob: Send is a crossfade-send. When the tail has died and nothing goes in, it costs next to nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -254,12 +248,12 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 | LoCut | 0..100 | High-pass in the loop, so each pass gets thinner. 0 = off. |
 | Mod | 0..100 | Slow modulation of the diffusers (it blurs the cloud). Default 20. |
 | Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
-| Send | 0..100 | How much input feeds the wash, smoothed. 0 = only the tail keeps ringing: turn it up and back down for a throw. Default 100. |
+| Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
 
 Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark swell that never ends.
 
 ### Takeoff: risers and downlifters
-New, not in a release yet. Stereo in and out. Not tested on a pedal yet (hold needs MIDISTOMP's HOLD FOR = MOMENTARY).
+Stereo in and out. Not tested on a pedal yet (hold needs MIDISTOMP's HOLD FOR = MOMENTARY).
 
 Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep and the stereo width grows with it. The key is always AUTO: it listens to what you play and starts and ends the sweep on its strongest note; with drums or noise only it falls back to a free glide. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing (only the key listener keeps running).
 
@@ -278,18 +272,55 @@ Adds a riser or a downlifter on top of what you play, like DubSiren: the input i
 Try: UP, Len 8 bars, Wind 60, Space 40 for a classic build-up; Range 20, Len 1 bar for a quick lift into a chorus; DOWN, Color 80, Space 60 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
 
 ### Gooey: a mix bus compressor
-New, not in a release yet. Stereo in and out. Not tested on a pedal yet.
+Stereo in and out. Not tested on a pedal yet.
 
 An SSL G-bus style VCA compressor to glue a mix: one character, done well. One gain for both sides, taken from the louder one (half peak, half RMS detector, soft knee). The sidechain high-pass listens only to the detector, so a kick does not pump the whole mix and the sound itself is never filtered. Thrsh at 0 bypasses it completely.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Thrsh | -40 .. 0 dB | Threshold. 0 = OFF (bit-exact bypass, no cost). Default 0. |
+| Thrsh | -40 .. 0 dB | Threshold in 0.1 dB steps. 0 = OFF (bit-exact bypass, no cost). Default 0. |
 | Ratio | 1.5, 2, 4, 10 | Default 4. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the threshold line. Default x1. |
 | Attck | 0.1, 0.3, 1, 3, 10, 30 ms | Default 10 ms. |
 | Rels | 0.1, 0.3, 0.6, 1.2 s, AUTO | AUTO is program-dependent: 0.1 s after single peaks, up to 1.2 s after sustained reduction, so it does not pump. Default AUTO. |
 | MkUp | AUTO, OFF, +0.5 .. +20 dB | AUTO adds back the average gain reduction. Default OFF. |
 | Mix | 0..100 | Linear dry/wet blend like the Digitakt compressor (parallel compression), so Mix 50 is not louder. Default 100. |
 | SC HP | OFF, 20 .. 300 Hz | High-pass on the detector only (12 dB/oct). Default OFF. |
 
-Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover shows a live gain-reduction meter (bar and dB number, peak held 300 ms), drawn by the effect itself. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level, with the threshold as a centered line tagged THRSH. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+
+### GRDLOOP: a bar-synced looper on the song grid
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo. Not tested on a pedal yet.
+
+The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
+
+**Footswitch.** On MIDISTOMP v2.0, with GRDLOOP under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, the patch is not marked edited and the LED shows the state. GRDLOOP's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On stock firmware, and for a second GRDLOOP in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
+
+| State | Press | Double press (two within 300 ms) |
+|---|---|---|
+| Empty | record (see Sync), then play | — |
+| Recording | Sync OWN: end the recording (rounded up to whole cycles). SLAVE: nothing | throw the recording away |
+| Playing | stop (the loop is kept) | delete the loop |
+| Stopped | play again, in its place on the grid | delete the loop |
+
+Record, stop and play wait for the Next line; delete is always at once. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat. What MIDI Stop does is the Stop knob.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Mix | 0..100 | Live and loop, DJ crossfade: live full up to 50, loop full from 50. With no loop playing only the live part is heard (100 = silence). In Mixer Mode's Parallel mode keep it at 100 and use [MIX]'s Crossfade. Default 50. |
+| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat of a slice of the bar: it starts on the next bar line. A new rate takes over on its next line; OFF lands on the next line, where the loop would have been. Default OFF. |
+| Sync | OWN, SLAVE | OWN: record from the Next line until the Next line after your second press, rounded up to whole cycles. SLAVE: record one cycle, then play. Default OWN. |
+| Next | NOW, BEAT, BAR, CYC | When record, stop and play land: at once (a single press waits 300 ms in case it is a double), the next beat, the next bar, or the next cycle start counted from bar 1. Default CYC. |
+| Cycle | 1..32 bars | The cycle length. Perform mode's CYCLE overrides it when set. Default 8 bars. |
+| Stop | KEEP, HALT | KEEP: MIDI Stop and clock loss are ignored, the loop plays on at the last tempo and waiting actions keep waiting; the next MIDI Start restarts it at bar 1. HALT: MIDI Stop stops the loop and drops waiting actions; Start plays it from bar 1. Default KEEP. |
+
+Old Looper patches load: Length 2 bars reads as SLAVE (others OWN), When maps to Next (IMMED = NOW) and Amount to Cycle.
+
+**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 10 s mono or 5 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change.
+
+## Credits
+
+- Built with the ZoomMultistompZDL toolchain by themanro (https://github.com/themanro/ZoomMultistompZDL).
+- WaveFold's curve is from "Virtual Analog Buchla 259 Wavefolder" (Esqueda, Pontynen, Valimaki, Parker; DAFx-2017).
+- DIRTBOX's circuit models follow the analyses and open models linked in its section (guitarix, ElectroSmash, DS1.lv2, Proco-Rat, MetalTone).
+- The rest is original work.
