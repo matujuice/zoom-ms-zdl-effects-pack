@@ -1,6 +1,6 @@
 /* DJFilter is linked stereo (one set of coefficients) but L and R stay independent signals: a tone
  * only on L leaves R silent, only on R leaves L silent, two different tones stay different. With
- * LP, HP and Kill all on. Also: the all-on state is finite on noise. Host test only. */
+ * the DJ filter and Kill on. Also: the all-on state is finite on noise. Host test only. */
 #include "djfilter_common.h"
 
 static double rms(const float *p, long n) { double a = 0; long i; for (i = 0; i < n; i++) a += (double)p[i] * p[i]; return sqrt(a / (double)n); }
@@ -10,7 +10,7 @@ int main(void)
     int mode;
     for (mode = 0; mode < 3; mode++) {            /* 0: L only, 1: R only, 2: different tones both sides */
         static float oL[8 * 3000], oR[8 * 3000]; long b, k = 0; int j; double xc = 0, eL, eR;
-        setup(); SET(LP, 50); SET(HP, 40); SET(KILL, 60); SET(DJ, 100); SET(RESO, 60);
+        setup(); SET(KILL, 60); SET(DJ, 50); SET(RESO, 60);
         for (b = 0; b < 3000; b++) {
             float l[8], r[8];
             for (j = 0; j < 8; j++, k++) {
@@ -30,7 +30,7 @@ int main(void)
     }
     {   /* noise, everything on, extremes: finite and bounded */
         long b; int j; double peak = 0; unsigned int rng = 99u;
-        setup(); SET(LP, 100); SET(HP, 100); SET(KILL, 281); SET(RESO, 100); SET(LEVEL, 36);
+        setup(); SET(DJ, 200); SET(KILL, 281); SET(RESO, 100); SET(LEVEL, 36);
         for (b = 0; b < 20000; b++) {
             float l[8], r[8];
             for (j = 0; j < 8; j++) {

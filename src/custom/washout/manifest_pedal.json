@@ -28,6 +28,6 @@
     {"name": "Send", "max": 100, "default": 100,
      "comment": "Crossfade-send, smoothed over about 7 ms: up sends more input into the wash and fades the dry down (equal power). 0 = dry only at full level, the tail keeps ringing; 100 = wash only, dry silent. Default 100."}
   ],
-  "dsp_cost": 35.0,
-  "dsp_cost_comment": "Estimate from the compiler's loop schedules (about 2,300 cycles a block with both cuts on; the first build was about 3,600, roughly 56): per side per sample a 1-tap ring read (2-tap only during a Time crossfade), 4 all-pass stages with a fractional all-pass each, 2 optional one-poles, a soft clip and a ring write. Idle (off or Send 0 and the tail died) costs about nothing. Re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost": 13.0,
+  "dsp_cost_comment": "Estimate from the compiler's loop schedules (about 1,000 cycles a block; 2,300 before the eight all-pass lines and both sides' filters ran in one loop each, about 3,600 in the first build): per side per sample a 1-tap ring read (2-tap only during a Time crossfade), 4 all-pass stages with a fractional all-pass each, 2 optional one-poles, a soft clip and a ring write. Idle (off or Send 0 and the tail died) costs about nothing. Re-measure on the pedal (SYSTEM > LOAD)."
 }

@@ -1,4 +1,4 @@
-/* DJFilter clicks: fast knob jumps (LP, HP, DJ, Kill, Slope) and footswitch on / off must not step.
+/* DJFilter clicks: fast knob jumps (DJ, Kill, Slope) and footswitch on / off must not step.
  * The measure is the largest sample-to-sample step of the output against the largest step the
  * input itself has, plus a small allowance. Host test only. */
 #include "djfilter_common.h"
@@ -24,15 +24,13 @@ static double run_steps(double hz, double amp, int blocks, int at, change_fn cha
     return worst;
 }
 
-static void lp_jump(void)   { SET(LP, 100); }
-static void hp_jump(void)   { SET(HP, 100); }
 static void dj_left(void)   { SET(DJ, 0); }
 static void dj_right(void)  { SET(DJ, 200); }
 static void kill_on(void)   { SET(KILL, 281); }
 static void slope_12(void)  { SET(SLOPE, 0); }
-static void lp_back(void)   { SET(LP, 0); }
+static void dj_back(void)   { SET(DJ, 100); }
 static void sw_off(void)    { params[0] = 0.0f; }
-static void lp_sw_off(void) { SET(LP, 100); params[0] = 0.0f; }
+static void lp_sw_off(void) { SET(DJ, 0); params[0] = 0.0f; }
 static void sw_on(void)     { params[0] = 1.0f; }
 
 static void check(const char *name, double hz, double amp, int blocks, int at, change_fn pre, change_fn change)
@@ -45,8 +43,7 @@ static void check(const char *name, double hz, double amp, int blocks, int at, c
     CHECK(w < istep * 1.5 + 0.01, "%s clicks: output step %.4f, input step %.4f", name, w, istep);
 }
 
-static void lp_and_dj(void) { SET(LP, 100); SET(DJ, 0); }
-static void hp_kill_dj(void) { SET(HP, 60); SET(KILL, 100); SET(DJ, 150); }
+static void kill_dj(void)   { SET(KILL, 100); SET(DJ, 150); }
 
 int main(void)
 {
@@ -54,29 +51,29 @@ int main(void)
     long b, k;
     int j;
 
-    check("LP 0 -> 100", 100.0, 0.5, 1500, 400, 0, lp_jump);
-    check("LP 0 -> 100 (1 kHz)", 1000.0, 0.5, 1500, 400, 0, lp_jump);
-    check("HP 0 -> 100", 1000.0, 0.5, 1500, 400, 0, hp_jump);
-    check("HP 0 -> 100 (100 Hz)", 100.0, 0.5, 1500, 400, 0, hp_jump);
+    check("DJ 0 -> -100 (100 Hz)", 100.0, 0.5, 1500, 400, 0, dj_left);
+    check("DJ 0 -> -100 (1 kHz)", 1000.0, 0.5, 1500, 400, 0, dj_left);
+    check("DJ 0 -> +100 (1 kHz)", 1000.0, 0.5, 1500, 400, 0, dj_right);
+    check("DJ 0 -> +100 (100 Hz)", 100.0, 0.5, 1500, 400, 0, dj_right);
     check("DJ 0 -> -100", 500.0, 0.5, 1500, 400, 0, dj_left);
     check("DJ 0 -> +100", 500.0, 0.5, 1500, 400, 0, dj_right);
     check("DJ -100 -> +100", 500.0, 0.5, 1500, 600, dj_left, dj_right);
-    check("LP 100 -> 0", 100.0, 0.5, 1500, 600, lp_jump, lp_back);
+    check("DJ -100 -> 0", 100.0, 0.5, 1500, 600, dj_left, dj_back);
     check("Kill OFF -> 300 Hz", 200.0, 0.5, 1500, 400, 0, kill_on);
-    check("Slope 24 -> 12 with LP on", 800.0, 0.5, 1500, 400, lp_jump, slope_12);
-    check("LP + HP + Kill + DJ all jump", 400.0, 0.5, 1500, 400, 0, hp_kill_dj);
+    check("Slope 24 -> 12 with DJ -100", 800.0, 0.5, 1500, 400, dj_left, slope_12);
+    check("Kill + DJ jump together", 400.0, 0.5, 1500, 400, 0, kill_dj);
 
     /* footswitch: off -> on and on -> off with the filter closed, so the sound changes a lot;
      * the ramp is 128 samples, so the step stays a small multiple of the input's own step */
-    check("footswitch off -> on (LP 100)", 300.0, 0.5, 1000, 400, lp_sw_off, sw_on);
+    check("footswitch off -> on (DJ -100)", 300.0, 0.5, 1000, 400, lp_sw_off, sw_on);
     {
-        setup(); SET(LP, 100); params[0] = 0.0f;                  /* off from the start, then on */
+        setup(); SET(DJ, 0); params[0] = 0.0f;                  /* off from the start, then on */
         w = run_steps(300.0, 0.5, 1000, 400, sw_on, &istep);
         printf("footswitch on from the start: largest step %.4f (input %.4f)\n", w, istep);
         CHECK(w < istep * 1.5 + 0.01, "footswitch on clicks");
     }
     {
-        setup(); SET(LP, 100); SET(HP, 30); SET(KILL, 50);
+        setup(); SET(DJ, 0); SET(KILL, 50);
         w = run_steps(300.0, 0.5, 1000, 400, sw_off, &istep);
         printf("footswitch on -> off: largest step %.4f (input %.4f)\n", w, istep);
         CHECK(w < istep * 1.5 + 0.01, "footswitch off clicks");
@@ -92,7 +89,7 @@ int main(void)
     /* on -> off -> on again with a rest between: the filters restart from the signal, no pop */
     {
         double worst = 0, pl = 0; int ph = 0;
-        setup(); SET(LP, 60); SET(HP, 30); SET(KILL, 60);
+        setup(); SET(DJ, 40); SET(KILL, 60);
         for (b = 0, k = 0; b < 3000; b++) {
             float l[8];
             if (b == 500) params[0] = 0.0f;
@@ -106,6 +103,5 @@ int main(void)
         printf("on/off/on: largest step %.4f (input %.4f)\n", worst, c);
         CHECK(worst < c * 1.5 + 0.01, "on/off/on clicks (%.4f)", worst);
     }
-    (void)lp_and_dj;
     return fails;
 }

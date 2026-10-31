@@ -215,17 +215,15 @@ At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 
 ### DJFilter: a DJ filter and kick kill
 Stereo in and out.
 
-The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. Three filter knobs, each off at 0 (a filter that is off costs nothing): LP closes the highs, HP closes the lows, DJ is the one-knob version (left LP, right HP, -3..+3 flat). DJ drives the same two filters and the more closed setting wins, so LP and HP can be parked as a floor and DJ sweeps past them; LP and HP together make a band-pass. Turning right is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
+The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
 
 | Knob | Range | What it does |
 |---|---|---|
-| LP | 0..100 | Low-pass amount. 0 is off, 100 closes down to about 40 Hz. |
-| HP | 0..100 | High-pass amount. 0 is off, 100 closes up to about 10 kHz. |
-| DJ | -100..+100 | Left low-pass, right high-pass, -3..+3 is flat. Combines with LP/HP: the more closed one wins. |
+| DJ | -100..+100 | Left low-pass (-100 closes down to about 40 Hz), right high-pass (+100 closes up to about 10 kHz), -3..+3 is flat. |
 | Reso | 0..100 | Resonance at the far end of the sweep. About none when the filter is open, rising as it closes, never self-oscillating. Default 30. |
 | Kill | OFF, 20..300 Hz | An independent 24 dB/oct low cut that removes kick and bass. Use it alone or on top of the filter. Default OFF. |
 | Slope | 12 / 24 | dB per octave of the filter (not Kill). 12 is gentle and warm, 24 is the hard DJ-mixer cut. Default 24. |
-| Glide | 0..1000 ms | How fast LP, HP and DJ follow the knob, so a fast CC or Perform jump sweeps instead of stepping. Default about 20 ms. |
+| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. Default about 20 ms. |
 | Level | -12.0..+6.0 dB | Output trim. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 

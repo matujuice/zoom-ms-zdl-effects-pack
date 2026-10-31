@@ -269,7 +269,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], xe[8], sgv[8], dgv[8], y[8], wo[2][8], md[2][4], eta[2][4], t[9], cv[8];
+    float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], wo[2][8], md[2][4], eta[2][4], cv[16];
     int ia[2][4];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
@@ -311,7 +311,8 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         float fr;
         ia[c][k] = (int)(md[c][k] - 0.5f);
         fr = md[c][k] - (float)ia[c][k];
-        eta[c][k] = (1.0f - fr) * wd_recip(1.0f + fr);
+        fr = 0.5f * (fr - 1.0f);               /* (1 - fr) / (1 + fr) = -h / (1 + h), h in -0.25..0.25: series */
+        eta[c][k] = -fr * (1.0f + fr * (-1.0f + fr * (1.0f + fr * (-1.0f + fr))));
     }
 
     /* per-sample ramps: Send (wash and dry gains, equal-power crossfade; worked out once while Send is
@@ -335,80 +336,98 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         xf = (xf + WD_XF_STEP > 1.0f) ? 1.0f : xf + WD_XF_STEP;
     }
 
-    for (c = 0; c < 2; c++) {
-        short * restrict rb = sb + c * WD_N;
-        float lp = s->lp[c], hs = s->hs[c];
-        /* read (crossfaded between the old and new Time; one tap when no crossfade runs) */
-        if (xe[0] >= 1.0f) {
-            WD_EIGHT
-            for (i = 0; i < 8; i++) {
-                int wpk = wp0 + i;
-                wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-                y[i] = wd_read(rb, wpk, (int)dCur);
-            }
-        } else {
-            WD_EIGHT
-            for (i = 0; i < 8; i++) {
-                int wpk = wp0 + i;
-                wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-                y[i] = xe[i] * wd_read(rb, wpk, (int)dCur) + (1.0f - xe[i]) * wd_read(rb, wpk, (int)dOld);
-            }
-        }
-        /* diffusers */
-        if (P->ap) {
-            for (k = 0; k < 4; k++) {
-                int r = apw - ia[c][k] - 1;
-                float *ab = s->ap[c][k], e = eta[c][k], ip = s->ip[c][k];
-                /* the 9 taps the block reads first: lengths >= 112 never reach this block's 8 writes */
-                for (i = 0; i < 9; i++) t[i] = ab[(r + i) & (WD_APN - 1)];
-                for (i = 0; i < 8; i++) t[i] += e * t[i + 1];
-                WD_EIGHT
-                for (i = 0; i < 8; i++) {
-                    float d = t[i] - e * ip, wv = y[i] + g * d;   /* d: the line, delayed a fraction by an all-pass */
-                    ip = d;
-                    ab[(apw + i) & (WD_APN - 1)] = wv;
-                    y[i] = d - g * wv;
-                }
-                s->ip[c][k] = ip;
-            }
-        }
-        /* the wet out is the diffused read; then loop filters (each in a loop of its own, an if inside
-         * chains every sample to the last), Send, soft clip */
-        WD_EIGHT
-        for (i = 0; i < 8; i++) wo[c][i] = y[i];
-        if (hc) {
-            WD_EIGHT
-            for (i = 0; i < 8; i++) { lp += cl * (y[i] - lp); y[i] = lp; }
-        }
-        if (lc) {
-            WD_EIGHT
-            for (i = 0; i < 8; i++) { hs += ch_ * (y[i] - hs); y[i] -= hs; }
-        }
-        WD_EIGHT
-        for (i = 0; i < 8; i++) {
-            float v = wd_sat(sgv[i] * xs[c][i] + fb * y[i]), a, cc;
-            cc = v * WD_TO16;
-            cv[i] = cc;
-            a = (cc < 0.0f) ? -cc : cc;
-            bigm = (a > bigm) ? a : bigm;
-        }
-        /* the ring stores in a loop of their own: in the loop above they chain every sample to the last */
+    /* read both sides (crossfaded between the old and new Time; one tap when no crossfade runs) */
+    if (xe[0] >= 1.0f) {
         WD_EIGHT
         for (i = 0; i < 8; i++) {
             int wpk = wp0 + i;
             wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-            rb[wpk] = (short)(int)cv[i];
+            yl[i] = wd_read(sb, wpk, (int)dCur);
+            yr[i] = wd_read(sb + WD_N, wpk, (int)dCur);
         }
-        s->lp[c] = lp; s->hs[c] = hs;
+    } else {
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            int wpk = wp0 + i;
+            wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
+            yl[i] = xe[i] * wd_read(sb, wpk, (int)dCur) + (1.0f - xe[i]) * wd_read(sb, wpk, (int)dOld);
+            yr[i] = xe[i] * wd_read(sb + WD_N, wpk, (int)dCur) + (1.0f - xe[i]) * wd_read(sb + WD_N, wpk, (int)dOld);
+        }
+    }
+
+    /* diffusers: all eight lines (four stages a side) in one pass over the block. Each line's fractional
+     * all-pass chains sample to sample; eight of them side by side keep the DSP's pipeline full */
+    if (P->ap) {
+        float t0[9], t1[9], t2[9], t3[9], t4[9], t5[9], t6[9], t7[9];
+        float e0, e1, e2, e3, e4, e5, e6, e7, p0, p1, p2, p3, p4, p5, p6, p7;
+        int r0, r1, r2, r3, r4, r5, r6, r7;
+#define WD_TAPS(j, c, k) { r##j = apw - ia[c][k] - 1; e##j = eta[c][k]; p##j = s->ip[c][k]; }
+#define WD_TAP(j, c, k) t##j[i] = s->ap[c][k][(r##j + i) & (WD_APN - 1)];
+#define WD_AP(v, j, c, k) { float d = t##j[i] + e##j * t##j[i + 1] - e##j * p##j, wv = v + g * d; p##j = d; \
+        s->ap[c][k][w] = wv; v = d - g * wv; }
+        WD_TAPS(0, 0, 0) WD_TAPS(1, 0, 1) WD_TAPS(2, 0, 2) WD_TAPS(3, 0, 3)
+        WD_TAPS(4, 1, 0) WD_TAPS(5, 1, 1) WD_TAPS(6, 1, 2) WD_TAPS(7, 1, 3)
+        /* the 9 taps the block reads first: lengths >= 112 never reach this block's 8 writes */
+        for (i = 0; i < 9; i++) {
+            WD_TAP(0, 0, 0) WD_TAP(1, 0, 1) WD_TAP(2, 0, 2) WD_TAP(3, 0, 3)
+            WD_TAP(4, 1, 0) WD_TAP(5, 1, 1) WD_TAP(6, 1, 2) WD_TAP(7, 1, 3)
+        }
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            int w = (apw + i) & (WD_APN - 1);
+            float vl = yl[i], vr = yr[i];
+            WD_AP(vl, 0, 0, 0) WD_AP(vr, 4, 1, 0)
+            WD_AP(vl, 1, 0, 1) WD_AP(vr, 5, 1, 1)
+            WD_AP(vl, 2, 0, 2) WD_AP(vr, 6, 1, 2)
+            WD_AP(vl, 3, 0, 3) WD_AP(vr, 7, 1, 3)
+            yl[i] = vl; yr[i] = vr;
+        }
+#undef WD_TAPS
+#undef WD_TAP
+#undef WD_AP
+        s->ip[0][0] = p0; s->ip[0][1] = p1; s->ip[0][2] = p2; s->ip[0][3] = p3;
+        s->ip[1][0] = p4; s->ip[1][1] = p5; s->ip[1][2] = p6; s->ip[1][3] = p7;
+    }
+
+    /* the wet out is the diffused read; then loop filters (always run; off = pass through), Send, soft clip,
+     * both sides in one loop */
+    {
+        const float bl = hc ? cl : 1.0f, al = 1.0f - bl, bh = lc ? ch_ : 0.0f, ah = 1.0f - bh;
+        float l0 = s->lp[0], l1 = s->lp[1], h0 = lc ? s->hs[0] : 0.0f, h1 = lc ? s->hs[1] : 0.0f;
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            float v0, v1, a0, a1;
+            wo[0][i] = yl[i]; wo[1][i] = yr[i];
+            l0 = al * l0 + bl * yl[i]; l1 = al * l1 + bl * yr[i];
+            h0 = ah * h0 + bh * l0;    h1 = ah * h1 + bh * l1;
+            v0 = wd_sat(sgv[i] * xs[0][i] + fb * (l0 - h0)) * WD_TO16;
+            v1 = wd_sat(sgv[i] * xs[1][i] + fb * (l1 - h1)) * WD_TO16;
+            cv[i] = v0; cv[i + 8] = v1;
+            a0 = (v0 < 0.0f) ? -v0 : v0; a1 = (v1 < 0.0f) ? -v1 : v1;
+            a0 = (a1 > a0) ? a1 : a0;
+            bigm = (a0 > bigm) ? a0 : bigm;
+        }
+        s->lp[0] = l0; s->lp[1] = l1; s->hs[0] = h0; s->hs[1] = h1;
+    }
+    /* the ring stores in a loop of their own: in the loop above they chain every sample to the last */
+    WD_EIGHT
+    for (i = 0; i < 8; i++) {
+        int wpk = wp0 + i;
+        wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
+        sb[wpk] = (short)(int)cv[i];
+        sb[WD_N + wpk] = (short)(int)cv[i + 8];
     }
     s->quiet = (bigm >= WD_QUIET || sg > 0.0f) ? 0 : ((s->quiet < 100000000) ? s->quiet + 8 : s->quiet);
 
-    WD_EIGHT
-    for (i = 0; i < 8; i++) {
-        float wL = wo[0][i], wR = wo[1][i], mm, ss;
-        if (W < 1.0f) { mm = 0.5f * (wL + wR); ss = 0.5f * W * (wL - wR); wL = mm + ss; wR = mm - ss; }
-        buf[i] = dgv[i] * xs[0][i] + wL;
-        buf[i + 8] = dgv[i] * xs[1][i] + wR;
+    {
+        const float wa = 0.5f + 0.5f * W, wb = 0.5f - 0.5f * W;   /* width: Width 100 = 1 and 0, as is */
+        float * restrict ob = buf;
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            float wL = wo[0][i], wR = wo[1][i];
+            ob[i] = dgv[i] * xs[0][i] + wa * wL + wb * wR;
+            ob[i + 8] = dgv[i] * xs[1][i] + wa * wR + wb * wL;
+        }
     }
     wp0 += 8;
     s->wp = (wp0 >= WD_N) ? wp0 - WD_N : wp0;

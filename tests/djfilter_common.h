@@ -14,7 +14,7 @@ static int fails = 0;
 static void setup(void)
 {
     se_init(65536);                       /* a fresh, zeroed arena: the state starts from nothing */
-    D(LP); D(HP); D(DJ); D(RESO); D(KILL); D(SLOPE); D(GLIDE); D(LEVEL); D(MIX);
+    D(DJ); D(RESO); D(KILL); D(SLOPE); D(GLIDE); D(LEVEL); D(MIX);
 }
 
 /* one block: in L / in R (both 8 samples) -> fx[0..7], fx[8..15] after the effect */
