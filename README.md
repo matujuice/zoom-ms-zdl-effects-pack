@@ -74,7 +74,7 @@ To change a cover, edit that effect's `make_cover.py` and run it; it rewrites th
 - DIRTBOX's circuit models follow published analyses and open models (guitarix, ElectroSmash, DS1.lv2, Proco-Rat, MetalTone); links are in [EFFECTS.md](docs/EFFECTS.md).
 - The effects themselves are original work.
 - Runs best on [MIDISTOMP](https://github.com/matujuice/zoom-ms-midistomp), the custom firmware for the Zoom MS pedals.
-- Testers: Jannik Aßfalg, rusinov.ro, nilsjesper and Snozaz. Thank you for running betas on your pedals.
+- Testers: Jannik Aßfalg, Roman Rusinov, nilsjesper and Snozaz. Thank you for running betas on your pedals.
 
 ## Licence
 
