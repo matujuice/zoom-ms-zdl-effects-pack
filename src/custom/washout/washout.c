@@ -66,7 +66,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F33u        /* "WDO3": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F34u        /* "WDO4": change whenever WdState changes      */
 #define WD_N          170000             /* ring length per side                        */
 #define WD_MAXD       168000.0f          /* longest delay (samples)                     */
 #define WD_CLEAR_BLK  2048
@@ -269,7 +269,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], dc[8], xe[8], sgv[8], dgv[8], y[8], wo[2][8], md[2][4], eta[2][4], dl[8], dr[8];
+    float xs[2][8], xe[8], sgv[8], dgv[8], y[8], wo[2][8], md[2][4], eta[2][4], t[9], cv[8];
     int ia[2][4];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
@@ -285,8 +285,9 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     }
 
     if (dCur <= 0.0f) dCur = P->dT;
-    if (xf >= 1.0f && (P->dT - dCur > 0.5f || dCur - P->dT > 0.5f)) {
-        s->dOld = dCur; dCur = P->dT; xf = 0.0f;  /* Time changed: crossfade to it */
+    /* Time changed by more than 0.5 %: crossfade to it (a wobbling synced BPM must not restart the crossfade) */
+    if (xf >= 1.0f && (P->dT - dCur > 0.005f * dCur + 0.5f || dCur - P->dT > 0.005f * dCur + 0.5f)) {
+        s->dOld = dCur; dCur = P->dT; xf = 0.0f;
     }
     dOld = s->dOld;
 
@@ -304,67 +305,99 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         md[0][k] = wd_base(0, k) + P->amp * (1.0f + wd_lfo(p));
         md[1][k] = wd_base(1, k) + P->amp * (1.0f + wd_lfo(q));
     }
-    /* each length = whole samples + a fraction (at least 0.15: keeps the interpolator's pole off -1) */
+    /* each length = whole samples + a fraction 0.5..1.5 for the all-pass interpolator: its coefficient stays
+     * in -0.2..0.33, so a whole-sample step is a small change (a fraction near 0 put the pole near -1: clicks) */
     for (c = 0; c < 2; c++) for (k = 0; k < 4; k++) {
-        float M = md[c][k], fr;
-        ia[c][k] = (int)M;
-        fr = M - (float)ia[c][k];
-        fr = (fr < 0.15f) ? 0.15f : fr;
+        float fr;
+        ia[c][k] = (int)(md[c][k] - 0.5f);
+        fr = md[c][k] - (float)ia[c][k];
         eta[c][k] = (1.0f - fr) * wd_recip(1.0f + fr);
     }
 
-    /* per-sample ramps: Send (wash and dry gains), Time crossfade */
+    /* per-sample ramps: Send (wash and dry gains, equal-power crossfade; worked out once while Send is
+     * steady), Time crossfade */
+    if (sg == inT) {
+        float a = wd_eqp(sg), b = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);
+        for (i = 0; i < 8; i++) { sgv[i] = a; dgv[i] = b; }
+    } else {
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            sg += (inT - sg) * WD_SG_RATE;
+            sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Send 100 = dry silent */
+            sgv[i] = wd_eqp(sg); dgv[i] = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);
+        }
+    }
     WD_EIGHT
-    for (i = 0; i < 8; i++) {
-        float xl = buf[i], xr = buf[i + 8];
-        sg += (inT - sg) * WD_SG_RATE;
-        sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Send 100 = dry silent */
-        dl[i] = xl; dr[i] = xr;
-        xs[0][i] = xl; xs[1][i] = xr;
-        sgv[i] = wd_eqp(sg); dgv[i] = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);   /* equal-power crossfade */
-        dc[i] = dCur; xe[i] = xf;
-        xf = (xf < 1.0f) ? ((xf + WD_XF_STEP > 1.0f) ? 1.0f : xf + WD_XF_STEP) : xf;
+    for (i = 0; i < 8; i++) { xs[0][i] = buf[i]; xs[1][i] = buf[i + 8]; }
+    xe[0] = xf;   /* 1: no Time crossfade running, the reads below take one tap */
+    if (xf < 1.0f) for (i = 0; i < 8; i++) {
+        xe[i] = xf;
+        xf = (xf + WD_XF_STEP > 1.0f) ? 1.0f : xf + WD_XF_STEP;
     }
 
     for (c = 0; c < 2; c++) {
         short * restrict rb = sb + c * WD_N;
         float lp = s->lp[c], hs = s->hs[c];
-        /* read (crossfaded between the old and new Time) */
-        WD_EIGHT
-        for (i = 0; i < 8; i++) {
-            int wpk = wp0 + i;
-            wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-            y[i] = xe[i] * wd_read(rb, wpk, (int)dc[i]) + (1.0f - xe[i]) * wd_read(rb, wpk, (int)dOld);
+        /* read (crossfaded between the old and new Time; one tap when no crossfade runs) */
+        if (xe[0] >= 1.0f) {
+            WD_EIGHT
+            for (i = 0; i < 8; i++) {
+                int wpk = wp0 + i;
+                wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
+                y[i] = wd_read(rb, wpk, (int)dCur);
+            }
+        } else {
+            WD_EIGHT
+            for (i = 0; i < 8; i++) {
+                int wpk = wp0 + i;
+                wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
+                y[i] = xe[i] * wd_read(rb, wpk, (int)dCur) + (1.0f - xe[i]) * wd_read(rb, wpk, (int)dOld);
+            }
         }
         /* diffusers */
         if (P->ap) {
             for (k = 0; k < 4; k++) {
-                int a0 = ia[c][k];
+                int r = apw - ia[c][k] - 1;
                 float *ab = s->ap[c][k], e = eta[c][k], ip = s->ip[c][k];
+                /* the 9 taps the block reads first: lengths >= 112 never reach this block's 8 writes */
+                for (i = 0; i < 9; i++) t[i] = ab[(r + i) & (WD_APN - 1)];
+                for (i = 0; i < 8; i++) t[i] += e * t[i + 1];
+                WD_EIGHT
                 for (i = 0; i < 8; i++) {
-                    int w = (apw + i) & (WD_APN - 1), r0 = (w - a0) & (WD_APN - 1), r1 = (w - a0 - 1) & (WD_APN - 1);
-                    float d = ab[r1] + e * (ab[r0] - ip), wv = y[i] + g * d;   /* d: the line, delayed a fraction by an all-pass */
+                    float d = t[i] - e * ip, wv = y[i] + g * d;   /* d: the line, delayed a fraction by an all-pass */
                     ip = d;
-                    ab[w] = wv;
+                    ab[(apw + i) & (WD_APN - 1)] = wv;
                     y[i] = d - g * wv;
                 }
                 s->ip[c][k] = ip;
             }
         }
-        /* loop filters, Send, soft clip, ring write; the wet out is the diffused read */
+        /* the wet out is the diffused read; then loop filters (each in a loop of its own, an if inside
+         * chains every sample to the last), Send, soft clip */
+        WD_EIGHT
+        for (i = 0; i < 8; i++) wo[c][i] = y[i];
+        if (hc) {
+            WD_EIGHT
+            for (i = 0; i < 8; i++) { lp += cl * (y[i] - lp); y[i] = lp; }
+        }
+        if (lc) {
+            WD_EIGHT
+            for (i = 0; i < 8; i++) { hs += ch_ * (y[i] - hs); y[i] -= hs; }
+        }
+        WD_EIGHT
+        for (i = 0; i < 8; i++) {
+            float v = wd_sat(sgv[i] * xs[c][i] + fb * y[i]), a, cc;
+            cc = v * WD_TO16;
+            cv[i] = cc;
+            a = (cc < 0.0f) ? -cc : cc;
+            bigm = (a > bigm) ? a : bigm;
+        }
+        /* the ring stores in a loop of their own: in the loop above they chain every sample to the last */
         WD_EIGHT
         for (i = 0; i < 8; i++) {
             int wpk = wp0 + i;
-            float v = y[i], a, cc;
             wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-            wo[c][i] = v;
-            if (hc) { lp += cl * (v - lp); v = lp; }
-            if (lc) { hs += ch_ * (v - hs); v = v - hs; }
-            v = wd_sat(sgv[i] * xs[c][i] + fb * v);
-            cc = v * WD_TO16;
-            rb[wpk] = (short)(int)cc;
-            a = (cc < 0.0f) ? -cc : cc;
-            bigm = (a > bigm) ? a : bigm;
+            rb[wpk] = (short)(int)cv[i];
         }
         s->lp[c] = lp; s->hs[c] = hs;
     }
@@ -374,8 +407,8 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     for (i = 0; i < 8; i++) {
         float wL = wo[0][i], wR = wo[1][i], mm, ss;
         if (W < 1.0f) { mm = 0.5f * (wL + wR); ss = 0.5f * W * (wL - wR); wL = mm + ss; wR = mm - ss; }
-        buf[i] = dgv[i] * dl[i] + wL;
-        buf[i + 8] = dgv[i] * dr[i] + wR;
+        buf[i] = dgv[i] * xs[0][i] + wL;
+        buf[i + 8] = dgv[i] * xs[1][i] + wR;
     }
     wp0 += 8;
     s->wp = (wp0 >= WD_N) ? wp0 - WD_N : wp0;
