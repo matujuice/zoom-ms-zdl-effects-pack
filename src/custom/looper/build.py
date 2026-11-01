@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
 
 from linker import LinkerConfig, link, params_from_manifest  # noqa: E402
 from manifest_params import write_param_header  # noqa: E402
-from custom_covers import bar_layout  # noqa: E402
+from custom_covers import make_cover  # noqa: E402
 
 def _find_ti_root() -> Path:
     """Locate the TI C6000 compiler folder (Windows or macOS)."""
@@ -61,9 +61,6 @@ CFLAGS = [
 def main() -> None:
     manifest = json.loads((HERE / "manifest_pedal.json").read_text(encoding="utf-8"))
     write_param_header(manifest, HERE / "looper_params.h", "LOOPER")
-    # the cover with the live loop bar (frames A and B, the static raw); looper.c lp_bar draws into it
-    cover, layout_h = bar_layout(manifest["effect_name"], [p["name"] for p in manifest["params"]])
-    (HERE / "looper_layout.h").write_text(layout_h)
 
     src_c = HERE / "looper.c"
     out_dir = ROOT / "dist"
@@ -98,7 +95,7 @@ def main() -> None:
     cfg = LinkerConfig(
         materialize_init=True,
         effect_name=effect_name,
-        screen_image=cover,
+        screen_image=make_cover(effect_name, [p["name"] for p in manifest["params"]]),
         audio_func_name=audio_func,
         gid=manifest["gid"],
         fxid=manifest["fxid"],

@@ -1,8 +1,8 @@
 """Generate src/airwindows/common/covers/GRDLOOP.json (128x64 cover override).
 
 GRDLOOP: the name in big letters on top and, under it, the empty rounded loop bar outline
-(2 px stroke, radius-2 corners, rows 17..34). On MIDISTOMP GRDLOOP draws the live bar
-(fill, state, bar.beat/cycle) into it itself (looper.c lp_bar); on stock it stays empty.
+(2 px stroke, radius-2 corners, rows 17..34). The MIDISTOMP firmware draws the live bar
+(fill, state, bar.beat/cycle) on top of it (zoom-ms-modding asm/looper/lbox.c).
 
 Run from anywhere:  py src/custom/looper/make_cover.py
 Also writes cover_preview.png next to this script (LCD look, build/lcd_render.py).
@@ -121,7 +121,7 @@ def build():
     c = Canvas()
     glitch_title(c)
 
-    # --- the loop bar outline only: on MIDISTOMP looper.c lp_bar draws the live bar into it
+    # --- the loop bar outline only: the MIDISTOMP firmware draws the live bar on top (lbox.c)
     for d in (0, 1):
         c.rect(d, BAR_Y0 + d, W - 1 - d, BAR_Y1 - d)
     for x, y in ((0, 0), (1, 0), (0, 1)):              # round the four corners, radius 2

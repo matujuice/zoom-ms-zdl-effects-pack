@@ -95,7 +95,6 @@
  *   an action waits a countdown blink whose rate doubles as the time left halves (one per
  *   2 bars 8 bars out, down to 1/8 notes). Losing the claim with a loop in the big buffer
  *   empties the looper. A double press while stopped deletes at once, whatever When says.
- *   While it holds the claim it draws the status bar into its own cover (lp_bar).
  *   Counters ev_rec, ev_stop, ev_del are kept for Perform mode's events.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -116,7 +115,7 @@
 #define LP_CODE_SECTION(fn)
 #endif
 
-#define LP_MAGIC   0x4C4F4F35u           /* "LOO5": change whenever LpState changes        */
+#define LP_MAGIC   0x4C4F4F34u           /* "LOO4": change whenever LpState changes        */
 #define LP_OPEN    0x40000000            /* rend: OWN recording, no second press yet       */
 #define LP_X       128                   /* seam crossfade, samples (2.9 ms)               */
 #define LP_XINV    0.0078125f
@@ -181,39 +180,6 @@ typedef struct {
     float l[16], r[16];
 } LpVoice;
 
-/* ---- the loop bar on the cover: data (lp_bar) ------------------------------- */
-#ifndef LOOPER_HOST_TEST
-#ifndef LOOPER_AUDIO_FUNC
-#define LOOPER_AUDIO_FUNC Fx_DLY_Looper
-#endif
-#define LP_PIC_X(f) _##f##_Pic
-#define LP_PIC_(f) LP_PIC_X(f)
-extern unsigned char LP_PIC_(LOOPER_AUDIO_FUNC)[];       /* the cover data; the linker resolves it */
-#define ZM_PIC LP_PIC_(LOOPER_AUDIO_FUNC)
-#else
-#ifndef ZM_PIC
-static unsigned char lp_host_pic[4096];
-#define ZM_PIC lp_host_pic
-#endif
-#ifndef ZM_FW_OK
-#define ZM_FW_OK() 0u                       /* host tests: stock firmware unless the test says so */
-#endif
-#endif
-#ifndef LP_FONT7
-#define LP_FONT7 ((const volatile unsigned char *)0xC00E87D8u)   /* the 2.10 FONT7: 7 column bytes a character */
-#endif
-#include "looper_layout.h"                  /* ZM_TOP / ZM_CAP, from build.py (custom_covers.bar_layout) */
-#include "../common/zdl_meter.h"            /* zm_fw_ok, zm_find, zm_post, zm_span */
-
-typedef struct {
-    unsigned int fw, on, chk, since;        /* zm_fw_ok() at init; cover on screen; blocks to the next check; blocks since the last frame */
-    unsigned int kl, kp;                    /* the picture shows: the S_LEFT word; S_PROG with the fill in px */
-    unsigned int pos, o, rc, rn;            /* frame: next raw byte (ZM_RAW = none), out bytes, RLE byte and run */
-    unsigned char *out;                     /* frame: the buffer being written */
-    volatile ZM_WORD *info;                 /* the firmware's imageInfo of our slot */
-    unsigned int col[128];                  /* the frame's bar, bit r = row 17 + r (rows 17..34) */
-} LpBar;
-
 typedef struct {
     unsigned int magic;
     ZtSync zt;
@@ -273,7 +239,6 @@ typedef struct {
     uintptr_t rb[LP_NREG]; /* region start                                       */
     int   rsz[LP_NREG];    /* bytes                                              */
     int   rcnt[LP_NREG];   /* blocks in this format                              */
-    LpBar bar;             /* the loop bar on our cover (lp_bar)                 */
 } LpState;
 
 typedef struct {
@@ -534,8 +499,6 @@ static inline void lp_init(LpState *s, uintptr_t buf, int bytes)
     s->nreg = 1; s->rb[0] = buf; s->rsz[0] = bytes;
     for (k = 1; k < LP_NREG; k++) { s->rb[k] = 0u; s->rsz[k] = 0; }
     zt_init(&s->zt);
-    s->bar.fw = ZM_FW_OK(); s->bar.on = 0u; s->bar.chk = 1u; s->bar.since = ZM_GAP; s->bar.kl = ZM_NONE; s->bar.kp = 0u;
-    s->bar.pos = ZM_RAW; s->bar.o = 0u; s->bar.rc = 0u; s->bar.rn = 0u; s->bar.out = 0; s->bar.info = 0;
     s->magic = LP_MAGIC;
 }
 
@@ -959,173 +922,6 @@ static inline int lp_put5(char *out, int a, int b, int c, int d, int e)
     return n;
 }
 
-/* ---- the loop bar on the cover ----------------------------------------------------------
- * The bar Perform mode shows on top (zoom-ms-modding docs/dev/perform-ui-mockup.html statusBar),
- * at x 0-127, y 17-34 of our cover, pixel for pixel what MIDISTOMP's lbox.c bar(0,17,127,34,2,4)
- * drew before v2.0: the fill over the cycle, the left text from S_LEFT, bar.beat/cycle (or NO CLK)
- * on the right in the firmware's FONT7, inverted; a gap in the edge and a dotted line at each bar
- * line; radius-2 corners. We draw it ourselves now, so it is never on another effect's cover.
- * How: zdl_meter.h's double buffer (custom_covers.bar_layout: frames A, B, the static cover raw).
- * When the S_LEFT word or the bar part of S_PROG changed (at most 15 frames a second), the bar's
- * 128 columns are worked out once, then ZM_CHUNK raw bytes a block are RLE-encoded into the
- * buffer the firmware is not reading; at the end imageInfo word 5 swaps and a redraw is posted.
- * Only with the MIDISTOMP looper services claimed (s->own) on 2.10 (zm_fw_ok); else the cover
- * stays frame A (the static cover, the empty bar outline). Off screen: a counter a block. */
-
-/* t = the left text of S_LEFT word c (lp_out): kind 0-3, n 4-9, m 10-15, beats 16, mono 17 */
-LP_ALWAYS_INLINE(lp_bar_left)
-static inline int lp_bar_left(char *t, unsigned int c)
-{
-    unsigned int kind = c & 15u;
-    int n = (int)(c >> 4 & 63u), m = (int)(c >> 10 & 63u), k;
-    if (kind == 1u) return lp_put5(t, 'E', 'M', 'P', 'T', 'Y');
-    if (kind == 8u) { k = lp_put5(t, 'S', 'T', 'O', 'P', 'P'); return k + lp_put5(t + k, 'E', 'D', 0, 0, 0); }
-    if (kind >= 2u && kind <= 4u) {                          /* REC / STOP / PLAY IN n BARS */
-        k = (kind == 2u) ? lp_put5(t, 'R', 'E', 'C', 0, 0) : (kind == 3u) ? lp_put5(t, 'S', 'T', 'O', 'P', 0)
-                                                           : lp_put5(t, 'P', 'L', 'A', 'Y', 0);
-        k += lp_put5(t + k, ' ', 'I', 'N', ' ', 0);
-        k += lp_put_int(n, t + k);
-        k += (c >> 16 & 1u) ? lp_put5(t + k, ' ', 'B', 'E', 'A', 'T') : lp_put5(t + k, ' ', 'B', 'A', 'R', 0);
-        if (n > 1) t[k++] = 'S';
-        return k;
-    }
-    if (kind == 7u) {
-        k = lp_put5(t, 'P', 'L', 'A', 'Y', ' ');
-        k += lp_put_int(n, t + k);
-        k += lp_put5(t + k, ' ', 'B', 'A', 'R', 0);
-        if (n > 1) t[k++] = 'S';
-        return k;
-    }
-    k = lp_put5(t, 'R', 'E', 'C', ' ', 0);                   /* 5 "REC 3", 6 "REC 3/8" */
-    k += lp_put_int(n, t + k);
-    if (kind == 6u) { t[k++] = '/'; k += lp_put_int(m, t + k); }
-    if (c >> 17 & 1u) k += (kind == 6u) ? lp_put5(t + k, ' ', 'M', 0, 0, 0) : lp_put5(t + k, ' ', 'M', 'O', 'N', 'O');
-    return k;
-}
-
-/* FONT7 proportional: each character's inked columns and a gap, a space 2 columns. Draws at x,
- * rows 22-28, inverted (columns past 125 are skipped), notes the ink; returns the width. */
-LP_ALWAYS_INLINE(lp_bar_text)
-static inline int lp_bar_text(unsigned int *col, unsigned int *ink, const char *t, int n, int x, int draw)
-{
-    int i, j, w = 0;
-    for (i = 0; i < n; i++) {
-        const volatile unsigned char *f = LP_FONT7 + 7 * (int)(unsigned char)t[i];
-        int any = 0;
-        for (j = 0; j < 7; j++) {
-            unsigned int c = f[j] & 0x7Fu;
-            if (!f[j]) continue;
-            any = 1;
-            if (draw && x + w <= 125) { col[x + w] ^= c << 5; ink[x + w] |= c << 5; }
-            w++;
-        }
-        w += any ? 1 : 2;
-    }
-    return w - 1;                                            /* the last gap is not part of it */
-}
-
-/* the bar's 128 columns for S_LEFT word left, S_PROG word prog */
-LP_ALWAYS_INLINE(lp_bar_build)
-static inline void lp_bar_build(LpBar *z, unsigned int left, unsigned int prog)
-{
-    unsigned int ink[128], *col = z->col;
-    int fill = (int)((124u * (prog & 0xFFFFu)) >> 8), cyc = (int)(prog >> 16 & 63u), x, y, i, q, r, n;
-    char t[24];
-    if (fill > 124) fill = 124;
-    for (x = 0; x < 128; x++) {                              /* 2 px edge, the fill inside it */
-        ink[x] = 0u;
-        col[x] = (x < 2 || x > 125 || x - 2 < fill) ? 0x3FFFFu : 0x30003u;
-    }
-    n = lp_bar_left(t, left);
-    lp_bar_text(col, ink, t, n, 6, 1);
-    if (cyc) {                                               /* bar.beat/cycle, or NO CLK */
-        if (prog >> 30 & 1u) { n = lp_put5(t, 'N', 'O', ' ', 'C', 'L'); t[n++] = 'K'; }
-        else {
-            n = lp_put_int((int)(prog >> 22 & 63u), t);
-            t[n++] = '.';
-            n += lp_put_int((int)(prog >> 28 & 3u) + 1, t + n);
-            t[n++] = '/';
-            n += lp_put_int(cyc, t + n);
-        }
-        lp_bar_text(col, ink, t, n, 122 - lp_bar_text(col, ink, t, n, 0, 0), 1);
-    }
-    if (cyc > 1 && 124 >= 3 * cyc)                           /* bar lines, not denser than 3 px */
-        for (i = 1, q = 0, r = 0; i < cyc; i++) {
-            r += 124;                                        /* q = 124 * i / cyc */
-            while (r >= cyc) { r -= cyc; q++; }
-            x = 2 + q;
-            col[x] &= ~0x30003u;                             /* a gap in the edge */
-            for (y = 2; y < 15; y += 2)                      /* dotted rows 19..31, off the text and 1 px round it */
-                if (!((ink[x - 1] | ink[x] | ink[x + 1]) >> (y - 1) & 7u)) col[x] ^= 1u << y;
-        }
-    col[0] &= ~0x30003u; col[127] &= ~0x30003u;              /* the cover's radius-2 corners */
-    col[1] = (col[1] & ~0x20001u) | 0x10002u;
-    col[126] = (col[126] & ~0x20001u) | 0x10002u;
-}
-
-/* close the pending run: one byte literal, else "X X n" = n + 2 copies (encode_zoom_rle) */
-LP_ALWAYS_INLINE(lp_bar_emit)
-static inline void lp_bar_emit(LpBar *z, unsigned int b)
-{
-    if (z->o < ZM_CAP) z->out[z->o] = (unsigned char)b;      /* never trips: ZM_CAP is the worst case */
-    z->o++;
-}
-LP_ALWAYS_INLINE(lp_bar_flush)
-static inline void lp_bar_flush(LpBar *z)
-{
-    if (z->rn == 1u) lp_bar_emit(z, z->rc);
-    else if (z->rn > 1u) { lp_bar_emit(z, z->rc); lp_bar_emit(z, z->rc); lp_bar_emit(z, z->rn - 2u); }
-    z->rn = 0u;
-}
-
-/* once per block, after lp_out */
-LP_ALWAYS_INLINE(lp_bar)
-static inline void lp_bar(LpState *s)
-{
-    LpBar *z = &s->bar;
-    volatile ZM_WORD *info;
-    ZM_WORD a = (ZM_WORD)(uintptr_t)ZM_PIC, front;
-    const unsigned char *raw = (const unsigned char *)ZM_PIC + 2u * ZM_CAP;
-    unsigned int left, prog, kp, pos, end, p8, m;
-    int fill;
-    if (!z->fw) return;
-    if (z->since < ZM_GAP) z->since++;
-    if (--z->chk == 0u) {
-        z->chk = ZM_CHECK;
-        info = s->own ? (volatile ZM_WORD *)ZM_FIND((const void *)(uintptr_t)s->me) : 0;
-        if (!info) { z->on = 0u; z->pos = ZM_RAW; return; }  /* off screen: drop any frame */
-        if (!z->on) { z->on = 1u; z->kl = ZM_NONE; }
-        z->info = info;
-    }
-    if (!z->on || !s->own) return;
-    if (z->pos >= ZM_RAW) {                                  /* between frames: start one if the bar changed */
-        left = LS[LS_LEFT]; prog = LS[LS_PROG];
-        fill = (int)((124u * (prog & 0xFFFFu)) >> 8);
-        kp = (prog & 0xFFFF0000u) | (unsigned int)(fill > 124 ? 124 : fill);
-        if ((left == z->kl && kp == z->kp) || z->since < ZM_GAP) return;
-        lp_bar_build(z, left, prog);
-        z->kl = left; z->kp = kp;
-        z->out = (unsigned char *)ZM_PIC + ((z->info[5] == a) ? ZM_CAP : 0u);
-        z->pos = 0u; z->o = 0u; z->rn = 0u; z->since = 0u;
-    }
-    pos = z->pos; end = pos + ZM_CHUNK; p8 = (pos >> 7) << 3;
-    m = zm_span((int)p8, 17, 35);                            /* the bar's rows in this row block */
-    for (; pos < end; pos++) {
-        unsigned int b = raw[pos], c = z->col[pos & 127u];
-        if (m) b = (b & ~m) | (((p8 <= 17u) ? (c << (17u - p8)) : (c >> (p8 - 17u))) & m);
-        if (z->rn && b == z->rc && z->rn < 257u) z->rn++;
-        else { lp_bar_flush(z); z->rc = b; z->rn = 1u; }
-    }
-    z->pos = pos;
-    if (pos < ZM_RAW) return;
-    lp_bar_flush(z);
-    front = z->info[5];
-    if (front == a || front == a + ZM_CAP) {                 /* still ours: show it */
-        z->info[5] = (ZM_WORD)(uintptr_t)z->out;
-        ZM_POST();
-    }
-}
-
 /* "1BAR".."16BAR" */
 LP_ALWAYS_INLINE(lp_put_bars)
 static inline int lp_put_bars(int n, char *out)
@@ -1242,7 +1038,6 @@ void LOOPER_AUDIO_FUNC(unsigned int *ctx)
     bpm = lp_block(s, &P, params[0], &du);       /* on/off only counts presses */
     lp_process(s, &P, bpm, du, fxBuf);
     lp_out(s, &P);
-    lp_bar(s);
 }
 
 #endif /* LOOPER_HOST_TEST */

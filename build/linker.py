@@ -1844,6 +1844,9 @@ def link(cfg: LinkerConfig) -> None:
         audio_file_off = len(zdl_hdr) + text_file_off + AUDIO_ENTRY_VA - TEXT_VA
         output[audio_file_off:audio_file_off + len(_NOP_RETURN)] = _NOP_RETURN
 
+    # the pedal freezes on boot with a ZDL of 32 KB or more (GRDLOOP at 38,938 bytes, v2.0 beta3)
+    if len(output) >= 32768:
+        raise SystemExit(f"{cfg.output_path}: {len(output)} bytes, a ZDL must be under 32 KB")
     Path(cfg.output_path).write_bytes(output)
     print(f"\n  → {cfg.output_path}  ({len(output)} bytes; ELF {elf_size})")
 
