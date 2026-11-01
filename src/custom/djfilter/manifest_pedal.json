@@ -26,6 +26,6 @@
   "audio_func_name": "Fx_DLY_DJFilter",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 13.0,
+  "dsp_cost": 75.0,
   "dsp_cost_comment": "Pedal measured 14.8% (about 8,000 of 54,422 cycles a block), DJ filter and Kill on, before this build: the cost is mostly fetching the code from slow memory, about a cycle per byte the block runs. This build is compiled for size, shares one copy of the filter loop between DJ and Kill, and works out the filter only when a knob or the glide moves, so a still block runs about 1.7 KB of code: estimate 2,000-2,500 cycles, about 4%; about 8% while the DJ knob sweeps. Re-measure on the pedal (SYSTEM > LOAD)."
 }
