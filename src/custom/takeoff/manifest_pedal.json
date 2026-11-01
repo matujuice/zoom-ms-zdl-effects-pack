@@ -30,6 +30,6 @@
   "audio_func_name": "Fx_DLY_Takeoff",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 85.0,
-  "dsp_cost_comment": "Estimate, not measured. The cost is mostly fetching the code from slow memory, about a cycle per byte a block runs (as Washout and DJFilter). The old build ran about 10 KB of its 12.9 KB of audio code a block while sounding (about 18%). This build is compiled for size (7.9 KB) and works out knobs, BPM, the Var draws and the root note only when they change, so a block runs about 3 KB idle (key listener only, about 5.5%) and about 5 KB sounding with Space and the LED (about 9%, about 11% while a knob turns). Declared for the worst case at cycles / 75 x 1.25. Re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost": 127.0,
+  "dsp_cost_comment": "Pedal measured (SYSTEM > LOAD), 2026-11-01, this build: highest 14% (about 7,600 cycles a block). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles of the 54,422-cycle block."
 }
