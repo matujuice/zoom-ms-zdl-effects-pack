@@ -239,7 +239,6 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 | Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
 | HiCut | 0..100 | Low-pass in the loop, so each pass gets darker. 0 = off. |
 | LoCut | 0..100 | High-pass in the loop, so each pass gets thinner. 0 = off. |
-| Mod | 0..100 | Slow modulation of the diffusers (it blurs the cloud). Default 20. |
 | Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
 | Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
 
@@ -248,7 +247,7 @@ Try: Send 50 to sit the cloud under the dry; Fdbk 100, then Send 0 to freeze the
 ### Takeoff: risers and downlifters
 Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
 
-Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep and the stereo width grows with it. The key is always AUTO: it listens to what you play and starts and ends the sweep on its strongest note; with drums or noise only it falls back to a free glide. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing (only the key listener keeps running).
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -258,7 +257,7 @@ Adds a riser or a downlifter on top of what you play, like DubSiren: the input i
 | Wind | 0..100 | Slow random gusts: the noise filter and level drift on their own, apart on left and right. 0 = steady. Default 40. |
 | Grain | 0..100 | Noise texture: 0 = smooth hiss, up = coarse, crackly, gritty. Default 0. |
 | Range | 0..100 | How far the noise sweep travels (0..5 octaves): small = a short, subtle lift, 100 = from deep rumble to full air. Default 60 (3 octaves). |
-| Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind, Grain and a little stereo drift, drawn once per sweep. Len, Dir and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
+| Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind and Grain, drawn once per sweep. Len, Dir and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
 | Space | 0..100 | Reverb tail on the riser's own sound, ringing on after the cut. 0 = off. Default 0. |
 | Vol | 0..100 | Level of the added sound. Default 50. |
 
