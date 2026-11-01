@@ -60,7 +60,7 @@
  *   (turning it to 0 cuts a ringing tail).
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static arrays, no libm, no float or integer division, no
- * switch, no double. Host tests only; CPU never measured.
+ * switch, no double. CPU: the knob maths run only when a knob, the BPM or a sweep start changes them.
  */
 
 #include <stdint.h>
@@ -72,13 +72,15 @@
 #define TK_ALWAYS_INLINE(fn) TK_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define TK_CODE_SECTION(fn) TK_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #define TK_ITER8 _Pragma("MUST_ITERATE(8,8,8)") _Pragma("UNROLL(1)")
+#define TK_ONE_COPY(fn) TK_EXPAND_PRAGMA(FUNC_CANNOT_INLINE(fn)) TK_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
+#define TK_ONE_COPY(fn)
 #define TK_ITER8
 #define TK_ALWAYS_INLINE(fn)
 #define TK_CODE_SECTION(fn)
 #endif
 
-#define TK_MAGIC     0x544B4F35u         /* "TKO5": change whenever TkState changes */
+#define TK_MAGIC     0x544B4F36u         /* "TKO6": change whenever TkState changes */
 #define HZ_TO_INC    2.2675737e-5f       /* 1 / 44100 */
 #define RV_N         2048                /* reverb ring per side */
 #define RV_M         2047
@@ -113,6 +115,15 @@ static unsigned int tk_svc_host[32];     /* host tests: no firmware; tests fill 
 #define SV_CURSOR    22                  /* params pointer of the effect under the cursor (play mode), or 0 */
 
 typedef struct {
+    int   act, rv;
+    unsigned int gth;              /* Grain: refresh threshold of 65536 */
+    float lvl, gT, w, ng, tg, svf, fL, fR, aL, aR, dmp;
+    float fb, wetG;
+} TkParams;
+
+/* On the pedal every byte of code a block runs costs about a cycle (it comes from slow memory each block):
+ * the knob maths run only when a knob or the BPM changes, or a sweep starts (kd). */
+typedef struct {
     unsigned int magic;
     int   rvClr, inited, prev_foot, state, holdT, chk, note, autoNote, quiet, apw, rw, lgn;
     int   prev_hold, rel, hl, ref, late, pwm, led, wt, pf, ff;   /* pf: this press already flipped, ff: blocks since a flip */
@@ -122,20 +133,18 @@ typedef struct {
     float vR, vP, vC, vCo, vWi, vGr, vS;   /* Var draws: Range factor, pitch st, curve, Color/Wind/Grain, pan */
     float svL[2], svR[2], lpv[2];
     float ls[3];                   /* listener: two low-passes, high-pass state (kick) */
+    float nq[2];                   /* noise low-pass L R (a darker hiss) */
+    float rk[10];                  /* raw knobs and BPM that u[] and the knob maths come from */
+    int   u[9], kd;                /* screen values; kd: knob maths to redo */
+    float dx, fz, vol, wd;         /* knob maths: step a block, root Hz, level, Wind amount */
+    TkParams P;
     float gc[NBIN], gs1[NBIN], gs2[NBIN], chroma[12];
     ZtSync zt;
     float rv[RV_TOTAL];            /* 2 rings, then 2 x 4 all-pass lines */
 } TkState;
 
-typedef struct {
-    int   act, rv;
-    unsigned int gth;              /* Grain: refresh threshold of 65536 */
-    float lvl, gT, w, ng, tg, svf, fL, fR, aL, aR, dmp;
-    float fb, wetG;
-} TkParams;
-
-TK_ALWAYS_INLINE(tk_ui)
-static inline int tk_ui(float raw, int def)
+TK_ONE_COPY(tk_ui)
+static int tk_ui(float raw, int def)
 {
     float ui;
     if (!(raw >= 0.0f && raw <= 300.0f)) ui = (float)def;
@@ -224,7 +233,9 @@ static inline void tk_init(TkState *s)
     s->nh[0] = 0.0f; s->nh[1] = 0.0f; s->gt[0] = 0.0f; s->gt[1] = 0.0f;
     for (k = 0; k < 4; k++) s->gw[k] = 0.0f;
     for (k = 0; k < 2; k++) { s->svL[k] = 0.0f; s->svR[k] = 0.0f; s->lpv[k] = 0.0f; s->ls[k] = 0.0f; }
-    s->ls[2] = 0.0f;
+    s->ls[2] = 0.0f; s->nq[0] = 0.0f; s->nq[1] = 0.0f;
+    for (k = 0; k < 10; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
+    s->kd = 1;
     for (k = 0; k < 12; k++) s->chroma[k] = 0.0f;
     for (k = 0; k < NBIN; k++) {                 /* Goertzel at C3 * 2^(k/12), fs 5512.5 Hz */
         int   m = (k >= 12) ? k - 12 : k;
@@ -299,11 +310,12 @@ static inline void tk_vary(TkState *s, int var)
     s->vGr = 30.0f * v * tk_rnd(&s->rngV);
     s->vS  = 0.25f * v * tk_rnd(&s->rngV);
     seed = var ? s->rngV : 0u;
+    s->kd = 1;                                   /* new offsets: redo the knob maths */
     if (s->g <= 0.0f) {                          /* a fresh start: Var 0 = the same noise every time */
         s->rngL = 12345u ^ seed; s->rngR = 987654321u ^ seed; s->rngW = 4242u ^ seed; s->wt = 0;
         s->nh[0] = 0.0f; s->nh[1] = 0.0f; s->gt[0] = 0.0f; s->gt[1] = 0.0f;
         for (k = 0; k < 4; k++) s->gw[k] = 0.0f;
-        for (k = 0; k < 2; k++) { s->svL[k] = 0.0f; s->svR[k] = 0.0f; }
+        for (k = 0; k < 2; k++) { s->svL[k] = 0.0f; s->svR[k] = 0.0f; s->nq[k] = 0.0f; }
     }
 }
 
@@ -313,7 +325,7 @@ TK_ALWAYS_INLINE(tk_prepare)
 static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, int hold, int run, float bpm)
 {
     int   up = (u[0] == 0), n = u[1], flip, wrap, go = 0;
-    float dx, vol, fz, f, fc, np, q, wd, gr, col, grn, xc, pan;
+    float dx, f, fc, np, q, gr, col, grn, xc, pan;
 
     if (!s->inited) { s->prev_foot = foot; s->prev_hold = hold; s->inited = 1; }
     flip = (foot != s->prev_foot);
@@ -326,7 +338,8 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
     s->ff = flip ? 0 : (s->ff < HOLD_GUARD ? s->ff + 1 : HOLD_GUARD);
     s->prev_hold = hold;
 
-    dx = (n < 5) ? bpm * 7.5586e-7f * tk_inv2n(n) : 1.8141e-4f * tk_recip((float)(n - 4));
+    if (s->kd) s->dx = (n < 5) ? bpm * 7.5586e-7f * tk_inv2n(n) : 1.8141e-4f * tk_recip((float)(n - 4));
+    dx = s->dx;
 
     /* the Len cycle: Len-bar lines from bar 1 while the clock runs, else free at the Len rate */
     if (run && n < 5 && s->zt.clk > 0u) {
@@ -380,24 +393,32 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
     if (s->state == ST_DROP && s->g <= 0.0f) { s->state = ST_IDLE; s->x = 0.0f; }
     if (s->state == ST_IDLE) s->note = s->autoNote;
 
+    if (s->kd) {                                 /* knobs, BPM or the Var draws changed (note latched with them) */
+        s->vol = 0.7f * (float)u[8] * 0.01f;
+        col = tk_clampf((float)u[2] + s->vCo, 0.0f, 100.0f);
+        grn = tk_clampf((float)u[4] + s->vGr, 0.0f, 100.0f);
+        q = 0.12f + 0.0088f * col;               /* Color: damping q^2, level kept by q (noise power ~ 1/damping) */
+        P->dmp = q * q;
+        P->ng = NOISE_GAIN * 2.887f * q * (1.0f + 0.0001f * grn * (100.0f - col));   /* Grain loses ~6 dB at dark Color */
+        gr = 1.0f - 0.01f * grn;                 /* Grain: chance a sample takes a new random value */
+        P->gth = (unsigned int)(int)((0.03f + 0.97f * gr * gr) * 65536.0f);
+        s->fz = (s->note >= 0) ? 32.703f * semis_to_ratio((float)s->note + s->vP) : 50.0f * semis_to_ratio(s->vP);
+        s->wd = 0.01f * tk_clampf((float)u[3] + s->vWi, 0.0f, 100.0f);
+        P->rv = (u[7] > 0);
+        P->fb = 0.55f + 0.4f * (float)u[7] * 0.01f;
+        P->wetG = 0.6f * (float)u[7] * 0.01f;
+        s->kd = 0;
+    }
+
     P->gT = (s->state == ST_SWEEP || s->state == ST_HOLD) ? 1.0f : 0.0f;
-    vol = 0.7f * (float)u[8] * 0.01f;
-    P->lvl = s->x * s->x * vol;
+    P->lvl = s->x * s->x * s->vol;
     P->act = ((P->gT > 0.0f || s->g > 0.0f) && P->lvl > 1.0e-7f);
     if (!P->act) s->g = P->gT;                   /* silent anyway: no ramp needed */
 
-    col = tk_clampf((float)u[2] + s->vCo, 0.0f, 100.0f);
-    grn = tk_clampf((float)u[4] + s->vGr, 0.0f, 100.0f);
-    q = 0.12f + 0.0088f * col;                   /* Color: damping q^2, level kept by q (noise power ~ 1/damping) */
-    P->dmp = q * q;
-    P->ng = NOISE_GAIN * 2.887f * q * (1.0f + 0.0001f * grn * (100.0f - col));   /* Grain loses ~6 dB at dark Color */
-    gr = 1.0f - 0.01f * grn;                     /* Grain: chance a sample takes a new random value */
-    P->gth = (unsigned int)(int)((0.03f + 0.97f * gr * gr) * 65536.0f);
-
     if (P->act) {
-        fz = (s->note >= 0) ? 32.703f * semis_to_ratio((float)s->note + s->vP) : 50.0f * semis_to_ratio(s->vP);
+        float wd = s->wd;
         xc = s->x * (1.0f + s->vC * (1.0f - s->x));  /* curve bend, still 0..1 and rising */
-        f  = fz * exp2_oct(0.05f * (float)u[5] * s->vR * xc);   /* Range: 0..5 octaves */
+        f  = s->fz * exp2_oct(0.05f * (float)u[5] * s->vR * xc);   /* Range: 0..5 octaves */
         fc = 8.0f * f; if (fc > 6000.0f) fc = 6000.0f;
         P->svf = 2.0f * sine_of(0.5f * fc * HZ_TO_INC);
         P->w = 0.2f + 0.8f * s->x;
@@ -410,7 +431,6 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
             }
             s->gw[0] += 0.0015f * (s->gt[0] - s->gw[0]); s->gw[1] += 0.0015f * (s->gw[0] - s->gw[1]);
             s->gw[2] += 0.0015f * (s->gt[1] - s->gw[2]); s->gw[3] += 0.0015f * (s->gw[2] - s->gw[3]);
-            wd = 0.01f * tk_clampf((float)u[3] + s->vWi, 0.0f, 100.0f);
             pan = s->vS * (s->x + s->x - 1.0f);  /* Var: the sound drifts across L / R during the sweep */
             P->fL = P->svf * (1.0f + 0.45f * wd * s->gw[1]); if (P->fL > 0.95f) P->fL = 0.95f;
             P->fR = P->svf * (1.0f + 0.45f * wd * s->gw[3]); if (P->fR > 0.95f) P->fR = 0.95f;
@@ -418,9 +438,6 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
             P->aR = (1.0f + 0.6f * wd * s->gw[3]) * (1.0f - pan);
         }
     }
-    P->rv = (u[7] > 0);
-    P->fb = 0.55f + 0.4f * (float)u[7] * 0.01f;
-    P->wetG = 0.6f * (float)u[7] * 0.01f;
 }
 
 /* once per block, after tk_prepare: the footswitch LED while the firmware says we are under the cursor */
@@ -461,6 +478,7 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
         {
             float fL = P->fL, fR = P->fR, d = P->dmp, aL = 0.5f * P->ng * P->aL, aR = 0.5f * P->ng * P->aR;
             float lL = s->svL[0], bL = s->svL[1], lR = s->svR[0], bR = s->svR[1], nl = s->nh[0], nr = s->nh[1];
+            float ql = s->nq[0], qr = s->nq[1];
             unsigned int rL = s->rngL, rR = s->rngR, gth = P->gth;
             TK_ITER8
             for (i = 0; i < 8; i++) {
@@ -468,12 +486,13 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
                 rL = rL * 1664525u + 1013904223u; rR = rR * 22695477u + 1u;
                 nl = (((rL >> 8) & 0xFFFFu) < gth) ? (float)(int)rL * 4.656613e-10f : nl;
                 nr = (((rR >> 8) & 0xFFFFu) < gth) ? (float)(int)rR * 4.656613e-10f : nr;
-                lL += fL * bL; hl = nl - lL - d * bL; bL += fL * hl;
-                lR += fR * bR; hr = nr - lR - d * bR; bR += fR * hr;
+                ql += 0.5f * (nl - ql); qr += 0.5f * (nr - qr);   /* about 5 kHz: a darker hiss */
+                lL += fL * bL; hl = ql - lL - d * bL; bL += fL * hl;
+                lR += fR * bR; hr = qr - lR - d * bR; bR += fR * hr;
                 mb[i] = bL * aL + bR * aR; sb[i] = bL * aL - bR * aR;
             }
             s->svL[0] = lL; s->svL[1] = bL; s->svR[0] = lR; s->svR[1] = bR; s->rngL = rL; s->rngR = rR;
-            s->nh[0] = nl; s->nh[1] = nr;
+            s->nh[0] = nl; s->nh[1] = nr; s->nq[0] = ql; s->nq[1] = qr;
         }
         TK_ITER8
         for (i = 0; i < 8; i++) {
@@ -510,7 +529,7 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
             }
             for (i = 0; i < 8; i++) {
                 float ay = y[i] < 0.0f ? -y[i] : y[i];
-                lp += 0.5f * (y[i] - lp);
+                lp += 0.4f * (y[i] - lp);       /* tail damping (darker) */
                 rg[(w0 + i) & RV_M] = in[i] + P->fb * lp;
                 in[i] += P->wetG * y[i];         /* in[] = the riser, plus its own tail */
                 peak = (ay > peak) ? ay : peak;
@@ -586,6 +605,9 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
 #ifndef TAKEOFF_HOST_TEST
 
 #include "takeoff_params.h"
+#if TAKEOFF_VOL_SLOT != TAKEOFF_DIR_SLOT + 8
+#error "Takeoff reads its 9 knobs as one run of slots"
+#endif
 
 #ifndef TAKEOFF_AUDIO_FUNC
 #define TAKEOFF_AUDIO_FUNC Fx_DLY_Takeoff
@@ -605,8 +627,7 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     TkState *s;
-    TkParams P;
-    int u[9], k, foot, hold = 0, run, start;
+    int k, foot, hold = 0, run, start, chg = 0;
     float beats, bpm;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -629,19 +650,27 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     s = (TkState *)stateBase;
     if (s->magic != TK_MAGIC) tk_init(s);
 
-    u[0] = tk_ui(params[TAKEOFF_DIR_SLOT],   TAKEOFF_DIR_UI_DEFAULT);
-    u[1] = tk_ui(params[TAKEOFF_LEN_SLOT],   TAKEOFF_LEN_UI_DEFAULT);
-    u[2] = tk_ui(params[TAKEOFF_COLOR_SLOT], TAKEOFF_COLOR_UI_DEFAULT);
-    u[3] = tk_ui(params[TAKEOFF_WIND_SLOT],  TAKEOFF_WIND_UI_DEFAULT);
-    u[4] = tk_ui(params[TAKEOFF_GRAIN_SLOT], TAKEOFF_GRAIN_UI_DEFAULT);
-    u[5] = tk_ui(params[TAKEOFF_RANGE_SLOT], TAKEOFF_RANGE_UI_DEFAULT);
-    u[6] = tk_ui(params[TAKEOFF_VAR_SLOT],   TAKEOFF_VAR_UI_DEFAULT);
-    u[7] = tk_ui(params[TAKEOFF_SPACE_SLOT], TAKEOFF_SPACE_UI_DEFAULT);
-    u[8] = tk_ui(params[TAKEOFF_VOL_SLOT],   TAKEOFF_VOL_UI_DEFAULT);
-    if (u[0] > 1) u[0] = 1;
-    if (u[1] > 35) u[1] = 35;
-    for (k = 2; k < 9; k++) if (u[k] > 100) u[k] = 100;
     bpm = zt_update(&s->zt, &run, &beats, &start);
+    for (k = 0; k < 9; k++) if (params[TAKEOFF_DIR_SLOT + k] != s->rk[k]) chg = 1;
+    if (bpm != s->rk[9]) chg = 1;
+    if (chg) {
+        int *u = s->u;
+        u[0] = tk_ui(params[TAKEOFF_DIR_SLOT],   TAKEOFF_DIR_UI_DEFAULT);
+        u[1] = tk_ui(params[TAKEOFF_LEN_SLOT],   TAKEOFF_LEN_UI_DEFAULT);
+        u[2] = tk_ui(params[TAKEOFF_COLOR_SLOT], TAKEOFF_COLOR_UI_DEFAULT);
+        u[3] = tk_ui(params[TAKEOFF_WIND_SLOT],  TAKEOFF_WIND_UI_DEFAULT);
+        u[4] = tk_ui(params[TAKEOFF_GRAIN_SLOT], TAKEOFF_GRAIN_UI_DEFAULT);
+        u[5] = tk_ui(params[TAKEOFF_RANGE_SLOT], TAKEOFF_RANGE_UI_DEFAULT);
+        u[6] = tk_ui(params[TAKEOFF_VAR_SLOT],   TAKEOFF_VAR_UI_DEFAULT);
+        u[7] = tk_ui(params[TAKEOFF_SPACE_SLOT], TAKEOFF_SPACE_UI_DEFAULT);
+        u[8] = tk_ui(params[TAKEOFF_VOL_SLOT],   TAKEOFF_VOL_UI_DEFAULT);
+        if (u[0] > 1) u[0] = 1;
+        if (u[1] > 35) u[1] = 35;
+        for (k = 2; k < 9; k++) if (u[k] > 100) u[k] = 100;
+        for (k = 0; k < 9; k++) s->rk[k] = params[TAKEOFF_DIR_SLOT + k];
+        s->rk[9] = bpm;
+        s->kd = 1;
+    }
     zw = (volatile unsigned int *)ZT_ADDR;
     if (zw[0] == ZT_MAGIC) {                     /* MOD firmware: footswitch down (6), our hold claim (7) */
         hold = (zw[6] == 1u);
@@ -649,9 +678,9 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     }
 
     tk_listen(s, fxBuf);                         /* before the riser is added */
-    tk_prepare(s, &P, u, foot, hold, run, bpm);
-    tk_led(s, u, ctx[1]);
-    tk_process(s, &P, fxBuf);
+    tk_prepare(s, &s->P, s->u, foot, hold, run, bpm);
+    tk_led(s, s->u, ctx[1]);
+    tk_process(s, &s->P, fxBuf);
 }
 
 #endif /* TAKEOFF_HOST_TEST */
