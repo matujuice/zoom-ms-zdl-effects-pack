@@ -66,7 +66,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F34u        /* "WDO4": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F35u        /* "WDO5": change whenever WdState changes      */
 #define WD_N          170000             /* ring length per side                        */
 #define WD_MAXD       168000.0f          /* longest delay (samples)                     */
 #define WD_CLEAR_BLK  2048
@@ -81,6 +81,13 @@
 #define WD_QUIET      2.0f               /* ring "silent" below this (16384 scale)      */
 
 typedef struct {
+    int   hc, lc, ap;
+    float dT, fb, cl, ch, g, amp, W, inT;
+} WdParams;
+
+/* Knob maths, diffuser lengths and Send gains are worked out only when they change: on the pedal every
+ * byte of code a block runs costs about a cycle (it comes from slow memory each block). */
+typedef struct {
     unsigned int magic;
     int   clr;             /* samples of the rings cleared so far                */
     int   wp;              /* next write index; age a = buf[wp - a]              */
@@ -92,15 +99,16 @@ typedef struct {
     float sg;              /* Send gain, smoothed                                */
     float lfo[4];          /* diffuser LFO phases 0..1                           */
     float ip[2][4];        /* all-pass interpolator state per side and stage       */
+    float rk[10];          /* raw knobs, on, BPM that P comes from                  */
+    WdParams P;
+    int   ia[2][4];        /* all-pass lengths: whole samples ...                  */
+    float eta[2][4];       /* ... and the interpolator coefficient                 */
+    float pamp;            /* Mod depth ia/eta were worked out for (-1: not yet)   */
+    float esg, ea, eb;     /* Send the steady wash and dry gains are for (-1: not yet) */
     ZtSync zt;
     float ap[2][4][WD_APN];
     short buf[2 * WD_N];
 } WdState;
-
-typedef struct {
-    int   hc, lc, ap;
-    float dT, fb, cl, ch, g, amp, W, inT;
-} WdParams;
 
 WD_ALWAYS_INLINE(wd_ui)
 static inline float wd_ui(float raw, float def_ui, float max_ui)
@@ -222,6 +230,8 @@ static inline void wd_init(WdState *s)
     s->sg = 0.0f;
     for (k = 0; k < 8; k++) s->ip[k >> 2][k & 3] = 0.0f;
     for (k = 0; k < 4; k++) s->lfo[k] = 0.25f * (float)k;
+    for (k = 0; k < 10; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
+    s->pamp = -1.0f; s->esg = -1.0f;
     zt_init(&s->zt);
     s->magic = WD_MAGIC;
 }
@@ -269,8 +279,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], wo[2][8], md[2][4], eta[2][4], cv[16];
-    int ia[2][4];
+    float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], wo[2][8], md[2][4], cv[16];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
     short * restrict sb = s->buf;
@@ -296,7 +305,9 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     }
     s->apOn = P->ap;
 
-    /* LFO phases once per block; all-pass lengths per side and stage */
+    /* LFO phases once per block; all-pass lengths per side and stage (Mod 0: fixed, kept from before) */
+    if (P->ap && (P->amp != 0.0f || s->pamp != 0.0f)) {
+    s->pamp = P->amp;
     for (k = 0; k < 4; k++) {
         float p = s->lfo[k] + 1.8143e-4f * (0.31f + 0.133f * (float)k), q;
         p = (p >= 1.0f) ? p - 1.0f : p;
@@ -309,16 +320,19 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
      * in -0.2..0.33, so a whole-sample step is a small change (a fraction near 0 put the pole near -1: clicks) */
     for (c = 0; c < 2; c++) for (k = 0; k < 4; k++) {
         float fr;
-        ia[c][k] = (int)(md[c][k] - 0.5f);
-        fr = md[c][k] - (float)ia[c][k];
+        s->ia[c][k] = (int)(md[c][k] - 0.5f);
+        fr = md[c][k] - (float)s->ia[c][k];
         fr = 0.5f * (fr - 1.0f);               /* (1 - fr) / (1 + fr) = -h / (1 + h), h in -0.25..0.25: series */
-        eta[c][k] = -fr * (1.0f + fr * (-1.0f + fr * (1.0f + fr * (-1.0f + fr))));
+        s->eta[c][k] = -fr * (1.0f + fr * (-1.0f + fr * (1.0f + fr * (-1.0f + fr))));
+    }
     }
 
     /* per-sample ramps: Send (wash and dry gains, equal-power crossfade; worked out once while Send is
      * steady), Time crossfade */
     if (sg == inT) {
-        float a = wd_eqp(sg), b = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);
+        float a, b;
+        if (sg != s->esg) { s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); s->esg = sg; }
+        a = s->ea; b = s->eb;
         for (i = 0; i < 8; i++) { sgv[i] = a; dgv[i] = b; }
     } else {
         WD_EIGHT
@@ -361,7 +375,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         float t0[9], t1[9], t2[9], t3[9], t4[9], t5[9], t6[9], t7[9];
         float e0, e1, e2, e3, e4, e5, e6, e7, p0, p1, p2, p3, p4, p5, p6, p7;
         int r0, r1, r2, r3, r4, r5, r6, r7;
-#define WD_TAPS(j, c, k) { r##j = apw - ia[c][k] - 1; e##j = eta[c][k]; p##j = s->ip[c][k]; }
+#define WD_TAPS(j, c, k) { r##j = apw - s->ia[c][k] - 1; e##j = s->eta[c][k]; p##j = s->ip[c][k]; }
 #define WD_TAP(j, c, k) t##j[i] = s->ap[c][k][(r##j + i) & (WD_APN - 1)];
 #define WD_AP(v, j, c, k) { float d = t##j[i] + e##j * t##j[i + 1] - e##j * p##j, wv = v + g * d; p##j = d; \
         s->ap[c][k][w] = wv; v = d - g * wv; }
@@ -508,9 +522,8 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     WdState *s;
-    WdParams P;
-    float u[10], beats;
-    int run, start;
+    float u[10], r[10], beats;
+    int run, start, k, chg = 0;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -529,20 +542,29 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
 
     s = (WdState *)stateBase;
 
-    u[0] = wd_ui(params[WASHOUT_TIME_SLOT],  (float)WASHOUT_TIME_UI_DEFAULT,  113.0f);
-    u[1] = wd_ui(params[WASHOUT_WASH_SLOT],  (float)WASHOUT_WASH_UI_DEFAULT,  100.0f);
-    u[2] = wd_ui(params[WASHOUT_FDBK_SLOT],  (float)WASHOUT_FDBK_UI_DEFAULT,  120.0f);
-    u[3] = wd_ui(params[WASHOUT_HICUT_SLOT], (float)WASHOUT_HICUT_UI_DEFAULT, 100.0f);
-    u[4] = wd_ui(params[WASHOUT_LOCUT_SLOT], (float)WASHOUT_LOCUT_UI_DEFAULT, 100.0f);
-    u[5] = wd_ui(params[WASHOUT_MOD_SLOT],   (float)WASHOUT_MOD_UI_DEFAULT,   100.0f);
-    u[6] = wd_ui(params[WASHOUT_WIDTH_SLOT], (float)WASHOUT_WIDTH_UI_DEFAULT, 100.0f);
-    u[7] = wd_ui(params[WASHOUT_SEND_SLOT],  (float)WASHOUT_SEND_UI_DEFAULT,  100.0f);
-
     if (s->magic != WD_MAGIC) wd_init(s);
-    u[9] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM */
-    wd_prepare(&P, u, params[0] >= 0.5f);
+    r[0] = params[WASHOUT_TIME_SLOT];  r[1] = params[WASHOUT_WASH_SLOT];
+    r[2] = params[WASHOUT_FDBK_SLOT];  r[3] = params[WASHOUT_HICUT_SLOT];
+    r[4] = params[WASHOUT_LOCUT_SLOT]; r[5] = params[WASHOUT_MOD_SLOT];
+    r[6] = params[WASHOUT_WIDTH_SLOT]; r[7] = params[WASHOUT_SEND_SLOT];
+    r[8] = (params[0] >= 0.5f) ? 1.0f : 0.0f;
+    r[9] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM */
+    for (k = 0; k < 10; k++) if (r[k] != s->rk[k]) chg = 1;
+    if (chg) {
+        u[0] = wd_ui(r[0], (float)WASHOUT_TIME_UI_DEFAULT,  113.0f);
+        u[1] = wd_ui(r[1], (float)WASHOUT_WASH_UI_DEFAULT,  100.0f);
+        u[2] = wd_ui(r[2], (float)WASHOUT_FDBK_UI_DEFAULT,  120.0f);
+        u[3] = wd_ui(r[3], (float)WASHOUT_HICUT_UI_DEFAULT, 100.0f);
+        u[4] = wd_ui(r[4], (float)WASHOUT_LOCUT_UI_DEFAULT, 100.0f);
+        u[5] = wd_ui(r[5], (float)WASHOUT_MOD_UI_DEFAULT,   100.0f);
+        u[6] = wd_ui(r[6], (float)WASHOUT_WIDTH_UI_DEFAULT, 100.0f);
+        u[7] = wd_ui(r[7], (float)WASHOUT_SEND_UI_DEFAULT,  100.0f);
+        u[9] = r[9];
+        wd_prepare(&s->P, u, r[8] != 0.0f);
+        for (k = 0; k < 10; k++) s->rk[k] = r[k];
+    }
     if (wd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
-    wd_process(s, &P, fxBuf);                    /* L and R in place */
+    wd_process(s, &s->P, fxBuf);                 /* L and R in place */
 }
 
 #endif /* WASHOUT_HOST_TEST */

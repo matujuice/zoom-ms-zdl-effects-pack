@@ -54,6 +54,11 @@ CFLAGS = [
     "-mv6740",
     "--abi=eabi",
     "--mem_model:data=far",
+    # Small code runs faster here: each block fetches its code from slow memory, ~1 cycle per byte.
+    # No push/pop: those helpers are not on the pedal.
+    "--opt_for_speed=1",
+    "--disable_software_pipeline",
+    "--disable_push_pop",
     f"--include_path={TI_ROOT.as_posix()}/include",
 ]
 
