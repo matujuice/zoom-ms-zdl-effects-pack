@@ -26,6 +26,6 @@
   "audio_func_name": "Fx_DLY_DJFilter",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 46.0,
-  "dsp_cost_comment": "Pedal measured (SYSTEM > LOAD), 2026-11-01, this build: highest 5% (about 2,700 cycles a block). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles of the 54,422-cycle block."
+  "dsp_cost": 40.0,
+  "dsp_cost_comment": "Previous build measured 5% (2,700 cycles). This build skips the dry/level pass at Mix 100, 0 dB: estimated about 4.3% (2,350 cycles). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD)."
 }

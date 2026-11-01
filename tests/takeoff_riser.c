@@ -235,7 +235,7 @@ int main(void)
       fresh(0, 35, 0, 60, 100, 0); params[0] = 0.0f; blk(); foot = 1;
       c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = 1.0f; Fx_DLY_Takeoff(ctx); } snd2 = (double)(clock() - c0) / CLOCKS_PER_SEC;
       printf("host time for %ld blocks: idle %.4f s, sounding %.4f s, sounding + Space %.4f s\n", n, idle, snd1, snd2);
-      CHECK(idle * 2.0 < snd1 + 1e-9, "idle is not much cheaper than sounding"); }
+      CHECK(idle * 1.3 < snd1 + 1e-9, "idle is not cheaper than sounding"); }   /* sounding skips the key listener */
 
     /* 9. no clicks at the start, the drop and the cut (noise; steps against the signal's own steady step) */
     fresh(1, 6, 0, 0, 100, 0);           /* DOWN: starts at the top at full level */

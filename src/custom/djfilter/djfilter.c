@@ -245,10 +245,13 @@ static inline void df_process(DfState *s, const DfParams *P, float *buf, float e
     unsigned int fresh = P->on & ~s->act;
     float d[16];
     const float dg = P->dg, wg = P->wg;
+    const int plain = (dg == 0.0f && wg == 1.0f && e >= 1.0f && de == 0.0f);   /* Mix 100, 0 dB, on: no dry pass */
     if ((P->on ^ s->act) & 16u) fresh |= P->on & 3u;      /* LP <-> HP: the filter restarts */
-    for (i = 0; i < 16; i++) d[i] = buf[i];
+    if (!plain) for (i = 0; i < 16; i++) d[i] = buf[i];
     if (P->on & 1u) df_pair(buf, s->ic, &P->c[0], &P->c[1], fresh & 1u, fresh & 2u);
     if (P->on & 4u) df_pair(buf, s->ic + 8, &P->c[2], &P->c[2], fresh & 4u, fresh & 4u);
+    s->act = P->on;
+    if (plain) return;
     DF_BLOCK_LOOP()
     for (i = 0; i < 8; i++) {
         float ol = dg * d[i] + wg * buf[i], orr = dg * d[i + 8] + wg * buf[i + 8];
@@ -256,7 +259,6 @@ static inline void df_process(DfState *s, const DfParams *P, float *buf, float e
         buf[i + 8] = d[i + 8] + e * (orr - d[i + 8]);
         e += de;
     }
-    s->act = P->on;
 }
 
 /* ---- labels (the pedal screen) -------------------------------------------------------------- */

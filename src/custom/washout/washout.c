@@ -305,11 +305,11 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     }
     s->apOn = P->ap;
 
-    /* LFO phases once per block; all-pass lengths per side and stage (Mod 0: fixed, kept from before) */
-    if (P->ap && (P->amp != 0.0f || s->pamp != 0.0f)) {
+    /* LFO phases and all-pass lengths every 4th block (0.7 ms; Mod 0: fixed, kept from before) */
+    if (P->ap && (P->amp != s->pamp || (P->amp != 0.0f && (apw & 24) == 0))) {
     s->pamp = P->amp;
     for (k = 0; k < 4; k++) {
-        float p = s->lfo[k] + 1.8143e-4f * (0.31f + 0.133f * (float)k), q;
+        float p = s->lfo[k] + 7.2571e-4f * (0.31f + 0.133f * (float)k), q;
         p = (p >= 1.0f) ? p - 1.0f : p;
         s->lfo[k] = p;
         q = p + 0.5f; q = (q >= 1.0f) ? q - 1.0f : q;
