@@ -11,12 +11,12 @@ static int fails = 0;
 #define ARENA 705536u
 #define SEC 44100
 
-static void fresh(int time, int wash, int fdbk, int hi, int lo, int mod, int width, int send, int mix)
+static void fresh(int time, int wash, int fdbk, int hi, int lo, int width, int send, int mix)
 {
     memset(se_m + 4096, 0, ARENA);
     params[0] = 1.0f;
     SET(TIME, time); SET(WASH, wash); SET(FDBK, fdbk); SET(HICUT, hi); SET(LOCUT, lo);
-    SET(MOD, mod); SET(WIDTH, width); SET(SEND, send);
+    SET(WIDTH, width); SET(SEND, send);
 }
 static unsigned rng = 5u;
 static float noise(void) { rng = rng * 1664525u + 1013904223u; return (float)(int)(rng >> 9) * 2.3841858e-7f - 1.0f; }
@@ -43,10 +43,10 @@ int main(void)
      *    delay has none or a few spikes, Washout has hundreds, and more in the later window than the earlier. */
     { long plain, wash, w1, w2;
       for (i = 0; i < SEC * 3; i++) { inL[i] = (i == 4000) ? 0.8f : 0; inR[i] = inL[i]; }
-      fresh(109, 0, 70, 0, 0, 0, 100, 100, 100);
+      fresh(109, 0, 70, 0, 0, 100, 100, 100);
       feed(SEC * 3, inL, inR, oL, oR);
       plain = count_active(oL, 4000 + SEC * 6 / 10, 4000 + SEC * 14 / 10);
-      fresh(109, 70, 70, 0, 0, 20, 100, 100, 100);
+      fresh(109, 70, 70, 0, 0, 100, 100, 100);
       feed(SEC * 3, inL, inR, oL, oR);
       wash = count_active(oL, 4000 + SEC * 6 / 10, 4000 + SEC * 14 / 10);
       w1 = count_active(oL, 4000 + SEC * 5 / 10, 4000 + SEC * 10 / 10); w2 = count_active(oL, 4000 + SEC * 20 / 10, 4000 + SEC * 25 / 10);
@@ -56,31 +56,31 @@ int main(void)
 
     /* 2. bounded: Fdbk 120, Wash 100, noise for 14 s */
     { float pk = 0; int bad = 0;
-      fresh(109, 100, 120, 0, 0, 100, 100, 100, 100);
+      fresh(109, 100, 120, 0, 0, 100, 100, 100);
       for (i = 0; i < SEC * 14; i++) { inL[i] = 0.7f * noise(); inR[i] = 0.7f * noise(); }
       feed(SEC * 14, inL, inR, oL, oR);
       for (i = 0; i < SEC * 14; i++) { float a = fabsf(oL[i]), b = fabsf(oR[i]); if (a > pk) pk = a; if (b > pk) pk = b; if (!(a < 100) || !(b < 100)) bad++; }
       printf("Fdbk 120, 14 s of noise: peak %.3f, rms last 2 s %.3f\n", pk, rms(oL, SEC * 12, SEC * 14));
       CHECK(!bad && pk < 4.0f, "not bounded at Fdbk 120"); }
 
-    /* 3. hold: Fdbk 100, Send 0 (after a burst), both cuts off: the level stays roughly steady, with and without Mod */
-    for (k = 0; k < 2; k++) {
+    /* 3. hold: Fdbk 100, Send 0 (after a burst), both cuts off: the level stays roughly steady */
+    {
         double r1, r2, r3;
-        fresh(109, 70, 100, 0, 0, k ? 20 : 0, 100, 100, 100);
+        fresh(109, 70, 100, 0, 0, 100, 100, 100);
         for (i = 0; i < SEC * 2; i++) { inL[i] = (i < SEC / 2) ? 0.2f * noise() : 0; inR[i] = (i < SEC / 2) ? 0.2f * noise() : 0; }
         feed(SEC * 2, inL, inR, oL, oR);
         SET(SEND, 0);
         for (i = 0; i < SEC * 14; i++) { inL[i] = inR[i] = 0; }
         feed(SEC * 14, inL, inR, oL, oR);
         r1 = rms(oL, SEC * 1, SEC * 3); r2 = rms(oL, SEC * 6, SEC * 8); r3 = rms(oL, SEC * 12, SEC * 14);
-        printf("hold, Mod %d: rms 1-3 s %.4f, 6-8 s %.4f, 12-14 s %.4f\n", k ? 20 : 0, r1, r2, r3);
-        CHECK(r1 > 0.01 && r3 > 0.6 * r1 && r3 < 1.5 * r1, "level not held (Mod %d)", k ? 20 : 0);
+        printf("hold: rms 1-3 s %.4f, 6-8 s %.4f, 12-14 s %.4f\n", r1, r2, r3);
+        CHECK(r1 > 0.01 && r3 > 0.6 * r1 && r3 < 1.5 * r1, "level not held");
     }
     /* ... and the cuts act in the loop: a 6 kHz tone dies through HiCut 80 but holds with it off; a 100 Hz tone dies
      * through LoCut 100 but holds with it off */
     { int cut, hi; double a, b, ra[2][2];
       for (hi = 0; hi < 2; hi++) for (cut = 0; cut < 2; cut++) {
-          fresh(109, 70, 100, hi ? (cut ? 80 : 0) : 0, hi ? 0 : (cut ? 100 : 0), 0, 100, 100, 100);
+          fresh(109, 70, 100, hi ? (cut ? 80 : 0) : 0, hi ? 0 : (cut ? 100 : 0), 100, 100, 100);
           for (i = 0; i < SEC * 2; i++) { float ph = (float)i * (hi ? 0.8546f : 0.01425f); inL[i] = (i < SEC / 2) ? 0.2f * sinf(ph) : 0; inR[i] = inL[i]; }
           feed(SEC * 2, inL, inR, oL, oR);
           SET(SEND, 0); for (i = 0; i < SEC * 6; i++) inL[i] = inR[i] = 0;
@@ -96,7 +96,7 @@ int main(void)
     { int bpm; long expect, got, j;
       for (bpm = 90; bpm <= 150; bpm += 60) {
           zt_host[0] = ZT_MAGIC; zt_host[1] = 2u; zt_host[2] = 0u; zt_host[3] = 0u; zt_host[4] = 0u; zt_host[5] = (unsigned)(bpm * 100);
-          fresh(109, 0, 50, 0, 0, 0, 100, 100, 100);
+          fresh(109, 0, 50, 0, 0, 100, 100, 100);
           for (i = 0; i < SEC * 2; i++) inL[i] = inR[i] = (i == 8000) ? 0.9f : 0;
           feed(SEC * 2, inL, inR, oL, oR);
           expect = (long)(44100.0 * 60.0 / bpm + 0.5) + 8000; got = 0;
@@ -108,7 +108,7 @@ int main(void)
 
     /* 5. with Wash on the synced echo still lands on the beat (the diffusers' latency is taken off Time) */
     { long j, pk = 0; float m = 0;
-      fresh(109, 70, 50, 0, 0, 0, 100, 100, 100);
+      fresh(109, 70, 50, 0, 0, 100, 100, 100);
       for (i = 0; i < SEC * 2; i++) inL[i] = inR[i] = (i == 8000) ? 0.9f : 0;
       feed(SEC * 2, inL, inR, oL, oR);
       for (j = 9000; j < SEC * 2; j++) { float a = fabsf(oL[j]); if (a > m) { m = a; pk = j; } }
@@ -117,7 +117,7 @@ int main(void)
 
     /* 6. idle: Send 0 and a dead tail: the buffer is left alone, and the state is untouched */
     { WdState *st = (WdState *)(((uintptr_t)(se_m + 4096) + 3u) & ~(uintptr_t)3u); int wp0, wp1; float err = 0;
-      fresh(109, 70, 60, 0, 0, 20, 100, 100, 50);
+      fresh(109, 70, 60, 0, 0, 100, 100, 50);
       for (i = 0; i < SEC / 2; i++) { inL[i] = 0.3f * noise(); inR[i] = 0.3f * noise(); }
       feed(SEC / 2, inL, inR, oL, oR);
       SET(SEND, 0);

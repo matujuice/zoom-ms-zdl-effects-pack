@@ -12,9 +12,7 @@
  * DIFFUSERS: 4 Schroeder all-passes in series (unity gain at every frequency, so they lose no
  *   level). Wash = their coefficient g, 0..0.7; 0 = skipped (no work). Lengths L 113 163 241
  *   335, R 131 157 251 313 samples (both sum to about 853: the read delay is shortened by that
- *   much so a synced Time still lands on the beat). A slow LFO per stage (0.31 .. 0.71 Hz,
- *   the right side half a cycle apart) moves each length by up to 20 samples (Mod 100). The
- *   fractional read is a first-order all-pass interpolator, so modulating loses no level either.
+ *   much so a synced Time still lands on the beat). Fixed whole-sample lengths: no modulation.
  *   The ring read is whole samples (the Time is rounded), so the loop has no interpolation loss.
  * LOOP FILTERS: HiCut = one-pole low-pass 11.6 kHz (1) .. 375 Hz (100); LoCut = one-pole
  *   high-pass 25 Hz (1) .. 800 Hz (100). 0 = off and skipped.
@@ -41,9 +39,9 @@
  * MEMORY: 2 x 170000 16-bit samples (680 KB, scale 16384) + 16 KB of diffuser lines + state,
  *   under the 705 KB arena. Cleared 2048 samples per block after loading (dry meanwhile).
  *
- * KNOBS (screen values; 8, 3 pages; Time carries the tap flag, manifest flags 40)
+ * KNOBS (screen values; 7, 3 pages; Time carries the tap flag, manifest flags 40)
  *   0 Time 0..113   1 Wash 0..100 (70)   2 Fdbk 0..120 (60)   3 HiCut 0..100 (0)
- *   4 LoCut 0..100 (0)   5 Mod 0..100 (20)   6 Width 0..100 (100)   7 Send 0..100 (100).
+ *   4 LoCut 0..100 (0)   5 Width 0..100 (100)   6 Send 0..100 (100).
  *   Inside the code u[9] is the pedal's BPM.
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
@@ -66,7 +64,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F35u        /* "WDO5": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F36u        /* "WDO6": change whenever WdState changes      */
 #define WD_N          170000             /* ring length per side                        */
 #define WD_MAXD       168000.0f          /* longest delay (samples)                     */
 #define WD_CLEAR_BLK  2048
@@ -82,10 +80,10 @@
 
 typedef struct {
     int   hc, lc, ap;
-    float dT, fb, cl, ch, g, amp, W, inT;
+    float dT, fb, cl, ch, g, W, inT;
 } WdParams;
 
-/* Knob maths, diffuser lengths and Send gains are worked out only when they change: on the pedal every
+/* Knob maths and Send gains are worked out only when they change: on the pedal every
  * byte of code a block runs costs about a cycle (it comes from slow memory each block). */
 typedef struct {
     unsigned int magic;
@@ -97,13 +95,8 @@ typedef struct {
     float dCur, dOld, xf;  /* read delay now / before a Time change; crossfade 0..1 */
     float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part      */
     float sg;              /* Send gain, smoothed                                */
-    float lfo[4];          /* diffuser LFO phases 0..1                           */
-    float ip[2][4];        /* all-pass interpolator state per side and stage       */
     float rk[10];          /* raw knobs, on, BPM that P comes from                  */
     WdParams P;
-    int   ia[2][4];        /* all-pass lengths: whole samples ...                  */
-    float eta[2][4];       /* ... and the interpolator coefficient                 */
-    float pamp;            /* Mod depth ia/eta were worked out for (-1: not yet)   */
     float esg, ea, eb;     /* Send the steady wash and dry gains are for (-1: not yet) */
     ZtSync zt;
     float ap[2][4][WD_APN];
@@ -175,14 +168,6 @@ static inline float wd_note_beats(int d)
     return 8.0f;
 }
 
-/* bipolar sine-like LFO from a phase 0..1 (parabola, within 6 %) */
-WD_ALWAYS_INLINE(wd_lfo)
-static inline float wd_lfo(float p)
-{
-    float t = p + p - 1.0f, a = (t < 0.0f) ? -t : t;
-    return -4.0f * t * (1.0f - a);
-}
-
 /* sin(x * 90 degrees) for x in 0..1 (odd polynomial, exactly 0 at 0 and 1 at 1, within 0.02 %) */
 WD_ALWAYS_INLINE(wd_eqp)
 static inline float wd_eqp(float x)
@@ -202,14 +187,14 @@ static inline float wd_sat(float x)
     return (x < 0.0f) ? -y : y;
 }
 
-/* all-pass base lengths: stage k, side c (0 L, 1 R) */
-WD_ALWAYS_INLINE(wd_base)
-static inline float wd_base(int c, int k)
+/* all-pass lengths: stage k, side c (0 L, 1 R) */
+WD_ALWAYS_INLINE(wd_len)
+static inline int wd_len(int c, int k)
 {
-    if (k == 0) return c ? 131.0f : 113.0f;
-    if (k == 1) return c ? 157.0f : 163.0f;
-    if (k == 2) return c ? 251.0f : 241.0f;
-    return c ? 313.0f : 335.0f;
+    if (k == 0) return c ? 131 : 113;
+    if (k == 1) return c ? 157 : 163;
+    if (k == 2) return c ? 251 : 241;
+    return c ? 313 : 335;
 }
 
 WD_ALWAYS_INLINE(wd_read)
@@ -228,10 +213,8 @@ static inline void wd_init(WdState *s)
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f;
     s->sg = 0.0f;
-    for (k = 0; k < 8; k++) s->ip[k >> 2][k & 3] = 0.0f;
-    for (k = 0; k < 4; k++) s->lfo[k] = 0.25f * (float)k;
     for (k = 0; k < 10; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
-    s->pamp = -1.0f; s->esg = -1.0f;
+    s->esg = -1.0f;
     zt_init(&s->zt);
     s->magic = WD_MAGIC;
 }
@@ -254,12 +237,11 @@ static inline void wd_prepare(WdParams *P, const float *u, int on)
     float d, fbG = u[2] * 0.01f, nb;
     P->ap = (u[1] > 0.0f);
     P->g = 0.007f * u[1];
-    P->amp = 0.1f * u[5];
     P->hc = (u[3] > 0.0f);
     P->lc = (u[4] > 0.0f);
     P->cl = wd_coef(12000.0f * wd_exp2(-0.05f * u[3]));
     P->ch = wd_coef(25.0f * wd_exp2(0.05f * u[4]));
-    P->W = u[6] * 0.01f;
+    P->W = u[5] * 0.01f;
     if (n > 100) {
         nb = wd_note_beats(n - 101);
         d = nb * 2646000.0f * wd_recip(u[9]);    /* u[9] = BPM from zt_update */
@@ -271,7 +253,7 @@ static inline void wd_prepare(WdParams *P, const float *u, int on)
     P->dT = (float)(int)(d + 0.5f);            /* whole samples: no interpolation loss in the loop */
     if (!on && fbG > 0.95f) fbG = 0.95f;         /* switched off: the tail dies */
     P->fb = fbG;
-    P->inT = on ? u[7] * 0.01f : 0.0f;
+    P->inT = on ? u[6] * 0.01f : 0.0f;
 }
 
 WD_ALWAYS_INLINE(wd_process)
@@ -279,7 +261,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 {
     int i, k, c, wp0 = s->wp, apw = s->apw;
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
-    float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], wo[2][8], md[2][4], cv[16];
+    float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], wo[2][8], cv[16];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g, W = P->W;
     const int hc = P->hc, lc = P->lc;
     short * restrict sb = s->buf;
@@ -304,28 +286,6 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         for (c = 0; c < 2; c++) for (k = 0; k < 4; k++) for (i = 0; i < WD_APN; i++) s->ap[c][k][i] = 0.0f;
     }
     s->apOn = P->ap;
-
-    /* LFO phases and all-pass lengths every 4th block (0.7 ms; Mod 0: fixed, kept from before) */
-    if (P->ap && (P->amp != s->pamp || (P->amp != 0.0f && (apw & 24) == 0))) {
-    s->pamp = P->amp;
-    for (k = 0; k < 4; k++) {
-        float p = s->lfo[k] + 7.2571e-4f * (0.31f + 0.133f * (float)k), q;
-        p = (p >= 1.0f) ? p - 1.0f : p;
-        s->lfo[k] = p;
-        q = p + 0.5f; q = (q >= 1.0f) ? q - 1.0f : q;
-        md[0][k] = wd_base(0, k) + P->amp * (1.0f + wd_lfo(p));
-        md[1][k] = wd_base(1, k) + P->amp * (1.0f + wd_lfo(q));
-    }
-    /* each length = whole samples + a fraction 0.5..1.5 for the all-pass interpolator: its coefficient stays
-     * in -0.2..0.33, so a whole-sample step is a small change (a fraction near 0 put the pole near -1: clicks) */
-    for (c = 0; c < 2; c++) for (k = 0; k < 4; k++) {
-        float fr;
-        s->ia[c][k] = (int)(md[c][k] - 0.5f);
-        fr = md[c][k] - (float)s->ia[c][k];
-        fr = 0.5f * (fr - 1.0f);               /* (1 - fr) / (1 + fr) = -h / (1 + h), h in -0.25..0.25: series */
-        s->eta[c][k] = -fr * (1.0f + fr * (-1.0f + fr * (1.0f + fr * (-1.0f + fr))));
-    }
-    }
 
     /* per-sample ramps: Send (wash and dry gains, equal-power crossfade; worked out once while Send is
      * steady), Time crossfade */
@@ -369,20 +329,14 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         }
     }
 
-    /* diffusers: all eight lines (four stages a side) in one pass over the block. Each line's fractional
-     * all-pass chains sample to sample; eight of them side by side keep the DSP's pipeline full */
+    /* diffusers: all eight lines (four stages a side) in one pass over the block. Each all-pass chains
+     * sample to sample; eight of them side by side keep the DSP's pipeline full */
     if (P->ap) {
-        float t0[9], t1[9], t2[9], t3[9], t4[9], t5[9], t6[9], t7[9];
-        float e0, e1, e2, e3, e4, e5, e6, e7, p0, p1, p2, p3, p4, p5, p6, p7;
-        int r0, r1, r2, r3, r4, r5, r6, r7;
-#define WD_TAPS(j, c, k) { r##j = apw - s->ia[c][k] - 1; e##j = s->eta[c][k]; p##j = s->ip[c][k]; }
-#define WD_TAP(j, c, k) t##j[i] = s->ap[c][k][(r##j + i) & (WD_APN - 1)];
-#define WD_AP(v, j, c, k) { float d = t##j[i] + e##j * t##j[i + 1] - e##j * p##j, wv = v + g * d; p##j = d; \
-        s->ap[c][k][w] = wv; v = d - g * wv; }
-        WD_TAPS(0, 0, 0) WD_TAPS(1, 0, 1) WD_TAPS(2, 0, 2) WD_TAPS(3, 0, 3)
-        WD_TAPS(4, 1, 0) WD_TAPS(5, 1, 1) WD_TAPS(6, 1, 2) WD_TAPS(7, 1, 3)
-        /* the 9 taps the block reads first: lengths >= 112 never reach this block's 8 writes */
-        for (i = 0; i < 9; i++) {
+        float t0[8], t1[8], t2[8], t3[8], t4[8], t5[8], t6[8], t7[8];
+#define WD_TAP(j, c, k) t##j[i] = s->ap[c][k][(apw - wd_len(c, k) + i) & (WD_APN - 1)];
+#define WD_AP(v, j, c, k) { float d = t##j[i], wv = v + g * d; s->ap[c][k][w] = wv; v = d - g * wv; }
+        /* the 8 taps the block reads first: lengths >= 113 never reach this block's 8 writes */
+        for (i = 0; i < 8; i++) {
             WD_TAP(0, 0, 0) WD_TAP(1, 0, 1) WD_TAP(2, 0, 2) WD_TAP(3, 0, 3)
             WD_TAP(4, 1, 0) WD_TAP(5, 1, 1) WD_TAP(6, 1, 2) WD_TAP(7, 1, 3)
         }
@@ -396,11 +350,8 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
             WD_AP(vl, 3, 0, 3) WD_AP(vr, 7, 1, 3)
             yl[i] = vl; yr[i] = vr;
         }
-#undef WD_TAPS
 #undef WD_TAP
 #undef WD_AP
-        s->ip[0][0] = p0; s->ip[0][1] = p1; s->ip[0][2] = p2; s->ip[0][3] = p3;
-        s->ip[1][0] = p4; s->ip[1][1] = p5; s->ip[1][2] = p6; s->ip[1][3] = p7;
     }
 
     /* the wet out is the diffused read; then loop filters (always run; off = pass through), Send, soft clip,
@@ -545,10 +496,11 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     if (s->magic != WD_MAGIC) wd_init(s);
     r[0] = params[WASHOUT_TIME_SLOT];  r[1] = params[WASHOUT_WASH_SLOT];
     r[2] = params[WASHOUT_FDBK_SLOT];  r[3] = params[WASHOUT_HICUT_SLOT];
-    r[4] = params[WASHOUT_LOCUT_SLOT]; r[5] = params[WASHOUT_MOD_SLOT];
-    r[6] = params[WASHOUT_WIDTH_SLOT]; r[7] = params[WASHOUT_SEND_SLOT];
+    r[4] = params[WASHOUT_LOCUT_SLOT]; r[5] = params[WASHOUT_WIDTH_SLOT];
+    r[6] = params[WASHOUT_SEND_SLOT];
     r[8] = (params[0] >= 0.5f) ? 1.0f : 0.0f;
     r[9] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM */
+    r[7] = 0.0f;                                 /* unused */
     for (k = 0; k < 10; k++) if (r[k] != s->rk[k]) chg = 1;
     if (chg) {
         u[0] = wd_ui(r[0], (float)WASHOUT_TIME_UI_DEFAULT,  113.0f);
@@ -556,9 +508,8 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
         u[2] = wd_ui(r[2], (float)WASHOUT_FDBK_UI_DEFAULT,  120.0f);
         u[3] = wd_ui(r[3], (float)WASHOUT_HICUT_UI_DEFAULT, 100.0f);
         u[4] = wd_ui(r[4], (float)WASHOUT_LOCUT_UI_DEFAULT, 100.0f);
-        u[5] = wd_ui(r[5], (float)WASHOUT_MOD_UI_DEFAULT,   100.0f);
-        u[6] = wd_ui(r[6], (float)WASHOUT_WIDTH_UI_DEFAULT, 100.0f);
-        u[7] = wd_ui(r[7], (float)WASHOUT_SEND_UI_DEFAULT,  100.0f);
+        u[5] = wd_ui(r[5], (float)WASHOUT_WIDTH_UI_DEFAULT, 100.0f);
+        u[6] = wd_ui(r[6], (float)WASHOUT_SEND_UI_DEFAULT,  100.0f);
         u[9] = r[9];
         wd_prepare(&s->P, u, r[8] != 0.0f);
         for (k = 0; k < 10; k++) s->rk[k] = r[k];

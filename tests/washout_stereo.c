@@ -15,7 +15,7 @@ static void fresh(int time, int wash, int fdbk, int width, int send, int mix)
     memset(se_m + 4096, 0, ARENA);
     params[0] = 1.0f;
     SET(TIME, time); SET(WASH, wash); SET(FDBK, fdbk); SET(HICUT, 0); SET(LOCUT, 0);
-    SET(MOD, 20); SET(WIDTH, width); SET(SEND, send);
+    SET(WIDTH, width); SET(SEND, send);
 }
 static unsigned rng = 9u;
 static float noise(void) { rng = rng * 1664525u + 1013904223u; return (float)(int)(rng >> 9) * 2.3841858e-7f - 1.0f; }

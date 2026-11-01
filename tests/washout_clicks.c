@@ -1,6 +1,6 @@
 /* Washout clicks: a steady sine through the wash (Send 100, wet only) must stay smooth. The largest second
  * difference of the output (a click shows as a spike there) stays within what the sine itself gives, with
- * Mod 0, 20 and 100, and with a synced Time whose BPM wobbles by +-0.3. */
+ * a plain and a heavy setting, and with a synced Time whose BPM wobbles by +-0.3. */
 #include <stdio.h>
 #include <math.h>
 #include "stereo_entry.h"
@@ -13,12 +13,12 @@ static int fails = 0;
 #define LEN (SEC * 8)
 
 static float oL[LEN];
-static void fresh(int time, int wash, int fdbk, int mod)
+static void fresh(int time, int wash, int fdbk)
 {
     memset(se_m + 4096, 0, ARENA);
     params[0] = 1.0f;
     SET(TIME, time); SET(WASH, wash); SET(FDBK, fdbk); SET(HICUT, 0); SET(LOCUT, 0);
-    SET(MOD, mod); SET(WIDTH, 100); SET(SEND, 100);
+    SET(WIDTH, 100); SET(SEND, 100);
 }
 /* 330 Hz sine, 0.2; wobble != 0 moves the zmt BPM 120 +-0.3 every 50 ms */
 static void run(int wobble)
@@ -47,18 +47,15 @@ int main(void)
 {
     float c;
     se_init(ARENA);
-    fresh(60, 70, 60, 0);   run(0); c = score(SEC * 2, LEN);
-    printf("Mod 0: click score %.3f\n", c);
-    CHECK(c < 3.0f, "Mod 0 clicks");
-    fresh(60, 70, 60, 20);  run(0); c = score(SEC * 2, LEN);
-    printf("Mod 20: click score %.3f\n", c);
-    CHECK(c < 3.0f, "Mod 20 clicks");
-    fresh(60, 100, 90, 100); run(0); c = score(SEC * 2, LEN);
-    printf("Mod 100, Wash 100, Fdbk 90: click score %.3f\n", c);
-    CHECK(c < 3.0f, "Mod 100 clicks");
+    fresh(60, 70, 60);   run(0); c = score(SEC * 2, LEN);
+    printf("Wash 70, Fdbk 60: click score %.3f\n", c);
+    CHECK(c < 3.0f, "Wash 70 clicks");
+    fresh(60, 100, 90); run(0); c = score(SEC * 2, LEN);
+    printf("Wash 100, Fdbk 90: click score %.3f\n", c);
+    CHECK(c < 3.0f, "Wash 100 clicks");
 
     zt_host[0] = ZT_MAGIC; zt_host[1] = 2u; zt_host[2] = 0u; zt_host[3] = 0u; zt_host[4] = 0u; zt_host[5] = 12000u;
-    fresh(107, 70, 60, 0); run(1); c = score(SEC * 2, LEN);
+    fresh(107, 70, 60); run(1); c = score(SEC * 2, LEN);
     printf("synced 1/8., BPM 120 +-0.3: click score %.3f\n", c);
     CHECK(c < 3.0f, "a wobbling BPM clicks");
     zt_host[0] = 0u;

@@ -1,7 +1,7 @@
 /* Takeoff: the input passes untouched in every state, a flip fires a timed sweep that ends at Len, a flip
  * mid-sweep drops it, the footswitch hold (transport word 6) rises, sits and drops and its release flip is
  * swallowed, QUANT starts a press on the next Len line, every Sound makes sound in both Dirs, Color/Wind/Grain
- * stay bounded, AUTO finds the strongest note (FREE on drums), idle does no work, no clicks at start or drop,
+ * stay bounded, the riser is mono (same on L and R), idle does no work, no clicks at start or drop,
  * Space rings after the cut, the LED pulses while armed, follows the sweep and is never written when idle. */
 #include <stdio.h>
 #include <math.h>
@@ -66,19 +66,6 @@ static float in_chord(long t, int side)
     (void)side;
     return (float)(0.2 * sin(220.0 * x) + 0.1 * sin(146.83 * x) + 0.1 * sin(185.0 * x));
 }
-static float in_triad(long t, int side)            /* C3 E3 G3 equal */
-{
-    double x = (double)t / SEC * 6.283185307;
-    (void)side;
-    return (float)(0.1 * sin(130.81 * x) + 0.1 * sin(164.81 * x) + 0.1 * sin(196.0 * x));
-}
-static float in_drums(long t, int side)            /* kick every 0.5 s, noisy snare/hat bursts */
-{
-    double tm = (double)(t % (SEC / 2)) / SEC, tn = (double)(t % (SEC / 4)) / SEC;
-    (void)side;
-    return (float)(0.6 * exp(-tm * 14.0) * sin(6.283185307 * (45.0 + 60.0 * exp(-tm * 30.0)) * tm)) + 0.3f * (float)exp(-tn * 25.0) * noise();
-}
-
 static float ZL[MAXT], ZR[MAXT];
 
 int main(void)
@@ -174,7 +161,7 @@ int main(void)
           if (hd) CHECK(peak(D, t1 + 300, T) < 1e-6f, "%s hold: no drop on release", ck ? "clock" : "no clock");
       } }
 
-    /* 6. both Dirs make sound, bounded, with width (snd: Var 0 / 100) */
+    /* 6. both Dirs make sound, bounded, mono (snd: Var 0 / 100) */
     for (snd = 0; snd < 2; snd++) for (dir = 0; dir < 2; dir++) {
         double rm; float pk; int nan = 0;
         fresh(dir, 6, 100 * snd, 0, 100, 0);
@@ -183,40 +170,14 @@ int main(void)
         rm = rms(D, 0, T); pk = peak(D, 0, T);
         { double w = 0; for (i = 0; i < T; i++) w += fabs(A[i] - B[i]);
           printf("sound %d dir %d: rms %.4f peak %.3f |L-R| mean %.4f\n", snd, dir, rm, pk, w / (double)T);
-          CHECK(w > 0.0, "sound %d dir %d has no width", snd, dir); }
+          CHECK(w == 0.0, "sound %d dir %d is not mono", snd, dir); }
         CHECK(rm > 0.01 && pk < 1.0f && !nan, "sound %d dir %d: rms %.4f peak %.3f nan %d", snd, dir, rm, pk, nan);
     }
-
-    /* 7. AUTO key */
-    fresh(1, 6, 0, 0, 100, 0); inf = in_chord;
-    run_to(8.0);
-    printf("AUTO chord (A strongest): note %d\n", S()->autoNote);
-    CHECK(S()->autoNote == 9, "AUTO chose %d, want 9 (A)", S()->autoNote);
-    { foot = 1; run_to(9.0); CHECK(S()->note == 9, "note not latched"); }
-    fresh(1, 6, 0, 0, 100, 0); inf = in_triad; run_to(8.0);
-    { int k; float t = 0, m = 0; for (k = 0; k < 12; k++) { t += S()->chroma[k]; if (S()->chroma[k] > m) m = S()->chroma[k]; }
-      printf("AUTO triad: peak share %.3f of chroma %.2e\n", m / t, t); }
-    printf("AUTO equal triad C E G: note %d (0 C, 4 E, 7 G)\n", S()->autoNote);
-    CHECK(S()->autoNote == 0 || S()->autoNote == 4 || S()->autoNote == 7, "AUTO on a triad chose %d", S()->autoNote);
-    fresh(1, 6, 0, 0, 100, 0); inf = in_drums; run_to(10.0);
-    { int k; float t = 0, m = 0; for (k = 0; k < 12; k++) { t += S()->chroma[k]; if (S()->chroma[k] > m) m = S()->chroma[k]; }
-      printf("AUTO drums: peak share %.3f of chroma %.2e\n", m / t, t); }
-    printf("AUTO drums: note %d (want -1)\n", S()->autoNote);
-    CHECK(S()->autoNote == -1, "AUTO found a note %d in drums", S()->autoNote);
-    fresh(1, 6, 0, 0, 100, 0); inf = in_noise; run_to(10.0);
-    { int k; float t = 0, m = 0; for (k = 0; k < 12; k++) { t += S()->chroma[k]; if (S()->chroma[k] > m) m = S()->chroma[k]; }
-      printf("AUTO noise: peak share %.3f of chroma %.2e\n", m / t, t); }
-    printf("AUTO white noise: note %d (want -1)\n", S()->autoNote);
-    CHECK(S()->autoNote == -1, "AUTO found a note %d in noise", S()->autoNote);
-    fresh(1, 6, 0, 0, 100, 0); run_to(3.0);
-    CHECK(S()->autoNote == -1, "AUTO found a note in silence");
-    fresh(0, 6, 0, 0, 100, 0); inf = in_noise; run_to(10.0);   /* no clear note: FREE */
-    { long t0 = T; foot = 1; run_to(2.0); CHECK(S()->note == -1, "no clear note should be FREE"); (void)t0; }
 
     /* 8. idle: nothing is synthesised and the reverb stops once the tail has died */
     fresh(0, 6, 0, 0, 100, 0);
     run_to(2.0);
-    CHECK(S()->rngL == 12345u && S()->svL[0] == 0.0f && S()->svL[1] == 0.0f, "idle ran the synthesis");
+    CHECK(S()->rng == 12345u && S()->sv[0] == 0.0f && S()->sv[1] == 0.0f, "idle ran the synthesis");
     fresh(0, 6, 0, 50, 100, 0);
     run_to(0.2); foot = 1; run_to(2.5);
     { int rw0; double tail;
@@ -235,7 +196,7 @@ int main(void)
       fresh(0, 35, 0, 60, 100, 0); params[0] = 0.0f; blk(); foot = 1;
       c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = 1.0f; Fx_DLY_Takeoff(ctx); } snd2 = (double)(clock() - c0) / CLOCKS_PER_SEC;
       printf("host time for %ld blocks: idle %.4f s, sounding %.4f s, sounding + Space %.4f s\n", n, idle, snd1, snd2);
-      CHECK(idle * 1.3 < snd1 + 1e-9, "idle is not cheaper than sounding"); }   /* sounding skips the key listener */
+      CHECK(idle * 2.0 < snd1 + 1e-9, "idle is not 2x cheaper than sounding"); }
 
     /* 9. no clicks at the start, the drop and the cut (noise; steps against the signal's own steady step) */
     fresh(1, 6, 0, 0, 100, 0);           /* DOWN: starts at the top at full level */
