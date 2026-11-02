@@ -75,6 +75,7 @@ To change a cover, edit that effect's `make_cover.py` and run it; it rewrites th
 ## Credits
 
 - Built on the toolchain from [themanro/ZoomMultistompZDL](https://github.com/themanro/ZoomMultistompZDL) (MIT, Copyright (c) 2026 Roman Rusinov). The `build/` folder and the install and DSP-rule docs come from there; the upstream repo has much more documentation.
+- Alexander Lim. The live screens and the zvis kit, the pedal's file-size cap and DSP limit, and linker pitfalls.
 - WaveFold's fold curve is from "Virtual Analog Buchla 259 Wavefolder" (Esqueda, Pontynen, Valimaki, Parker; DAFx-2017).
 - DIRTBOX's circuit models follow published analyses and open models (guitarix, ElectroSmash, DS1.lv2, Proco-Rat, MetalTone); links are in [EFFECTS.md](docs/EFFECTS.md).
 - The effects themselves are original work.
