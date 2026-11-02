@@ -17,18 +17,18 @@ static void knobs(float targ, float shape, float depth, float div, float shift, 
     u[0] = targ; u[1] = shape; u[2] = depth; u[3] = div; u[4] = shift; u[5] = curve; u[6] = verb;
     u[7] = 120.0f; u[8] = size;
 }
-static void reset(void) { memset(s, 0, sizeof *s); pu_init(s); while (s->clear_pos < PU_REV_LEN) pu_clear_step(s); }
+static void reset(void) { memset(s, 0, sizeof *s); pu_init(s); while (s->clear_pos < PU_REV_TOT) pu_clear_step(s); }
 
 #define BEAT 22050                       /* samples per beat at 120 BPM */
 /* gain curve over n beats with a constant 0.5 input: g[k] = out / in at sample k */
 static float *gain(int beats)
 {
     static float g[BEAT * 8];
-    PuParams P; float b[8]; int k, j;
+    PuParams P; float b[16]; int k, j;
     pu_prepare(&P, u);
     for (k = 0; k < BEAT * beats; k += 8) {
         for (j = 0; j < 8; j++) b[j] = 0.5f;
-        pu_process(s, &P, b, 8);
+        memcpy(b + 8, b, 32); pu_process(s, &P, b, 8);
         for (j = 0; j < 8; j++) g[k + j] = b[j] * 2.0f;
     }
     return g;
@@ -114,12 +114,12 @@ int main(void)
 
     /* Reverb: noise in, Verb 100, Size 0 / 50 / 100: finite, bounded, a tail after the input stops */
     for (k = 0; k <= 2; k++) {
-        PuParams P; float b[8], ein = 0, eout = 0, peak = 0, tail = 0; int i, j; unsigned r = 1;
+        PuParams P; float b[16], ein = 0, eout = 0, peak = 0, tail = 0; int i, j; unsigned r = 1;
         reset(); knobs(1, 0, 0, 2, 0, 50, 100, (float)(k * 50)); pu_prepare(&P, u);
         for (i = 0; i < 44100 * 20; i += 8) {
             for (j = 0; j < 8; j++) { r = r * 1664525u + 1013904223u; b[j] = (i < 44100 * 10) ? ((float)(int)(r >> 9) * 1.1920929e-7f - 1.0f) * 0.5f : 0.0f; }
             for (j = 0; j < 8; j++) ein += b[j] * b[j];
-            pu_process(s, &P, b, 8);
+            memcpy(b + 8, b, 32); pu_process(s, &P, b, 8);
             for (j = 0; j < 8; j++) {
                 float y = b[j];
                 if (!(y == y) || fabsf(y) > 100.0f) { peak = 1e9f; break; }
@@ -135,11 +135,11 @@ int main(void)
     {
         float t[2]; int q;
         for (q = 0; q < 2; q++) {
-            PuParams P; float b[8]; int i, j; unsigned r = 7; t[q] = 0;
+            PuParams P; float b[16]; int i, j; unsigned r = 7; t[q] = 0;
             reset(); knobs(1, 0, 0, 2, 0, 50, 100, (float)(q * 100)); pu_prepare(&P, u);
             for (i = 0; i < 44100 * 3; i += 8) {
                 for (j = 0; j < 8; j++) { r = r * 1664525u + 1013904223u; b[j] = (i < 44100) ? ((float)(int)(r >> 9) * 1.1920929e-7f - 1.0f) * 0.5f : 0.0f; }
-                pu_process(s, &P, b, 8);
+                memcpy(b + 8, b, 32); pu_process(s, &P, b, 8);
                 if (i >= 44100 * 2) for (j = 0; j < 8; j++) t[q] += b[j] * b[j];
             }
         }

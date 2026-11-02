@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 490,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -19,7 +19,7 @@
       "max": 112,
       "default": 50,
       "flags": 40,
-      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the pedal's tempo (MIDI clock, tap or patch TEMPO; 120 BPM on stock firmware), shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time; while MIDI transport runs the loop locks to the clock and MIDI Start restarts it on the downbeat. Long grains pull the head in so they still fit in the buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
+      "comment": "Length of the looping grain. 0..100 = free, 10 ms to 1 s (log), shown in ms: short = a buzzing tone made of the sound, long = a loop of a whole hit or chord. 101..112 = synced to the pedal's tempo (MIDI clock, tap or patch TEMPO; on stock firmware tap or patch TEMPO), shown as a note value: 1/64, 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, so the freeze loops in time; while MIDI transport runs the loop locks to the clock and MIDI Start restarts it on the downbeat. Long grains pull the head in so they still fit in the buffer (a synced grain over about 1 s; with REV, PING or RAND in LIVE any grain over about 0.6 s); one too long to fit even at 0ms is shortened. Default 50 = 100 ms."
     },
     {
       "name": "Rec",
@@ -50,9 +50,17 @@
       "max": 100,
       "default": 50,
       "comment": "Dry/wet crossfade, DJ style: dry full from 0 to 50, wet full from 50 to 100, both full at 50. Default 50: you play over the frozen sound."
+    },
+    {
+      "name": "Stereo",
+      "max": 1,
+      "default": 0,
+      "comment": "Buffer layout. MONO (default) = one 7.9 s buffer of (L + R) / 2, mono freeze, the dry keeps L and R. ST = two 3.9 s buffers, a true stereo freeze (Pos beyond the 3.9 s buffer is held at its limit). Changing it restarts the buffer."
     }
   ],
   "audio_func_name": "Fx_DLY_Scrub",
   "audio_nop": false,
-  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 25.0,
+  "dsp_cost_comment": "Stereo estimate (mono net 10.5 x 1.8 + 25 %, 2026-10-24); MONO costs less in real CPU but the firmware sums the declared cost. Re-measure on the pedal."
 }

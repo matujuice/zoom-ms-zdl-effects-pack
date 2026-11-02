@@ -1,23 +1,26 @@
 /*
  * zmt.h - the MOD firmware's MIDI transport block, read by every tempo effect of the pack.
  *
- * The MOD firmware (repo zoom-ms-modding, 0.4 and later, MS-50G 3.10 OS; spec in its
- * docs/transport-block.md) keeps 8 words at 0x1181FF00 in L2 RAM:
+ * The MOD firmware (repo zoom-ms-modding: MIDISTOMP, MS-70CDR 2.10 OS, MIDI poll site 0xC00C6998;
+ * spec in its docs/transport-block.md) keeps 8 words at 0x1181FF00 in L2 RAM:
  *   0 magic 0x5A4D5401   1 sequence (+1 before and after each update, odd = mid-write)
  *   2 running (1 after MIDI Start, 0 after Stop or 0.5 s without clock)
  *   3 Start counter      4 MIDI clocks since Start (24 per beat; the first clock is 1 = the downbeat)
  *   5 tempo, BPM x 100: the clock's tempo while it runs, else the pedal's TEMPO (tap, setting, patch)
+ *   6 footswitch down (1 while held; 0 on older firmware)   7 hold claim (an effect writes its params pointer)
  * The effects take their tempo only from here (no Tempo knob; Luca, 2026-10-08). While the
  * transport runs they place themselves on the clock count, so MIDI Start restarts them on the
  * downbeat, an effect loaded mid-song lands in the right place and nothing drifts. After Stop
- * they run on at the last tempo. Without the block (stock firmware) they run at 120 BPM.
+ * they run on at the last tempo. Without the block (stock firmware) they read the patch TEMPO the
+ * stock delays follow (tap, TEMPO setting, patch): an int BPM at 0xC009C06C on MS-50G 3.10 and
+ * MS-70CDR 2.10 (zoom-ms-modding docs/dev/ms70cdr-addresses.md); 120 if it is not 40..250.
  *
  * Usage, once per block before anything reads the tempo:
  *   float beats; int run, start;
  *   bpm = zt_update(&s->zt, &run, &beats, &start);
  *   if (run) { ...place the effect at beats... }
  * bpm = the block's tempo, held until it moves by 0.3 BPM or more (the clock's tempo moves in
- * 0.1 BPM steps; a tempo-synced delay time should not move with that), 120 without the block.
+ * 0.1 BPM steps; a tempo-synced delay time should not move with that), the patch TEMPO without it.
  * run = 1 while the transport runs. beats = beats since Start, wrapped at 96 (24 bars of 4/4, a
  * whole number of every note value the pack uses: 2304 clocks = 1536 x 1/64), between clocks
  * moved on at the tempo but never past the next clock. start = 1 on the first block that sees
@@ -43,6 +46,14 @@
 #else
 static unsigned int zt_host[8];          /* host tests: no firmware; tests fill it in */
 #define ZT_ADDR       ((uintptr_t)zt_host)
+#endif
+#endif
+#ifndef ZT_TEMPO
+#ifdef __TI_COMPILER_VERSION__
+#define ZT_TEMPO      0xC009C06Cu        /* stock patch TEMPO, int BPM 40..250 */
+#else
+static int zt_tempo_host;               /* host tests: 0 = no tempo, so 120 */
+#define ZT_TEMPO      ((uintptr_t)&zt_tempo_host)
 #endif
 #endif
 #define ZT_MAGIC      0x5A4D5401u
@@ -81,7 +92,10 @@ static inline float zt_update(ZtSync *z, int *run, float *beats, int *start)
             if (w[1] == q) ok = 1u;
         }
     }
-    if (!ok) { rn = 0u; bpm = 120.0f; }
+    if (!ok) {                                   /* stock: the patch TEMPO (tap tempo) */
+        int pt = *(volatile const int *)ZT_TEMPO;
+        rn = 0u; bpm = (pt >= 40 && pt <= 250) ? (float)pt : 120.0f;
+    }
     if (!(bpm >= 30.0f)) bpm = 30.0f;            /* also catches NaN */
     if (bpm > 300.0f) bpm = 300.0f;
     d = bpm - z->bpm;

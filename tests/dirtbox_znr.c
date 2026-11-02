@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include "../src/custom/dirtbox/dirtbox.c"
+/* mono test signal: R = L, so the (L + R) / 2 the box hears is the signal itself */
+static void abp(AbState *s,const AbParams *P,float *x){ float r[8]; int j; for(j=0;j<8;j++) r[j]=x[j]; ab_process(s,(AbParams*)P,x,r,8); }
 #define SR 44100
 #define KICK (SR*3/8)            /* 160 BPM quarter notes */
 #define NK 64
@@ -17,7 +19,7 @@ static void run(float *x, int m, float znr){
     if(i<KICK*NK){ int p=i%KICK; float tt=(float)p/SR; y+=0.7f*expf(-tt*5.75f)*sinf(6.2831853f*(55.0f*tt+40.0f*(1.0f-expf(-tt*30.0f))/30.0f)); }
     x[i]=y; }
   ab_prepare(&P,k); ab_init(&s,&P);
-  for(i=0;i<N;i+=8)ab_process(&s,&P,x+i,8);
+  for(i=0;i<N;i+=8)abp(&s,&P,x+i);
 }
 static double rms(float *x,int a,int b){ double e=0; int i; for(i=a;i<b;i++)e+=x[i]*x[i]; return sqrt(e/(b-a)+1e-30); }
 int main(void){
@@ -40,7 +42,7 @@ int main(void){
     int i,w; srand(2);
     for(i=0;i<3*SR;i++){ float tt=(float)i/SR; off[i]=noise()+0.7f*expf(-tt*5.75f)*sinf(6.2831853f*55.0f*tt); on[i]=off[i]; }
     ab_prepare(&P1,k1); ab_init(&s1,&P1); ab_prepare(&P2,k2); ab_init(&s2,&P2);
-    for(i=0;i<3*SR;i+=8){ ab_process(&s1,&P1,off+i,8); ab_process(&s2,&P2,on+i,8); }
+    for(i=0;i<3*SR;i+=8){ abp(&s1,&P1,off+i); abp(&s2,&P2,on+i); }
     printf("%-5s single kick:", nm[m]);
     for(w=1;w<=12;w++){ int b=w*SR/5; float in=0.7f*expf(-(float)b/SR*5.75f);
       double g=20*log10(rms(on,b,b+SR/50)/rms(off,b,b+SR/50));

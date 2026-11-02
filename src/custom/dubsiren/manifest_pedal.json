@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 485,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -56,9 +56,17 @@
       "max": 125,
       "default": 70,
       "comment": "Echo feedback in percent, 100 = unity, up to 125 (self-oscillation, soft-clipped). 0 = no echo at all (Off); 1 and up = echo at a fixed level, with more repeats the higher you go. Default 70."
+    },
+    {
+      "name": "Pan",
+      "max": 100,
+      "default": 50,
+      "comment": "Where the siren and its echo sit in the stereo field (equal power). Screen shows L50 .. C .. R50. The input passes through untouched on both sides. Default 50 = centre."
     }
   ],
   "audio_func_name": "Fx_DLY_DubSiren",
   "audio_nop": false,
-  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP."
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 25.0,
+  "dsp_cost_comment": "Unchanged by the stereo port (a few adds per block); re-measure on the pedal."
 }

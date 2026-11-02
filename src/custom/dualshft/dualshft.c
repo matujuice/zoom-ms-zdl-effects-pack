@@ -1,5 +1,5 @@
 /*
- * dualshift.c - Tempo-synced modulated dual pitch shifter (mono DSP core)
+ * dualshift.c - Tempo-synced modulated dual pitch shifter (mono DSP core, stereo dry)
  *
  * Written for the themanro/ZoomMultistompZDL toolchain (TI C6000, plain C),
  * following the pedal-safe rules in docs/SAFE-DSP-RULES.md:
@@ -11,7 +11,7 @@
  *        and 1/BPM from a Newton-iteration reciprocal
  *   - ring indexing wraps with a compare, never % or a division
  *
- * Signal flow (mono)
+ * Signal flow (in = (L + R) / 2; the dry keeps L and R apart, both get the same wet)
  *   in -> one delay ring (172,032 samples, about 3.9 s)
  *   Voice 1: pitch-shifted echo, delay 1  (12 ms .. 1 s free, or a synced note value)
  *   Voice 2: pitch-shifted echo, delay 2  (12 ms .. 1 s free, or a synced note value)
@@ -53,7 +53,7 @@
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. It sets the LFO speed and the
+ *   MOD firmware's transport block; the stock patch tempo without it. It sets the LFO speed and the
  *   note-value delay times (held until it moves by 0.3 BPM). While the MIDI transport runs
  *   the LFO phase is placed on the clock count (beats since Start x the Div rate), so MIDI
  *   Start restarts it on the downbeat and it stays on the grid; after Stop it runs on at
@@ -107,7 +107,9 @@
 #define DS_EXPAND_PRAGMA(x) DS_DO_PRAGMA(x)
 #define DS_ALWAYS_INLINE(fn) DS_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define DS_CODE_SECTION(fn) DS_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
+#define DS_ITER8 _Pragma("MUST_ITERATE(8,8,8)") _Pragma("UNROLL(1)")
 #else
+#define DS_ITER8
 #define DS_ALWAYS_INLINE(fn)
 #define DS_CODE_SECTION(fn)
 #endif
@@ -528,7 +530,7 @@ static inline void ds_prepare(DualShift *s, DualShiftParams *P, const float *kra
  * (<= 8 samples of jitter, ~0.2 ms). */
 DS_ALWAYS_INLINE(ds_process)
 static inline void ds_process(DualShift *s, const DualShiftParams *P,
-                       float *buf, int n)
+                       float *restrict buf, float *restrict bufR, int n)
 {
     int   i;
     int   w;
@@ -536,7 +538,8 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
     unsigned int rng;
     float rfrom, rto;
     int rseg, rsign;
-    float *ring = s->ring;
+    float *restrict ring = s->ring;
+    float rtA[8], rtB[8], gnA[8], gnB[8], dlA[8], dlB[8];   /* per-sample controls of the block */
 
     ds_ensure_init(s);
 
@@ -569,18 +572,29 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
         rto = 0.3f + 0.35f * (next_rand(&rng) + 1.0f);
     }
 
-    for (i = 0; i < n; i++) {
-        float dry = buf[i];
-        float lfo, m, yA, yB, gainA, gainB;
+    /* Three short loops instead of one long one, so the compiler can pipeline the heavy one
+     * (same arithmetic, same order). Every tap reads at least 17 samples behind the newest
+     * sample, so this block's reads never see this block's writes: loop 1 writes the ring,
+     * loop 2 makes the per-sample controls, loop 3 reads the taps. n is always 8 (one block). */
+    {
+        int w1 = w;
+        DS_ITER8
+        for (i = 0; i < 8; i++) {
+            w1 = w1 + 1;
+            w1 = (w1 >= RING_SIZE) ? 0 : w1;
+            ring[w1] = 0.5f * (buf[i] + bufR[i]);
+        }
+    }
 
-        /* write newest sample */
-        w = w + 1;
-        if (w >= RING_SIZE) w = 0;
-        ring[w] = dry;
+    /* loop 2: delay follow, LFO, pitch ratios */
+    for (i = 0; i < 8; i++) {
+        float lfo, m;
 
         /* follow the synced delay times (fade / jump / fade, see above) */
-        gainA = dly_follow(&dA, &gA, P->dlyA);
-        gainB = dly_follow(&dB, &gB, P->dlyB);
+        gnA[i] = dly_follow(&dA, &gA, P->dlyA);
+        gnB[i] = dly_follow(&dB, &gB, P->dlyB);
+        dlA[i] = dA;
+        dlB[i] = dB;
 
         /* tempo-synced LFO, updated every sample */
         ph += P->lfo_inc;
@@ -622,11 +636,26 @@ static inline void ds_process(DualShift *s, const DualShiftParams *P,
          * The LFO factor is its own exact 2^(m/12)
          * polynomial (+-12 st, ~0.3 cent), multiplied onto the base
          * ratio, so the two errors never add up across a +-24 range. */
-        yA = voice_step(ring, w, &p1, P->ratioA * semis_to_ratio(m),  dA);
-        yB = voice_step(ring, w, &p2, P->ratioB * semis_to_ratio(-m), dB);
+        rtA[i] = P->ratioA * semis_to_ratio(m);
+        rtB[i] = P->ratioB * semis_to_ratio(-m);
+    }
 
-        /* mono: average the two voices, then dry/wet */
-        buf[i] = P->dryG * dry + P->wetG * (0.5f * (yA * gainA + yB * gainB));
+    /* loop 3: the two pitch-shift voices (four tap reads), then dry/wet */
+    {
+        const float *restrict rd = ring;
+        int w3 = w;
+        DS_ITER8
+        for (i = 0; i < 8; i++) {
+            float dry = buf[i], dryR = bufR[i], yA, yB, wet;
+            w3 = w3 + 1;
+            w3 = (w3 >= RING_SIZE) ? 0 : w3;
+            yA = voice_step(rd, w3, &p1, rtA[i], dlA[i]);
+            yB = voice_step(rd, w3, &p2, rtB[i], dlB[i]);
+            wet = P->wetG * (0.5f * (yA * gnA[i] + yB * gnB[i]));
+            buf[i] = P->dryG * dry + wet;
+            bufR[i] = P->dryG * dryR + wet;
+        }
+        w = w3;
     }
 
     s->w = w;
@@ -846,7 +875,7 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     DualShift *s;
     DualShiftParams P;
     float k[9], beats, t;
-    int i, run, start;
+    int run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -892,9 +921,7 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
         }
         return;
     }
-    ds_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    ds_process(s, &P, fxBuf, fxBuf + 8, 8);      /* hears (L + R) / 2, dry L and R stay apart */
 }
 
 #endif /* DUALSHIFT_HOST_TEST */

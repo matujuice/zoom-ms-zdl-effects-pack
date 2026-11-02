@@ -100,6 +100,16 @@ them out, and compute `1 / x` with its own Newton iteration rather than
 squaring an `rsqrt`. That is what took DirtBox's audio code down by 45 %
 without changing the sound (host A/B error under -69 dB).
 
+Software pipelining also costs bytes: every pipelined loop gets its own prolog and
+epilog. CGT 8.5 has no per-loop `NOSWP` pragma and refuses `-mu` in `FUNCTION_OPTIONS`,
+and `--opt_for_space` brought in `__c6xabi_pop_rts`. What works: an `__asm(" NOP")` in
+a loop body (Choral's `SR_NOSWP`) keeps that one loop unpipelined, and code that runs
+rarely or once per model can go in a real function built at `--opt_level=1`
+(DirtBox's `AB_SMALL_FUNC`: `FUNC_CANNOT_INLINE` + `FUNCTION_OPTIONS` + `CODE_SECTION`).
+A helper called from two places and force-inlined is two copies: DirtBox's `ab_prepare`
+alone was 6 KB of its 9 KB growth. The calls are PC-relative; returns go through a copy
+of `B3` in an A register, which is still the return, not a materialized address.
+
 ## Known Freeze Patterns
 
 * Large Airwindows delay/reverb/chorus state arrays in `.fardata`.

@@ -5,13 +5,15 @@
 #include <string.h>
 #include <math.h>
 #include "../src/custom/dirtbox/dirtbox.c"
+/* mono test signal: R = L, so the (L + R) / 2 the box hears is the signal itself */
+static void abp(AbState *s,const AbParams *P,float *x){ float r[8]; int j; for(j=0;j<8;j++) r[j]=x[j]; ab_process(s,(AbParams*)P,x,r,8); }
 #define N 88200
 static double run(int m,float d,float t,float amp,float lo,float mi,float hi,float *pk,int *bad){
   static float x[N]; AbState s; AbParams P; float k[9]={m/6.0f,d,t,lo,mi,hi,0.0f,0.5f,1.0f};
   double ai=0,ao=0; int i; *pk=0;
   ab_prepare(&P,k); ab_init(&s,&P);
   for(i=0;i<N;i++){ float ph=110.0f*i/44100.0f; ph-=(float)(int)ph; x[i]=amp*(2.0f*ph-1.0f); }   /* 303-ish saw */
-  for(i=0;i<N;i+=8)ab_process(&s,&P,x+i,8);
+  for(i=0;i<N;i+=8)abp(&s,&P,x+i);
   for(i=N/2;i<N;i++){float ph=110.0f*i/44100.0f; ph-=(float)(int)ph; float y=amp*(2.0f*ph-1.0f); ai+=y*y; ao+=x[i]*x[i];
     if(!(fabsf(x[i])<4.0f))*bad=1; if(fabsf(x[i])>*pk)*pk=fabsf(x[i]);}
   if(ao<=0||ao!=ao)*bad=1;

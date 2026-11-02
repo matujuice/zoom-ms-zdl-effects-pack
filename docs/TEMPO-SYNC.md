@@ -410,6 +410,10 @@ Hardware probe for all of this (2026-10-05): `src/probes/tempoprb/` runs the
 Net: no route found for a custom effect to read the pedal's tempo. Bar sync
 uses the twin-Tempo knob trick and an external host instead.
 
+Update 2026-10-29: the firmware work found the patch TEMPO as a plain int at `0xC009C06C`
+(tap tempo writes it through `set_setting`). Effects read it directly on stock firmware (§10);
+not yet heard on a stock pedal.
+
 ## 8. SDK shape for a custom sync-aware effect
 
 Putting the pieces together, a custom tempo-aware delay can be written
@@ -454,14 +458,14 @@ remain deferred until we hardware-confirm the TAPEECH3 reading.
 
 ## 10. MOD firmware MIDI transport (2026-10-08)
 
-The pack's tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) target
-Luca's custom firmware only (MOD 0.4 and later, repo zoom-ms-modding, spec in its
+The pack's tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) target
+Luca's custom firmware only (MIDISTOMP v1.0 and later, repo zoom-ms-midistomp, spec in its
 `docs/transport-block.md`). It handles MIDI clock, Start and Stop and keeps an 8-word transport block
 at `0x1181FF00`: magic `0x5A4D5401`, sequence (odd = mid-write), running, Start counter, clocks since
 Start (the first clock is 1, the downbeat), BPM x 100 (the clock's tempo while it runs, else the pedal's
 TEMPO from tap, the setting or the patch). `src/custom/common/zmt.h` reads it once per block.
 
-- No Tempo knob: the BPM is the pedal's; 120 BPM without the block (stock firmware).
+- No Tempo knob: the BPM is the pedal's. Without the block (stock firmware) `zt_update` reads the patch TEMPO int at `0xC009C06C` (tap tempo, TEMPO setting, patch; same address on MS-50G 3.10 and MS-70CDR 2.10, from zoom-ms-midistomp docs/dev/ms70cdr-addresses.md), 120 if it is not 40..250. This is the plain BPM §7 could not find: it sits just below the slot table, in the patch buffer.
 - While the transport runs each effect places its LFO, pattern or beat clock on the clock count, so MIDI
   Start restarts it on the downbeat, an effect loaded mid-song lands in place and nothing drifts. Between
   clocks it moves on at the tempo, never past the next clock. Positions wrap at 96 beats, a whole number

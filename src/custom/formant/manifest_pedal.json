@@ -4,7 +4,7 @@
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped with the rest of the pack.",
   "fxid": 486,
-  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GridDly, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
+  "fxid_comment": "480 DualShft, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep (this pack; 492 and 494 were used by dropped effects, 498 and 499 by the probes). Unique inside the repo; check other community effects.",
   "fxid_version": "1.00",
   "flags_byte": 1,
   "params": [
@@ -56,8 +56,16 @@
       "max": 100,
       "default": 70,
       "comment": "Dry synth / choir, DJ style: dry full up to 50, choir full from 50, both full at 50. Default 70."
+    },
+    {
+      "name": "Width",
+      "max": 100,
+      "default": 50,
+      "comment": "Stereo spread of the choir. 0 = all centred (mono), 100 = the sections spread wide: GIANT far left, MEN left, WOMEN right, KIDS far right (equal power). A choir of one section stays in the centre. The pitch tracker hears (L + R) / 2. Default 50."
     }
   ],
   "audio_func_name": "Fx_DLY_Formant",
-  "audio_nop": false
+  "audio_nop": false,
+  "dsp_cost": 135.0,
+  "dsp_cost_comment": "Stereo estimate (about +13 over the mono 122); re-measure on the pedal."
 }

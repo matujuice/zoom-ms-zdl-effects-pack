@@ -2,9 +2,11 @@
 
 Every knob shows its real value on the pedal's screen where that makes sense (BPM, milliseconds, note names).
 
-**Tempo comes from the pedal (on `main`, not in a release yet).** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GridDly, Sweep) are made for the custom firmware [zoom-ms-modding](https://github.com/matujuice/zoom-ms-modding) (MOD 0.4 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they play at 120 BPM. Release v1.5 has the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
+**Tempo comes from the pedal.** The tempo effects (DualShft, Choral, EuGate, DubSiren, Scrub, Breather, GRDELAY, Sweep) are made for the custom firmware [MIDISTOMP](https://github.com/matujuice/zoom-ms-midistomp) (v1.0 or later) and have no Tempo knob. They play at the pedal's tempo: MIDI clock, tap or the patch tempo. While a MIDI clock runs they stay on its grid: MIDI Start restarts their LFO, pattern or beat on the downbeat, and an effect switched on or loaded mid-song lands in the right place. After Stop they keep running at the last tempo. While one of them is switched off its LFO or pattern keeps following the clock, so it comes back in time. On stock firmware they follow the tap tempo and the patch TEMPO, without the MIDI clock. Release v1.5 has the older builds with a Tempo knob and the iPhone (Mozaic) bar sync.
 
 ### WaveFold: wavefolder
+
+<img src="../graphics/wavefold.png" width="320" alt="WaveFold on the pedal screen">
 A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and Parker, DAFx-2017). Five parallel folding stages bend the sound back on itself as Drive goes up. The loudness is matched to your input automatically. No oversampling, so high notes at high Drive alias.
 
 | Knob | Range | What it does |
@@ -16,6 +18,8 @@ A fold curve from a published Buchla 259 model (Esqueda, Pontynen, Valimaki and 
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### DualShft: tempo-synced dual pitch shifter
+
+<img src="../graphics/dualshft.png" width="320" alt="DualShft on the pedal screen">
 Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO that bends them in opposite directions. No feedback.
 
 | Knob | Range | What it does |
@@ -28,6 +32,8 @@ Two pitch-shift voices, each with its own echo time, plus one tempo-synced LFO t
 | Mix | 0..100 | Dry/wet crossfade, DJ style: the dry sound stays full up to 50, the effect is full from 50, so at 50 both play at full level. |
 
 ### Choral: choir
+
+<img src="../graphics/choral.png" width="320" alt="Choral on the pedal screen">
 Listens to the note your synth plays and sings it with its own choir, so every synth (bright saw, sine, closed filter) gets the same voice. For mono lines: leads, basses, arps. A chord or a pad has no single note, so the choir drops out and only the dry synth plays. A new note is found in about 10 to 70 ms, octave jumps included, and fast arps (16ths at 160 BPM) are followed note by note: at Glide 0 a legato change hushes the old note and starts the new one fresh. Two detuned oscillators work too: when they drift in and out of phase and look like an octave or a fifth up, the choir waits 3 s before it believes it (a real octave jump is still taken at once). In a decay tail the choir keeps its note. Breath noise follows the singers' own level, so it stays well under the voice on high notes and high sections too.
 
 | Knob | Range | What it does |
@@ -40,8 +46,11 @@ Listens to the note your synth plays and sings it with its own choir, so every s
 | Feel | 0..100 | 0 = soft and legato (slow attack, wide vibrato, breathy, dark) .. 100 = punchy and staccato (fast attack and release, bright, OOAH snaps). |
 | Glide | 0..100 | 0 = every note starts fresh, even when you play legato (best for fast arps). 1..100 = legato: the voice keeps singing and slides to the new note, ~3 ms .. ~0.6 s. |
 | Mix | 0..100 | Dry synth / choir crossfade, DJ style: the dry sound stays full up to 50, the choir is full from 50, so at 50 both play at full level. |
+| Width | 0..100 | Stereo spread of the choir: 0 = all in the centre, 100 = GIANT far left, MEN left, WOMEN right, KIDS far right. A choir of one section stays in the centre. The pitch tracker hears the left and right inputs added together. |
 
 ### EuGate: Euclidean rhythm gate
+
+<img src="../graphics/eugate.png" width="320" alt="EuGate on the pedal screen">
 Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are spread as evenly as possible over the steps (a Euclidean rhythm).
 
 | Knob | Range | What it does |
@@ -58,6 +67,8 @@ Chops the sound into a repeating rhythm. Every step is a 16th note. Notes are sp
 Try 5 notes in 16 steps (the default), then 7 in 12 or 5 in 12 for a different feel.
 
 ### DubSiren: dub siren with tape echo
+
+<img src="../graphics/dubsiren.png" width="320" alt="DubSiren on the pedal screen">
 A siren oscillator with LFO modes, played from the footswitch, into its own tape-style echo. Your input passes through untouched.
 
 | Knob | Range | What it does |
@@ -70,14 +81,17 @@ A siren oscillator with LFO modes, played from the footswitch, into its own tape
 | Vol | 0..100 | Siren level. |
 | Time | 50 ms..1 s | Echo time (never synced). |
 | Fdbk | 0..125 | Echo repeats. 0 = no echo, above 100 it self-oscillates. |
+| Pan | L50..C..R50 | Where the siren and its echo sit in the stereo field. The input passes through untouched on both sides. |
 
 ### S.GN_L: broken digital line
+
+<img src="../graphics/sgnl.png" width="320" alt="S.GN_L on the pedal screen">
 The sound is cut into packets and some of them never arrive, like a VoIP call on bad Wi-Fi or a digital radio losing lock. What fills the hole is most of the character: silence, the last packet replayed as a buzz or a stutter, a fading replay, or hiss. A Codec knob wrecks the quality on top (spectral holes, a closing low-pass, a lower sample rate, fewer bits). The file is `SGNL.ZDL`; the pedal shows the name S.GN_L.
 
 | Knob | Range | What it does |
 |---|---|---|
 | Loss | 0..100 | How many packets are lost. 0 = clean line, 100 = about 85 %. |
-| Size | 1 ms..500 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
+| Size | 1 ms..400 ms | Packet length. Short = grit and, with REPT, a buzz at the packet rate (5 ms = about 200 Hz). Long = notes and words drop out or stutter. |
 | Codec | 0..100 | Codec quality going down. Above 50 the first packet after a silence is lost too, like a call clipping the start of a word. |
 | Fill | GAP, REPT, FADE, NOISE, REVRS, GARBL, LATE, RND | What replaces a lost packet: silence, the last packet replayed, the replay dying away, hiss at the level of the sound, the last packet backwards, corrupted data (boosted random slices, a digital screech), an older packet out of order so phrases shuffle, or a random one of these per outage (never GARBL). |
 | Burst | 0..100 | 0 = scattered single losses, 100 = long outages, with the same overall amount. |
@@ -89,6 +103,8 @@ The sound is cut into packets and some of them never arrive, like a VoIP call on
 Try Size 5 ms with Fill REPT and Burst high for robot voice, or Size 60 ms, Fill GAP and Line PHONE for a bad call.
 
 ### Scrub: scrub through the past, freeze where you stop
+
+<img src="../graphics/scrub.png" width="320" alt="Scrub on the pedal screen">
 Everything you play is recorded into a 7.9 second buffer. Pos moves a read head through it: turning it, short grains follow the head through the audio at the original pitch, and when you stop, the grain just before the head loops on and on, crossfaded so the loop has no click. Known from Mutable Instruments Clouds/Beads (Position + Freeze) and the Morphagene.
 
 | Knob | Range | What it does |
@@ -100,13 +116,16 @@ Everything you play is recorded into a 7.9 second buffer. Pos moves a read head 
 | Dir | FWD, REV, PING, RAND | Which way the grain plays: forward, backward, ping-pong (forward then backward in turns) or random (each grain flips a coin). PING turns round on itself, so the loop has no jump and sounds smoother and more tonal. |
 | Spray | OFF, +-1..+-250 | Random offset for each new grain, either side of the head, shown in ms (+-250 = up to 250 ms before or after; never ahead of now): a moving cloud instead of a steady loop. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
+| Stereo | MONO, ST | MONO: one 7.9 s buffer of the two inputs added together, a mono freeze (the dry keeps left and right). ST: a buffer per side, 3.9 s, a true stereo freeze (Pos beyond 3.9 s is held at the limit). Changing it restarts the buffer. |
 
 Try: play a Digitakt loop in LIVE, turn Rec to HOLD, then sweep Pos slowly with Glide around 60 and stop on a snare. Grain 10..30 ms on a held synth chord gives a buzzy drone; Spray 30 makes it a cloud.
 
-### GridDly: one tempo-synced delay, six engines
-New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+### GRDELAY: one tempo-synced delay, six engines
 
-One mono delay with a 7.9 second memory. Type picks the engine, Time sets the echo (free or a note value at the pedal's tempo), and Char changes what it means with each engine.
+<img src="../graphics/grdelay.png" width="320" alt="GRDELAY on the pedal screen">
+Built and tested on the MS-60B (2026-10-07).
+
+One delay with a 7.9 second mono memory (3.9 s in the stereo modes). Type picks the engine, Time sets the echo (free or a note value at the pedal's tempo), and Char changes what it means with each engine.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -118,11 +137,14 @@ One mono delay with a 7.9 second memory. Type picks the engine, Time sets the ec
 | Duck | 0..100 | The repeats dip while you play and swell back in the gaps. 0 = off. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. |
 | Tail | OFF, ON | When you switch the effect off: ON lets the repeats ring out and fade, like the stock delays; OFF stops them at once. The dry sound passes untouched either way. |
+| Stereo | MONO, ST, PING | MONO: one 7.9 s mono delay. ST (default): a delay per side, 3.9 s, left in left out, right in right out. PING: ping-pong from one 3.9 s buffer, repeats alternate left and right (Time is the gap between repeats, at most about 1.9 s). Changing it restarts the buffer. |
 
 Try: DUB at 1/8., Fdbk 85, Char 60, then sweep Tone for dub throws on a snare. REVRS at 1bar on a pad with a MIDI clock running. TAPS with Char 50 on hats for a triplet trail.
 
 ### Breather: tempo-synced pump with a reverb
-New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
+<img src="../graphics/breather.png" width="320" alt="Breather on the pedal screen">
+Built and tested on the MS-60B (2026-10-07).
 
 On every beat (or every Div) something moves: your sound, the built-in reverb, both, or what goes into the reverb. Targt picks what, Shape picks how. Made for pads, basses, percussion and drum machines around 160 BPM.
 
@@ -142,7 +164,9 @@ No Mix knob: Depth and Verb already set how much you hear. Out of the box it is 
 Try: DRY + DUCK on a pad (the classic pump); DRY + GATE (hard pump: silent on the kick, back after Curve); VERB + RISE (the reverb swells into every kick); SEND + GATE (the hits stay dry, the gaps wash out); DRY + GATE with Shift 50 and Curve 50 (open on the beat, cut on the offbeat: a chop).
 
 ### DIRTBOX: a distortion box for an acid machine
-New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
+<img src="../graphics/dirtbox.png" width="320" alt="DIRTBOX on the pedal screen">
+Built and tested on the MS-60B (2026-10-07).
 
 Made for a TB-303 / TD-3 (or a MeeBlip triode) going into the pedal: seven real distortion pedals on the Model knob, mildest first, a 3-band EQ voiced for acid, and an automatic noise reducer (ZNR). Same fxid 491 as the first 3-model DirtBox. Drive mostly adds dirt rather than volume: an input peaking around -14 dBFS comes out at about the same level at any Drive.
 
@@ -175,7 +199,9 @@ Only RAT2 is nearly clean at Drive 0; the others still distort at 0, as the real
 Try: TD-3 into RAT2 at Drive 50, Tone 80, Mid +3 for a classic squelch; DS-1 for the TD-3's own distortion sound; SFUZZ with Tone 0 and Low +4 for fat, octave-up drones; Mix 50 to keep the clean line under the dirt.
 
 ### Sweep: phaser, flanger and filter in one
-New, not in a release yet: built and tested on the MS-60B (2026-10-07).
+
+<img src="../graphics/sweep.png" width="320" alt="Sweep on the pedal screen">
+Built and tested on the MS-60B (2026-10-07).
 
 One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for synths and drum machines.
 
@@ -192,32 +218,132 @@ One tempo-locked LFO sweeps one of three engines, picked with Type. Meant for sy
 
 Try: LP, Reso 60, Rate 1BAR, Shape RISE on a drum loop for a filter build; PH 8 on a pad with Rate 4BAR; FL - at Reso 70, Cntr 70 for a jet.
 
-### Looper: a bar-synced looper on the song grid
-Test build for MIDISTOMP v2.0 (step 1, 2026-10-15; looper services, step 2, in test), not in a release. Needs the MIDISTOMP firmware for its grid (on stock firmware it runs at 120 BPM). Not tested on a pedal yet.
+### LOUDER: a mastering limiter
 
-The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
+<img src="../graphics/louder.png" width="320" alt="LOUDER on the pedal screen">
+Stereo in and out, for the end of the chain (after MIX).
 
-**Footswitch.** With the MIDISTOMP looper services (v2.0 step 2) and the Looper under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, and the patch is not marked edited. The Looper's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On older firmware, and for a second Looper in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
-
-| State | Press | Double press (two within 300 ms) |
-|---|---|---|
-| Empty | record Length bars, then play | — |
-| Recording | nothing | throw the recording away (at once) |
-| Playing | stop (the loop is kept) | delete the loop |
-| Stopped | play again, in its place on the grid | delete the loop |
-
-Every action waits for the When line. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat. MIDI Stop stops a playing loop at once (a recording under way and a waiting action are dropped), and the next MIDI Start plays it again from bar 1. A loop you stopped with the footswitch stays stopped.
+A transparent look-ahead limiter in the Pro-L / Ozone Maximizer family: it pushes the level up and holds it under the ceiling. One gain for both sides, taken from the louder one. The sound is delayed by 1.5 ms so the gain is already down when a peak arrives: no clipping, no click. Anything the limiter does not catch is cut by a hard clip at Ceil (after Mix, so the ceiling holds at any Mix).
 
 | Knob | Range | What it does |
 |---|---|---|
-| Mix | 0..100 | Live and loop, DJ crossfade: live full up to 50, loop full from 50. With no loop playing only the live part is heard (100 = silence). |
-| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat. It starts on the next bar line and repeats the last 1/2 .. 1/32 of the bar that was playing. A new rate takes over on its next line (1/4 to 1/8 doubles the repeats). OFF lands on the next line, where the loop would have been. |
-| Length | 1BAR..8BAR | Loop length. Stereo if it fits, else mono, else halved (8, 4, 2, 1). |
-| When | IMMED, BEAT, BAR, CYCLE | When record, stop, play and delete happen: at once (a single press waits 300 ms in case it is a double), on the next beat, the next bar, or the next Amount-bar line counted from bar 1. |
-| Amount | 1BAR..16BAR | The cycle for When CYCLE. Length 4 with CYCLE 8 records the first 4 bars of the next 8-bar phrase. |
+| Gain | 0.0 .. +18.0 dB | How hard the sound is pushed into the limiter, 0.1 dB steps. Default 0. |
+| Ceil | -6.0 .. 0.0 dB | The ceiling: nothing comes out above it. 0.1 dB steps. Default -0.1 dB. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the ceiling line. Default x3. |
+| Rels | AUTO, 1 .. 1000 ms | Release. AUTO is program-dependent: a fast stage (30 ms) lets go after single peaks, a slow one (250 ms) after sustained level, so it does not pump. A number is one stage with that time. |
+| Style | CLEAN, PUNCH, LOUD | Only the saturation before the limiter and how much transient gets through (never the release). CLEAN has none, PUNCH adds a little and lets transients through a little, LOUD is the densest. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style (parallel limiting). The dry is delayed like the wet, so a part Mix never sounds like a comb filter. |
 
-**Memory.** 12-bit block floating point (Luca's A/B, 2026-10-15). With the firmware's big buffer (v2.0 step 2: free RAM regions 3, 2 and 1 plus the effect's own block, 3.3 MB): 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). One Looper per patch gets it; a second one keeps its own block. Until then only the effect's own 705 KB: about 10 s mono or 5 s stereo (1 bar stereo at any tempo, 2 bars stereo from about 93 BPM, 4 bars mono from about 95, 8 bars mono from about 190). A mono loop records the left input. The loop is lost on a patch change.
+At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 ms later). The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the level after Gain (one column = 1/32 beat), with the ceiling as a centered line tagged CEIL and GAIN. What pokes out of the box above the line is what the limiter takes off. It scrolls with the MIDI clock when it runs, else with tap or patch tempo. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
 
-**Screen and LED** (looper services). A box on the Looper's screens (top right of the knob pages, under LOOPER on the cover) shows EMPTY, REC WAIT, REC (REC MONO when the loop fell back to mono), PLAY, STOP or DEL WAIT, with a bar that fills as the recording or the loop goes on. While recording the box pulses every 2 beats; while an action waits it blinks (STOP or PLAY blink while waiting to stop or play), faster as the moment comes, never faster than 1/16 notes. The LED, while the Looper is under the cursor: off when empty or stopped, a fade every 2 beats while recording, on while playing, the same countdown blink while an action waits. A double press while stopped deletes at once.
+### DJFilter: a DJ filter and kick kill
+
+<img src="../graphics/djfilter.png" width="320" alt="DJFilter on the pedal screen">
+Stereo in and out.
+
+The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
+
+| Knob | Range | What it does |
+|---|---|---|
+| DJ | -100..+100 | Left low-pass (-100 closes down to about 40 Hz), right high-pass (+100 closes up to about 10 kHz), -3..+3 is flat. |
+| Reso | 0..100 | Resonance at the far end of the sweep. About none when the filter is open, rising as it closes, never self-oscillating. Default 30. |
+| Kill | OFF, 20..300 Hz | An independent 24 dB/oct low cut that removes kick and bass. Use it alone or on top of the filter. Default OFF. |
+| Slope | 12 / 24 | dB per octave of the filter (not Kill). 12 is gentle and warm, 24 is the hard DJ-mixer cut. Default 24. |
+| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. Default about 20 ms. |
+| Level | -12.0..+6.0 dB | Output trim. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
+
+### Washout: a delay that melts into a cloud
+
+<img src="../graphics/washout.png" width="320" alt="Washout on the pedal screen">
+Stereo in and out.
+
+A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. There is no Mix knob: Send is a crossfade-send (like the macro knob of Baby Audio Transit). Turning it up sends more input into the wash and fades the dry down in one equal-power move, so the level stays even. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. When the tail has died and nothing goes in, it costs next to nothing.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GRDELAY, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
+| Wash | 0..100 | Diffusion: how much each pass smears. 0 skips the diffusers. Default 70. |
+| Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
+| HiCut | 0..100 | Low-pass in the loop, so each pass gets darker. 0 = off. |
+| LoCut | 0..100 | High-pass in the loop, so each pass gets thinner. 0 = off. |
+| Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
+| Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
+
+Try: Send 50 to sit the cloud under the dry; Fdbk 100, then Send 0 to freeze the cloud under the dry; Send 100 and Fdbk 110 with HiCut 40 for a dark swell that swallows the track.
+
+### Takeoff: risers and downlifters
+
+<img src="../graphics/takeoff.png" width="320" alt="Takeoff on the pedal screen">
+Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
+
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Dir | UP / DOWN | UP sweeps up and cuts clean at the end. DOWN starts at the top, falls and fades. Default UP. |
+| Len | 1/2/4/8/16 bars, or 1..31 s | Sweep length (bars at the pedal's tempo). Default 4 bars. |
+| Color | 0..100 | Noise tone: low = a narrow whistling resonance, high = a wide airy hiss. Default 25. |
+| Wind | 0..100 | Slow random gusts: the noise filter and level drift on their own, apart on left and right. 0 = steady. Default 40. |
+| Grain | 0..100 | Noise texture: 0 = smooth hiss, up = coarse, crackly, gritty. Default 0. |
+| Range | 0..100 | How far the noise sweep travels (0..5 octaves): small = a short, subtle lift, 100 = from deep rumble to full air. Default 60 (3 octaves). |
+| Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind and Grain, drawn once per sweep. Len, Dir and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
+| Space | 0..100 | Reverb tail on the riser's own sound, ringing on after the cut. 0 = off. Default 0. |
+| Vol | 0..100 | Level of the added sound. Default 50. |
+
+Try: UP, Len 8 bars, Wind 60, Space 40 for a classic build-up; Range 20, Len 1 bar for a quick lift into a chorus; DOWN, Color 80, Space 60 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
+
+### Gooey: a mix bus compressor
+
+<img src="../graphics/gooey.png" width="320" alt="Gooey on the pedal screen">
+Stereo in and out.
+
+An SSL G-bus style VCA compressor to glue a mix: one character, done well. One gain for both sides, taken from the louder one (half peak, half RMS detector, soft knee). The sidechain high-pass listens only to the detector, so a kick does not pump the whole mix and the sound itself is never filtered. Thrsh at 0 bypasses it completely.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Thrsh | -40 .. 0 dB | Threshold in 0.1 dB steps. 0 = OFF (bit-exact bypass, no cost). Default 0. |
+| Ratio | 1.5, 2, 4, 10 | Default 4. |
+| Zoom | x0.5 .. x8.0 | Meter only: rows a dB, scaled around the threshold line. Default x1. |
+| Attck | 0.1, 0.3, 1, 3, 10, 30 ms | Default 10 ms. |
+| Rels | 0.1, 0.3, 0.6, 1.2 s, AUTO | AUTO is program-dependent: 0.1 s after single peaks, up to 1.2 s after sustained reduction, so it does not pump. Default AUTO. |
+| MkUp | AUTO, OFF, +0.5 .. +20 dB | AUTO adds back the average gain reduction. Default OFF. |
+| Mix | 0..100 | Linear dry/wet blend like the Digitakt compressor (parallel compression), so Mix 50 is not louder. Default 100. |
+| SC HP | OFF, 20 .. 300 Hz | High-pass on the detector only (12 dB/oct). Default OFF. |
+
+Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level (one column = 1/32 beat), with the threshold as a centered line tagged THRSH. It scrolls with the MIDI clock when it runs, else with tap or patch tempo. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+
+### GRDLOOP: a bar-synced looper on the song grid
+
+<img src="../graphics/grdloop.png" width="320" alt="GRDLOOP on the pedal screen">
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo.
+
+The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
+
+**Footswitch.** On MIDISTOMP v2.0, with GRDLOOP under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, the patch is not marked edited and the LED shows the state. GRDLOOP's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On stock firmware, and for a second GRDLOOP in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
+
+| State | Press | Double press (two within 300 ms) |
+|---|---|---|
+| Empty | record (see Sync), then play | — |
+| Recording | Sync OWN: end the recording (rounded up to whole cycles). SLAVE: nothing | throw the recording away |
+| Playing | stop (the loop is kept) | delete the loop |
+| Stopped | play again, in its place on the grid | delete the loop |
+
+Record, stop and play wait for the Next line; delete is always at once. MIDI Start moves a waiting action to the downbeat, and a recording under way starts again on the downbeat. What MIDI Stop does is the Stop knob.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Mix | 0..100 | Live and loop, DJ crossfade: live full up to 50, loop full from 50. With no loop playing only the live part is heard (100 = silence). In Mixer Mode's Parallel mode keep it at 100 and use [MIX]'s Crossfade. Default 50. |
+| Roll | OFF, 1/2, 1/4, 1/8, 1/16, 1/32 | Latched beat repeat of a slice of the bar: it starts on the next bar line. A new rate takes over on its next line; OFF lands on the next line, where the loop would have been. Default OFF. |
+| Sync | OWN, SLAVE | OWN: record from the Next line until the Next line after your second press, rounded up to whole cycles. SLAVE: record one cycle, then play. Default OWN. |
+| Next | NOW, BEAT, BAR, CYC | When record, stop and play land: at once (a single press waits 300 ms in case it is a double), the next beat, the next bar, or the next cycle start counted from bar 1. Default CYC. |
+| Cycle | 1..32 bars | The cycle length. Perform mode's CYCLE overrides it when set. Default 8 bars. |
+| Stop | KEEP, HALT | KEEP: MIDI Stop and clock loss are ignored, the loop plays on at the last tempo and waiting actions keep waiting; the next MIDI Start restarts it at bar 1. HALT: MIDI Stop stops the loop and drops waiting actions; Start plays it from bar 1. Default KEEP. |
+
+Old Looper patches load: Length 2 bars reads as SLAVE (others OWN), When maps to Next (IMMED = NOW) and Amount to Cycle.
+
+**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 10 s mono or 5 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change.
+
+**Screen and LED** (MIDISTOMP v2.0). A box on GRDLOOP's screens (top right of the knob pages, under LOOPER on the cover) shows EMPTY, REC WAIT, REC (REC MONO when the loop fell back to mono), PLAY, STOP or DEL WAIT, with a bar that is always there: it fills as the recording goes on, shows the place in the loop while playing or stopped, and fills up to the line while REC WAIT waits. Only the bar blinks, never the whole box: while recording it goes off for an 1/8 every 2 beats; while an action waits it blinks (STOP or PLAY show while waiting to stop or play), faster as the moment comes, from once per 2 bars down to 1/8 notes. The LED, while GRDLOOP is under the cursor: off when empty or stopped, a fade every 2 beats while recording, on while playing, the same countdown blink while an action waits. A double press while stopped deletes at once.
 
 **Tempo changes.** The loop stays on the grid and keeps its pitch. Every 1/16 line it checks where it should be. Faster than recorded, each 1/16 is cut short at the next line. Slower, a 1/16 that runs out is filled with overlapping 30 ms grains of its own tail (15 ms crossfades) until the line, so sustained sounds stretch smoothly and no attack is heard twice; the hits stay on their lines. The grain size is the constant `LP_GX` in looper.c. At the recording tempo nothing moves.

@@ -296,6 +296,9 @@ class LinkerConfig:
     # linking. Useful as a smoke test: lets the firmware exercise the UI
     # without running the plugin's DSP.
     audio_nop: bool = False
+    # Descriptor +0x28: the DSP cost the firmware adds up against its "DSP Full" limit (225).
+    # Stock effects measure about 100 cycles per unit (M0 probe, docs/STEREO.md).
+    dsp_cost: float = 20.0
 
     # Diagnostic override. Normal builds prefer object-defined edit
     # handlers when present, because those are the only way knobs 3..9
@@ -506,12 +509,32 @@ def _patch_abs_h16(code: bytearray, offset: int, value: int) -> None:
 
 
 def _patch_pcr_s21(code: bytearray, offset: int, target_addr: int, instr_addr: int) -> None:
-    delta = (target_addr - instr_addr) >> 2          # PC-relative, in instruction words
+    delta = (target_addr - (instr_addr & ~31)) >> 2  # from the fetch packet (PCE1), in words
     if delta < -(1 << 20) or delta >= (1 << 20):
         raise ValueError(f"PCR_S21 displacement {delta:#x} out of range")
     instr = struct.unpack_from('<I', code, offset)[0]
     instr = (instr & ~(0x1FFFFF << 7)) | ((delta & 0x1FFFFF) << 7)
     struct.pack_into('<I', code, offset, instr)
+
+
+def _reloc_addend(rel: dict, sym_shndx: int, sec_idx: int) -> int:
+    """Addend to add to the symbol's final address for one .obj relocation."""
+    # cl6x's intra-section CALLP placeholders encode a displacement
+    # measured from the SECTION START, not from the instruction. We
+    # compensate by adding the instruction's section offset (stored
+    # in rel['addend'] for PCR_S21). For externally-resolved symbols
+    # like __c6xabi_call_stub, sym_addr is the final VA and no such
+    # compensation is needed — applying it lands the call past the
+    # real target by exactly the instruction's section offset, which
+    # froze the pedal on InitProbe stage 2.
+    if sym_shndx == 0:
+        return 0
+    if rel['type'] == RT_PCR_S21 and sym_shndx != sec_idx:
+        # Call into the other section (Choral's .text labels -> ch_word_text in .audio):
+        # cl6x's addend is the instruction offset again (displacement 0), so the
+        # target is the symbol itself. Adding it froze the pedal on the edit screen.
+        return rel['addend'] - rel['offset']
+    return rel['addend']
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +580,7 @@ def _build_descriptor(
     onf_func_va: int,
     knob_edit_vas: list[int],
     params: list[Param],
+    dsp_cost: float = 20.0,
 ) -> tuple[bytes, list[tuple[int, int]]]:
     """Returns (descriptor_bytes, [(offset_in_desc, target_va), ...])."""
     assert len(knob_edit_vas) == len(params), (
@@ -589,7 +613,7 @@ def _build_descriptor(
     # imageInfo declare them. See docs/3-PARAM-LINKER-BUG.md.
     # 20.0f (0x41a00000) is in the typical range for simple effects
     # (Exciter=19.51, OptComp=30.76, BitCrush=14.88, AutoPan=13.89).
-    entry[0x28:0x2C] = struct.pack('<f', 20.0)
+    entry[0x28:0x2C] = struct.pack('<f', dsp_cost)
     relocs.append((len(desc) + 0x1C, init_func_va))
     relocs.append((len(desc) + 0x20, audio_func_va))
     desc.extend(entry)
@@ -1134,6 +1158,15 @@ def link(cfg: LinkerConfig) -> None:
         if sym['name'] and sym['shndx'] in section_va:
             obj_symbol_va[sym['name']] = section_va[sym['shndx']] + sym['value']
 
+    # The audio function need not be first in .audio (helpers placed before it, e.g. DirtBox
+    # ab_prepare, Choral): the descriptor must point at the function itself, or the pedal runs
+    # the helper as the audio routine and freezes on load.
+    audio_sym = [sym for sym in obj.symbols
+                 if sym['name'] == cfg.audio_func_name and sym['shndx'] == audio_sec['idx']]
+    if not audio_sym and not cfg.audio_nop:
+        raise ValueError(f"{cfg.audio_func_name} not found in .audio")
+    AUDIO_ENTRY_VA = TEXT_VA + AUDIO_OFF + (audio_sym[0]['value'] if audio_sym else 0)
+
     # =====================================================================
     # Build .const layout
     # =====================================================================
@@ -1240,11 +1273,12 @@ def link(cfg: LinkerConfig) -> None:
 
     desc_bytes, desc_relocs = _build_descriptor(
         effect_name=cfg.display_name or cfg.effect_name,
-        audio_func_va=TEXT_VA + AUDIO_OFF,
+        audio_func_va=AUDIO_ENTRY_VA,
         init_func_va=init_va,
         onf_func_va=onf_va,
         knob_edit_vas=knob_edit_vas,
         params=cfg.params,
+        dsp_cost=cfg.dsp_cost,
     )
     # Stock RNDMFLTR descriptor +0x24 holds GetString(value, destination).
     # Object-defined callbacks are opt-in via generated parameter headers.
@@ -1391,6 +1425,13 @@ def link(cfg: LinkerConfig) -> None:
     if coe_sym_name in undefined:
         sym_addr[undefined[coe_sym_name]] = COE_VA
 
+    # Same for the cover picture (the RLE blob at the start of .const): an effect
+    # that declares `extern unsigned char _<audio>_Pic[]` gets its runtime address
+    # (live meter on the cover, docs/NEW-EFFECTS.md "Readouts").
+    pic_sym_name = f"_{cfg.audio_func_name}_Pic"
+    if pic_sym_name in undefined:
+        sym_addr[undefined[pic_sym_name]] = PIC_VA
+
     # Compiler-emitted register save/restore helpers — resolve to the
     # spliced LineSel copies if present.  Without these, any moderately
     # complex audio function (anything that spills to stack) would link
@@ -1426,15 +1467,7 @@ def link(cfg: LinkerConfig) -> None:
                 )
             if rel['sym_idx'] not in sym_addr:
                 raise RuntimeError(f"unresolved relocation for {sym['name']!r} at {sec['name']}+0x{offset:X}")
-            # cl6x's intra-section CALLP placeholders encode a displacement
-            # measured from the SECTION START, not from the instruction. We
-            # compensate by adding the instruction's section offset (stored
-            # in rel['addend'] for PCR_S21). For externally-resolved symbols
-            # like __c6xabi_call_stub, sym_addr is the final VA and no such
-            # compensation is needed — applying it lands the call past the
-            # real target by exactly the instruction's section offset, which
-            # froze the pedal on InitProbe stage 2.
-            addend = rel['addend'] if sym['shndx'] != 0 else 0
+            addend = _reloc_addend(rel, sym['shndx'], sec['idx'])
             target = sym_addr[rel['sym_idx']] + addend
             file_off = base_off + offset
             if rtype == RT_ABS_L16:
@@ -1528,7 +1561,7 @@ def link(cfg: LinkerConfig) -> None:
         return idx
 
     # 1. Start with relocation targets (unnamed locals)
-    abi_vas = {TEXT_VA + AUDIO_OFF, DESC_TABLE_VA, INFO_VA, PIC_VA, KNOB_INFO_VA, TEXT_VA + NOP_RET_OFF, onf_va, init_va}
+    abi_vas = {AUDIO_ENTRY_VA, DESC_TABLE_VA, INFO_VA, PIC_VA, KNOB_INFO_VA, TEXT_VA + NOP_RET_OFF, onf_va, init_va}
     abi_vas.update(knob_edit_vas)
 
     for tgt in sorted(dynsym_targets.keys()):
@@ -1547,7 +1580,7 @@ def link(cfg: LinkerConfig) -> None:
     for i in reversed(range(len(knob_edit_vas))):
         p_name = cfg.params[i].name.replace(' ', '')
         _add_sym(f"{cfg.audio_func_name}_{p_name}_edit", knob_edit_vas[i], 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
-    _add_sym(cfg.audio_func_name, TEXT_VA + AUDIO_OFF, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
+    _add_sym(cfg.audio_func_name, AUDIO_ENTRY_VA, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym(f"{cfg.audio_func_name}_init", init_va, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym(f"{cfg.audio_func_name}_onf", onf_va, 0, STT_FUNC, STB_LOCAL, STV_HIDDEN)
     _add_sym('effectTypeImageInfo', INFO_VA, len(info_bytes), STT_OBJECT, STB_LOCAL, STV_HIDDEN)
@@ -1808,9 +1841,12 @@ def link(cfg: LinkerConfig) -> None:
     output = bytearray(zdl_hdr) + elf
 
     if cfg.audio_nop:
-        audio_file_off = len(zdl_hdr) + text_file_off + AUDIO_OFF
+        audio_file_off = len(zdl_hdr) + text_file_off + AUDIO_ENTRY_VA - TEXT_VA
         output[audio_file_off:audio_file_off + len(_NOP_RETURN)] = _NOP_RETURN
 
+    # the pedal freezes on boot with a ZDL of 32 KB or more (GRDLOOP at 38,938 bytes, v2.0 beta3)
+    if len(output) >= 32768:
+        raise SystemExit(f"{cfg.output_path}: {len(output)} bytes, a ZDL must be under 32 KB")
     Path(cfg.output_path).write_bytes(output)
     print(f"\n  → {cfg.output_path}  ({len(output)} bytes; ELF {elf_size})")
 

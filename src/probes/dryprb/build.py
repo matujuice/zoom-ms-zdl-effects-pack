@@ -100,6 +100,7 @@ def main() -> None:
         output_path=out_zdl,
         fxid_version=manifest.get("fxid_version", "1.00").encode("ascii"),
         flags_byte=manifest.get("flags_byte", 0x01),
+        dsp_cost=manifest.get("dsp_cost", 20.0),
         audio_nop=manifest.get("audio_nop", False),
         knob_positions=[(2, 14, 46), (3, 55, 46), (4, 96, 46)],
         use_object_edit_handlers=False,

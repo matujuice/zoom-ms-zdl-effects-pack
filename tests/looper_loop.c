@@ -18,8 +18,9 @@ static LpState *S;
 static int fails = 0;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL: " __VA_ARGS__); puts(""); fails++; } } while (0)
 
-/* knobs, screen values: Mix Roll Length When Amount */
-static float U[5];
+/* knobs, screen values: Mix Roll Sync Next Cycle Stop (the old tests run SLAVE + HALT:
+ * Cycle plays the old Length, Next the old When) */
+static float U[6];
 static float onoff = 1.0f;
 static long t;                      /* samples since the start of the test */
 static float outl, outr;            /* last output sample */
@@ -37,7 +38,7 @@ static void fresh(void)
     memset(ls_host, 0, sizeof ls_host);
     S->me = 0u;
     clk_per = 0.0; t = 0; onoff = 1.0f;
-    U[0] = 100; U[1] = 0; U[2] = 0; U[3] = 2; U[4] = 7;
+    U[0] = 100; U[1] = 0; U[2] = 1; U[3] = 2; U[4] = 0; U[5] = 1;
 }
 
 /* one 8-sample block; out[] gets the output, the input is in_l/in_r at t */
@@ -53,7 +54,7 @@ static void block(void)
     lp_prepare(&P, U);
     bpm = lp_block(S, &P, onoff, &du);
     lp_process(S, &P, bpm, du, b);
-    lp_out(S);
+    lp_out(S, &P);
     memcpy(lastout, b, sizeof b);
     t += 8;
 }
@@ -109,7 +110,7 @@ int main(void)
     CHECK(worst < 6e-4f, "12-bit block float error %.2e", worst);
 
     /* 2: no clock, 120 BPM (stock firmware): the press records at once, 1 bar stereo */
-    fresh(); U[2] = 0; U[3] = 2;
+    fresh(); U[4] = 0; U[3] = 2;
     run(4000);
     press();
     CHECK(S->st == LP_REC && S->stereo == 1 && S->U == 32, "no clock: press did not start a 1-bar stereo recording (st %d stereo %d U %d)", S->st, S->stereo, S->U);
@@ -150,8 +151,7 @@ int main(void)
     CHECK(a < 1e-6f, "stopped but the loop is heard (%.3f)", a);
     press(); while (S->st == LP_STOP) block();
     run(2000); press(); run(2000); press();                  /* stop, then a double press */
-    CHECK(S->pend == LP_A_DEL, "double press did not aim a delete");
-    while (S->st != LP_EMPTY) block();
+    CHECK(S->st == LP_EMPTY && S->pend == 0, "double press did not delete at once (st %d pend %d)", S->st, S->pend);
     CHECK(S->ev_del == 1 && S->ev_rec == 1, "events rec %d del %d", S->ev_rec, S->ev_del);
 
     /* 4: When IMMED: a single press waits 300 ms; double press while recording drops it */
@@ -165,8 +165,9 @@ int main(void)
     CHECK(S->st == LP_EMPTY && S->pend == 0, "double press while recording did not drop it");
     zt_host[2] = 0u; clk_per = 0.0;
 
-    /* 5: When CYCLE 8 on a 120 BPM clock: a press in bar 3 records from bar 9 (unit 256) */
-    fresh(); U[3] = 3; U[4] = 7; U[2] = 3;                  /* Length 4 */
+    /* 5: Next CYC 8 on a 120 BPM clock: a press in bar 3 records from bar 9 (unit 256); the
+     * 8-bar cycle does not fit the arena: 4 bars mono, "REC 4/8" */
+    fresh(); U[3] = 3; U[4] = 7;
     clock_start(120.0);
     run(2 * 88200 + 30000);                               /* into bar 3 */
     CHECK(upos() >= 64 && upos() < 96, "not in bar 3 (unit %ld)", upos());
@@ -175,11 +176,11 @@ int main(void)
     while (S->st != LP_REC) block();
     printf("CYCLE 8: recording started at unit %d (+%.3f)\n", S->gu, S->gf);
     CHECK(S->gu == 256, "recording started at unit %d, want 256", S->gu);
-    CHECK(S->U == 128 && S->stereo == 0, "4 bars at 120 in the arena: want mono (stereo %d U %d)", S->stereo, S->U);
+    CHECK(S->U == 128 && S->stereo == 0 && S->want == 8, "8-bar cycle at 120 in the arena: want 4 bars mono (stereo %d U %d want %d)", S->stereo, S->U, S->want);
     while (S->st != LP_PLAY) block();
     CHECK(S->gu == 256 + 128, "recording ended at unit %d, want 384", S->gu);
 
-    /* 6: Roll 1/4: starts on the next bar line, repeats the last beat of the bar before */
+    /* 6: Roll 1/4: starts on the next bar line, repeats the first beat of that bar */
     {
         int bar_line, len = S->L, q = len / 16, u0, ok = 1;
         float ref[64];
@@ -188,8 +189,8 @@ int main(void)
         while ((S->gu & 31) != 0) block();
         bar_line = S->gu;
         CHECK(S->roll == 8 && S->ru0 == bar_line, "Roll did not start on the bar line (roll %d ru0 %d gu %d)", S->roll, S->ru0, S->gu);
-        /* the slice: the loop's last beat of the bar before bar_line */
-        u0 = lp_imod(bar_line - 8 - S->lu0, S->U);
+        /* the slice: the loop's first beat of the bar from bar_line */
+        u0 = lp_imod(bar_line - S->lu0, S->U);
         for (j = 0; j < 64; j++) { LpVoice v = { (int)(u0 * S->spu + 0.5f) + 400 + j, -1 }; float l, r; lp_read(S, &v, &l, &r); ref[j] = l; }
         for (k = 0; k < 3; k++) {                          /* three repeats: same audio each beat */
             long beat_start = t;
@@ -285,7 +286,7 @@ int main(void)
     }
 
     /* 8: MIDI Start: a waiting action is re-aimed at the downbeat, the loop restarts */
-    U[3] = 3; U[4] = 15;                                  /* CYCLE 16 */
+    U[3] = 3; U[4] = 15;                                  /* CYC 16 */
     press();                                              /* stop at the next 16-bar line */
     CHECK(S->pend == LP_A_STOP, "stop not waiting");
     clock_start(100.0); block();
@@ -327,7 +328,7 @@ int main(void)
         for (k = 0; k < (long)(sizeof c / sizeof c[0]); k++) {
             fresh();
             if (c[k].bufbig) { services(0); S->own = 1; }
-            U[2] = (float)(c[k].len - 1); lp_prepare(&P, U); bpm = c[k].bpm;
+            U[4] = (float)(c[k].len - 1); lp_prepare(&P, U); bpm = c[k].bpm;
             lp_record(S, &P, bpm, 0, 0.0f);
             CHECK(S->stereo == c[k].want_st && S->U == c[k].want_U && S->big == c[k].bufbig,
                   "fit %.0f BPM %d bars %s: stereo %d bars %d, want %d %d",
@@ -335,7 +336,7 @@ int main(void)
         }
         /* the big buffer across its four regions: record and read back 8 bars stereo at 80 */
         fresh(); services(0);
-        U[2] = 7; U[1] = 0; tempo_word(80);
+        U[4] = 7; U[1] = 0; tempo_word(80);
         run(800); fw_press(); rec_start = t - 8;
         while (S->st != LP_PLAY) block();
         CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 80 BPM: want 8 bars stereo in 4 regions");
@@ -357,7 +358,7 @@ int main(void)
      * ignored), flips while the slot is not found, status text, LED, losing the claim */
     {
         char tx[9]; unsigned int hb; long on_writes = 0, n = 0; int lit, last = -1;
-        fresh(); services(2); tempo_word(120); U[2] = 1; U[3] = 2;   /* 2 bars, BAR */
+        fresh(); services(2); tempo_word(120); U[4] = 1; U[3] = 2;   /* 2 bars, BAR */
         block();
         CHECK(ls_host[LS_CLAIM] == S->me && S->own, "no claim");
         hb = ls_host[LS_HB]; run(80);
@@ -367,12 +368,12 @@ int main(void)
         CHECK(S->st == LP_EMPTY && !S->pend, "a flip counted while the firmware counts presses");
         fw_press(); text(tx);
         CHECK(S->st == LP_REC, "firmware press did not record (st %d)", S->st);
-        run(97020); text(tx);                  /* 2.2 s: bar 2 */
-        CHECK(!strcmp(tx, "REC     ") && ls_host[LS_PROG] > 128 && ls_host[LS_PROG] < 256, "recording text '%s' progress %u", tx, ls_host[LS_PROG]);
+        run(101430); text(tx);                 /* 2.3 s: bar 2, past the 1/8 the bar is off */
+        CHECK(!strcmp(tx, "REC     ") && (ls_host[LS_PROG] & 0xFFFFu) > 128 && (ls_host[LS_PROG] & 0xFFFFu) < 256, "recording text '%s' progress %u", tx, (ls_host[LS_PROG] & 0xFFFFu));
         CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
         while (S->st != LP_PLAY) block();
         run(400); text(tx);
-        CHECK(!strcmp(tx, "PLAY    ") && ls_host[LS_PROG] < 16 && ls_host[LS_INV] == 0, "playing text '%s' progress %u", tx, ls_host[LS_PROG]);
+        CHECK(!strcmp(tx, "PLAY    ") && (ls_host[LS_PROG] & 0xFFFFu) < 16 && ls_host[LS_INV] == 0, "playing text '%s' progress %u", tx, (ls_host[LS_PROG] & 0xFFFFu));
         /* LED: only while under the cursor; the duty follows the level */
         CHECK(led_writes == 0 && gpio_clr == 0 && gpio_set == 0, "LED written while not under the cursor");
         ls_host[LS_MINE] = 1u;
@@ -393,11 +394,14 @@ int main(void)
                 if (ls_host[LS_LEVEL] != lv) { if (S->pu - S->gu >= 8) ch1++; else ch2++; }
                 lv = ls_host[LS_LEVEL];
                 CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
+                CHECK(ls_host[LS_INV] == 0 && (lv || !S->pend || (ls_host[LS_PROG] & 0xFFFFu) == 0), "countdown: box inverted or bar shown while blinked off");
             }
             printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
-            CHECK(ch2 >= 6 && ch2 <= 9, "last beat: %ld changes, want 1/16 blinks (8)", ch2);
+            CHECK(ch2 >= 3 && ch2 <= 5, "last beat: %ld changes, want 1/8 blinks (4)", ch2);
         }
         text(tx); CHECK(!strcmp(tx, "STOP    "), "stopped text '%s'", tx);
+        { unsigned int p0 = (ls_host[LS_PROG] & 0xFFFFu); run(22050);   /* the bar goes on while stopped */
+          CHECK((ls_host[LS_PROG] & 0xFFFFu) != p0, "stopped: bar still at %u", p0); }
         block(); CHECK(ls_host[LS_LEVEL] == 0, "stopped level %u", ls_host[LS_LEVEL]);
         fw_press(); run(8); fw_press();       /* double press: delete, at once when stopped */
         { long n2 = 0; while (S->st != LP_EMPTY && n2 < 100000) { block(); n2++; }
@@ -424,10 +428,59 @@ int main(void)
     {
         char b[16];
         ZDL_GetLabel_1(4, b); CHECK(!strcmp(b, "1/16"), "Roll label %s", b);
-        ZDL_GetLabel_2(7, b); CHECK(!strcmp(b, "8BAR"), "Length label %s", b);
-        ZDL_GetLabel_3(0, b); CHECK(!strcmp(b, "IMMED"), "When label %s", b);
-        ZDL_GetLabel_3(3, b); CHECK(!strcmp(b, "CYCLE"), "When label %s", b);
-        ZDL_GetLabel_4(15, b); CHECK(!strcmp(b, "16BAR"), "Amount label %s", b);
+        ZDL_GetLabel_2(0, b); CHECK(!strcmp(b, "OWN"), "Sync label %s", b);
+        ZDL_GetLabel_2(1, b); CHECK(!strcmp(b, "SLAVE"), "Sync label %s", b);
+        ZDL_GetLabel_2(7, b); CHECK(!strcmp(b, "OWN"), "Sync label (old Length 8) %s", b);
+        ZDL_GetLabel_3(0, b); CHECK(!strcmp(b, "NOW"), "Next label %s", b);
+        ZDL_GetLabel_3(3, b); CHECK(!strcmp(b, "CYC"), "Next label %s", b);
+        ZDL_GetLabel_4(31, b); CHECK(!strcmp(b, "32BAR"), "Cycle label %s", b);
+        ZDL_GetLabel_5(0, b); CHECK(!strcmp(b, "KEEP"), "Stop label %s", b);
+        ZDL_GetLabel_5(1, b); CHECK(!strcmp(b, "HALT"), "Stop label %s", b);
+    }
+
+    /* 10b: GRDLOOP: Sync OWN, Stop KEEP, Perform's CYCLE, mono (L+R)/2, REC n/m */
+    {
+        LpParams P; char tx[9]; int gu0;
+        /* OWN, BAR, 1-bar cycle, no clock at 120: the press records at once, a second press
+         * in bar 2 ends it on the bar 3 line: 2 bars */
+        fresh(); tempo_word(120); U[2] = 0; U[3] = 2; U[4] = 0;
+        run(4000); press();
+        CHECK(S->st == LP_REC && S->rend == LP_OPEN, "OWN: not recording open (st %d)", S->st);
+        run(88200 + 44100);                                 /* 1.5 bars */
+        CHECK(S->st == LP_REC && S->U == 64, "OWN: did not run into a second cycle (st %d U %d)", S->st, S->U);
+        press();
+        CHECK(S->rend == 64, "OWN: end aimed at %d, want 64", S->rend);
+        while (S->st == LP_REC) block();
+        CHECK(S->st == LP_PLAY && S->U == 64 && S->gu == 64, "OWN: ended at unit %d with %d units, want 64 / 64", S->gu, S->U);
+        /* OWN with no second press: whole cycles until the arena is full (stereo at 120: 2 bars) */
+        fresh(); tempo_word(120); U[2] = 0; U[3] = 2; U[4] = 0;
+        run(4000); press();
+        while (S->st == LP_REC) block();
+        CHECK(S->st == LP_PLAY && (S->U & 31) == 0 && S->L > 0, "OWN open: ended mid-cycle (U %d)", S->U);
+        printf("OWN, no second press: %d bars, stereo %d\n", S->U >> 5, S->stereo);
+        /* KEEP: MIDI Stop leaves the loop playing, the next Start plays it from bar 1 */
+        fresh(); U[5] = 0; U[3] = 1;
+        clock_start(100.0); run(20000); press();
+        while (S->st != LP_PLAY) block();
+        run(20000);
+        zt_host[2] = 0u; clk_per = 0.0; gu0 = S->gu; run(44100);
+        CHECK(S->st == LP_PLAY && S->gu > gu0 + 8, "KEEP: Stop stopped the loop or the grid (st %d)", S->st);
+        clock_start(100.0); block();
+        CHECK(S->st == LP_PLAY && S->lu0 == 0 && S->gu <= 0, "KEEP: Start did not restart at bar 1 (gu %d lu0 %d)", S->gu, S->lu0);
+        zt_host[2] = 0u; clk_per = 0.0;
+        /* Perform's CYCLE (word 21) overrides the Cycle knob; 0 = the knob */
+        fresh(); services(2); U[4] = 3;
+        ls_host[LS_CYCLE] = 16u; lp_prepare(&P, U);
+        CHECK(P.cyc == 16, "word 21: cycle %d, want 16", P.cyc);
+        ls_host[LS_CYCLE] = 0u; lp_prepare(&P, U);
+        CHECK(P.cyc == 4, "word 21 zero: cycle %d, want the knob's 4", P.cyc);
+        /* a 32-bar cycle at 120 does not fit the big buffer: 16 bars mono, REC16/32 */
+        fresh(); services(2); tempo_word(120); U[4] = 31; U[3] = 0;
+        block(); fw_press(); run(13230 + 64); text(tx);
+        CHECK(S->st == LP_REC && S->U == 512 && !strcmp(tx, "REC16/32"), "REC n/m: st %d U %d text '%s'", S->st, S->U, tx);
+        /* mono stores (L+R)/2 */
+        S->stereo = 0; S->wi = 0; lp_write(S, 0.5f, -0.25f);
+        CHECK(fabsf(S->stl[0] - 0.125f) < 1e-6f, "mono: stored %.3f, want (L+R)/2 = 0.125", S->stl[0]);
     }
 
     /* 11: random knobs, presses, tempo and clock: no NaN, bounded, indices in range */
@@ -436,7 +489,7 @@ int main(void)
         fresh(); tempo_word(120);
         for (i = 0; i < 1000000; i++) {
             r = r * 1664525u + 1013904223u;
-            if ((r >> 8) % 3000u == 0u) { U[(r >> 4) % 5u] = (float)((r >> 12) % 101u); U[1] = fminf(U[1], 5); U[2] = fminf(U[2], 7); U[3] = fminf(U[3], 3); U[4] = fminf(U[4], 15); }
+            if ((r >> 8) % 3000u == 0u) { U[(r >> 4) % 6u] = (float)((r >> 12) % 101u); U[1] = fminf(U[1], 5); U[2] = fminf(U[2], 7); U[3] = fminf(U[3], 3); U[4] = fminf(U[4], 31); U[5] = fminf(U[5], 1); }
             if ((r >> 9) % 8000u == 0u) { onoff = 1.0f - onoff; }
             if ((r >> 10) % 20000u == 0u) tempo_word(40 + (int)((r >> 3) % 211u));
             if ((r >> 11) % 40000u == 0u) clock_start(40.0 + (r >> 5) % 200u);

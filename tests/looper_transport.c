@@ -8,5 +8,5 @@ typedef LpState STATE;
 #define MULT 1.0
 #define D(n) params[LOOPER_##n##_SLOT] = LOOPER_##n##_UI_DEFAULT / 100.0f
 static float *params;
-static void defaults(void) { D(MIX); D(ROLL); D(LENGTH); D(WHEN); D(AMOUNT); }
+static void defaults(void) { D(MIX); D(ROLL); D(SYNC); D(NEXT); D(CYCLE); D(STOP); }
 #include "transport.h"

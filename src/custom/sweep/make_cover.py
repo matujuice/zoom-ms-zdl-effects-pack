@@ -91,12 +91,7 @@ if __name__ == "__main__":
     c = build()
     out = ROOT / "src" / "airwindows" / "common" / "covers" / "Sweep.json"
     out.write_text(json.dumps({"name": "Sweep", "w": 128, "h": 64, "grid": c.pixels}))
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (246, 248, 252))
-    for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (28, 52, 120))
-    im.resize((128 * 5, int(64 * 5 * 1.4)), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "build"))
+    from lcd_render import save_png
+    save_png(c.pixels, Path(__file__).resolve().parent / "cover_preview.png")
     print("wrote", out)

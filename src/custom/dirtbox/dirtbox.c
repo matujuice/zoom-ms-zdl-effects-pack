@@ -1,7 +1,7 @@
 /*
  * dirtbox.c - "DIRTBOX": a distortion box for an acid machine (TB-303 / TD-3 lines
  * into the pedal). Seven pedal circuits on one Model knob, mildest first, a 3-band
- * EQ tuned for acid, and an automatic ZNR-style noise reducer. Mono.
+ * EQ tuned for acid, and an automatic ZNR-style noise reducer. Stereo dry, mono box (it hears (L + R) / 2).
  *
  * MODELS (Model knob, least to most aggressive). Each follows the real circuit
  * stage by stage, from a published analysis or a circuit-level digital model; the
@@ -107,13 +107,21 @@
 #define AB_ALWAYS_INLINE(fn) AB_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define AB_CODE_SECTION(fn) AB_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #define AB_NO_UNROLL AB_DO_PRAGMA(UNROLL(1))
+/* 8-sample block loops: no unrolling; if the .ZDL grows too much from software-pipelined
+ * prologs/epilogs, move the loop into an AB_SMALL_FUNC function (below). */
+#define AB_LOOP8 AB_DO_PRAGMA(MUST_ITERATE(8,8,8)) AB_DO_PRAGMA(UNROLL(1))
+/* A real (not inlined) .audio function built at -O1, i.e. without software pipelining:
+ * CGT 8.5 has no per-loop NOSWP and refuses -mu in FUNCTION_OPTIONS. */
+#define AB_SMALL_FUNC(fn) AB_EXPAND_PRAGMA(FUNC_CANNOT_INLINE(fn)) AB_EXPAND_PRAGMA(FUNCTION_OPTIONS(fn, "--opt_level=1")) AB_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
 #define AB_ALWAYS_INLINE(fn)
 #define AB_CODE_SECTION(fn)
 #define AB_NO_UNROLL
+#define AB_LOOP8
+#define AB_SMALL_FUNC(fn)
 #endif
 
-#define AB_MAGIC        0x41423031u          /* "AB01" */
+#define AB_MAGIC        0x41423032u          /* "AB02" */
 #define AB_W            0.00014247585f       /* 2 pi / 44100: Hz -> radians per sample */
 #define AB_DC_R         0.9993f              /* DC blocker pole                  */
 #define AB_REF          0.2f                 /* makeup reference input peak      */
@@ -126,6 +134,7 @@
 #define AB_HOLD         1323                 /* 30 ms before the expander starts */
 #define AB_G_ATT        0.05f                /* ZNR gain opens in under 1 ms     */
 #define AB_G_REL        0.000283f            /* .. and closes over ~80 ms        */
+#define AB_EQ_HOLD      192                  /* blocks to keep a just-flattened EQ running */
 #define AB_FMAX         16000.0f             /* highest corner ab_pole handles   */
 
 #define M_TS9   0
@@ -192,20 +201,7 @@
 #define EQ_HI_AL 0.422928012f
 
 typedef struct {
-    unsigned int magic;
-    int model;             /* last model, to clear the filters after a change */
-    float h1, h2, fb, lc;  /* one-pole states: high-pass legs, gain roll-off, pre-clip */
-    float dcx, dcy;        /* DC blocker                              */
-    float t1, t2;          /* tone                                    */
-    float qa1, qa2, qb1, qb2, qc1, qc2, qd1, qd2, qe1, qe2;   /* model biquads */
-    float el1, el2, em1, em2, eh1, eh2;                       /* EQ biquads    */
-    float fade;            /* wet fade-in after a Model change        */
-    float env, nf, gz;     /* ZNR: input envelope, noise floor, gain  */
-    int hold;              /* ZNR hold counter, samples               */
-} AbState;
-
-typedef struct {
-    int model, znr;
+    int model, znr, eqon;      /* eqon: at least one EQ band is not flat        */
     float pre, a1, a2;         /* input gain; high-pass legs' poles             */
     float gA, gB, aF, aC, rail;   /* leg gains, gain roll-off pole, pre-clip pole, rails */
     float c, ic, cg, cm, ch, cap; /* clipper curve                              */
@@ -217,6 +213,23 @@ typedef struct {
     float margin;              /* ZNR threshold / noise floor                   */
     float dryG, wetG;
 } AbParams;
+
+typedef struct {
+    unsigned int magic;
+    int model;             /* last model, to clear the filters after a change */
+    float h1, h2, fb, lc;  /* one-pole states: high-pass legs, gain roll-off, pre-clip */
+    float dcx, dcy;        /* DC blocker                              */
+    float t1, t2;          /* tone                                    */
+    float qa1, qa2, qb1, qb2, qc1, qc2, qd1, qd2, qe1, qe2;   /* model biquads */
+    float el1, el2, em1, em2, eh1, eh2;                       /* EQ biquads    */
+    float fade;            /* wet fade-in after a Model change        */
+    float env, nf, gz;     /* ZNR: input envelope, noise floor, gain  */
+    int hold;              /* ZNR hold counter, samples               */
+    int eqh;               /* blocks the EQ still runs after it went flat */
+    float kc[9];           /* knobs the cached parameters were made from */
+    AbParams pc;           /* cached parameters: prepare only when a knob moved */
+} AbState;
+
 
 AB_ALWAYS_INLINE(ab_clamp01)
 static inline float ab_clamp01(float x)
@@ -395,16 +408,16 @@ static inline void ab_init(AbState *s, const AbParams *P)
     s->model = P->model;
     ab_clear(s);
     s->el1 = 0.0f; s->el2 = 0.0f; s->em1 = 0.0f; s->em2 = 0.0f; s->eh1 = 0.0f; s->eh2 = 0.0f;
-    s->env = 0.0f; s->nf = 0.0001f; s->gz = 1.0f; s->hold = 0;
+    s->env = 0.0f; s->nf = 0.0001f; s->gz = 1.0f; s->hold = 0; s->eqh = 0;
     s->magic = AB_MAGIC;
 }
 
 /* k[] = 0..1 by each knob's own maximum, in manifest order */
-AB_ALWAYS_INLINE(ab_prepare)
-static inline void ab_prepare(AbParams *P, const float *k)
+AB_SMALL_FUNC(ab_prepare)         /* one copy for both call sites; runs only when a knob moved */
+static void ab_prepare(AbParams *P, const float *k)
 {
     float d = k[1], t = k[2], gpk, ceil, trim, fl, rd, ea = 0.0f, eb = 0.0f, e1, e2, au, gdb;
-    int b;
+    int b, eqon = 0;
     int m = (int)(k[0] * 6.0f + 0.5f);
     P->model = m;
     /* a1 a2 aF aC aT aU hold corner frequencies (Hz) until the end, where one
@@ -533,7 +546,7 @@ static inline void ab_prepare(AbParams *P, const float *k)
      * the coefficient code (0 low shelf, 1 mid peak, 2 high shelf). */
     AB_NO_UNROLL
     for (b = 0; b < 3; b++) {
-        float A = ab_eqA(24.0f * k[3 + b] - 12.0f), *q = P->eq + 5 * b;
+        float db = 24.0f * k[3 + b] - 12.0f, A = ab_eqA(db), *q = P->eq + 5 * b;
         if (b == 1) {
             float iA = ab_inv(A), ia0 = ab_inv(1.0f + EQ_MI_AL * iA);
             q[0] = (1.0f + EQ_MI_AL * A) * ia0;
@@ -545,7 +558,9 @@ static inline void ab_prepare(AbParams *P, const float *k)
             ab_shelf(A, b ? EQ_HI_C : EQ_LO_C, b ? EQ_HI_AL : EQ_LO_AL, b,
                      q, q + 1, q + 2, q + 3, q + 4);
         }
+        if (!(db > -0.001f && db < 0.001f)) eqon = 1;    /* this band is not at 0 dB */
     }
+    P->eqon = eqon;
     P->znr = (k[6] > 0.0f);
     P->margin = ab_exp2(1.5f + 3.5f * k[6]);     /* +9 .. +30 dB */
     P->dryG = 2.0f - 2.0f * k[8]; if (P->dryG > 1.0f) P->dryG = 1.0f;
@@ -554,107 +569,219 @@ static inline void ab_prepare(AbParams *P, const float *k)
 
 #define AB_FLUSH(v) if ((v) < 1e-15f && (v) > -1e-15f) (v) = 0.0f
 
-AB_ALWAYS_INLINE(ab_process)
-static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
+/* Stages 1 and 3 run one model branch per block, so they are not software-pipelined
+ * (AB_SMALL_FUNC): seven pipelined copies each grew the .ZDL past what the pedal boots.
+ * Each loads and stores only its own filter states. */
+AB_SMALL_FUNC(ab_pre)
+static void ab_pre(AbState *restrict s, const AbParams *restrict P, const float *restrict buf,
+                   float *restrict zv)
 {
-    int i, hold, m = P->model;
-    float h1, h2, fb, lc, dcx, dcy, t1, t2, fade, env, nf, gz, invThr;
+    int i, m = P->model;
+    float h1 = s->h1, h2 = s->h2, fb = s->fb, lc = s->lc;
+    float qa1 = s->qa1, qa2 = s->qa2, qb1 = s->qb1, qb2 = s->qb2, qc1 = s->qc1, qc2 = s->qc2;
 
-    if (m != s->model) { s->model = m; ab_clear(s); }
-    h1 = s->h1; h2 = s->h2; fb = s->fb; lc = s->lc; dcx = s->dcx; dcy = s->dcy;
-    t1 = s->t1; t2 = s->t2; fade = s->fade;
-    env = s->env; nf = s->nf; gz = s->gz; hold = s->hold;
-    invThr = ab_inv(nf * P->margin);
-
-    for (i = 0; i < n; i++) {
-        float x = buf[i], ax = (x < 0.0f) ? -x : x, v, g, y, d, z, add = 0.0f;
-        /* ZNR detector on the clean input */
-        env *= AB_ENV_REL;
-        if (ax > env) env = ax;
-        if (m == M_TS9) {                                /* feedback clipper: x + clip(gain part) */
+    if (m == M_TS9) {                                    /* feedback clipper: x + clip(gain part) */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float x = buf[i];
             h1 += P->a1 * (x - h1);
             fb += P->aF * (P->gA * (x - h1) - fb);
-            z = fb; add = x;
-        } else if (m == M_MUFF) {
-            v = ab_bq(BM_IN * x, &s->qa1, &s->qa2, P->u0, P->u1, P->u2, P->u3, P->u4);
+            zv[i] = fb;
+        }
+    } else if (m == M_MUFF) {
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float v = ab_bq(BM_IN * buf[i], &qa1, &qa2, P->u0, P->u1, P->u2, P->u3, P->u4);
             v = ab_diode(v, P);
-            z = ab_bq(v, &s->qb1, &s->qb2, BM_A_B0, BM_A_B1, BM_A_B2, BM_A_A1, BM_A_A2);
-        } else if (m == M_SFUZZ) {
+            zv[i] = ab_bq(v, &qb1, &qb2, BM_A_B0, BM_A_B1, BM_A_B2, BM_A_A1, BM_A_A2);
+        }
+    } else if (m == M_SFUZZ) {
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float x = buf[i], v;
             h1 += P->a1 * (x - h1);
             v = ab_clip(P->pre * (x - h1), 2.0f, 0.5f);  /* preamp swing ~2 V */
             v = 0.8f * ((v < 0.0f) ? -v : v) + 0.2f * v; /* push-push doubler */
             h2 += P->a2 * (v - h2);
-            z = v - h2;                                  /* into the germanium pair */
-        } else if (m == M_MT2) {
-            v = ab_bq(x, &s->qa1, &s->qa2, MT_A_B0, MT_A_B1, MT_A_B2, MT_A_A1, 0.0f);
-            v = ab_bq(v, &s->qb1, &s->qb2, 1.0f, MT_B_B1, 0.0f, MT_B_A1, MT_B_A2);
-            v = ab_bq(v, &s->qc1, &s->qc2, 1.0f, MT_C_B1, MT_C_B2, MT_C_A1, MT_C_A2);
+            zv[i] = v - h2;                              /* into the germanium pair */
+        }
+    } else if (m == M_MT2) {
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float v = ab_bq(buf[i], &qa1, &qa2, MT_A_B0, MT_A_B1, MT_A_B2, MT_A_A1, 0.0f);
+            v = ab_bq(v, &qb1, &qb2, 1.0f, MT_B_B1, 0.0f, MT_B_A1, MT_B_A2);
+            v = ab_bq(v, &qc1, &qc2, 1.0f, MT_C_B1, MT_C_B2, MT_C_A1, MT_C_A2);
             v *= P->pre;                                 /* Dist stage gain */
             h1 += P->a1 * (v - h1);
             v += (MT_SHELF - 1.0f) * (v - h1);           /* .. its treble shelf */
             fb += P->aF * (v - fb);                      /* .. and low-pass */
-            z = fb;
-        } else {                                         /* DIST+, DS-1, RAT2: op-amp stage */
-            if (m == M_DS1) {                            /* DS-1 booster */
-                h1 += P->a1 * (x - h1);
-                v = ab_clip(P->pre * (x - h1), 4.0f, 0.25f);
-                h2 += P->a2 * (v - h2);                  /* op-amp leg */
-                g = P->gA * (v - h2);
-            } else {                                     /* DIST+: one leg; RAT2: two */
-                v = x;
-                h1 += P->a1 * (x - h1);
-                h2 += P->a2 * (x - h2);
-                g = P->gA * (x - h1) + P->gB * (x - h2);
-            }
+            zv[i] = fb;
+        }
+    } else if (m == M_DS1) {                             /* DS-1 booster, then the op-amp leg */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float x = buf[i], v, g;
+            h1 += P->a1 * (x - h1);
+            v = ab_clip(P->pre * (x - h1), 4.0f, 0.25f);
+            h2 += P->a2 * (v - h2);
+            g = P->gA * (v - h2);
             fb += P->aF * (g - fb);                      /* gain rolls off in the treble */
             v = ab_rail(v + fb, P->rail);                /* op-amp rails */
-            lc += P->aC * (v - lc);                      /* RC before the diodes (aC = 1: none) */
-            z = lc;
+            lc += P->aC * (v - lc);                      /* RC before the diodes */
+            zv[i] = lc;
         }
-        y = add + ab_diode(z, P);                        /* the clipper, one copy for all models */
-        d = y - dcx + AB_DC_R * dcy;                     /* DC blocker */
-        dcx = y; dcy = d;
-        /* the pedal's tone control */
-        if (m == M_TS9) {                                /* 723 Hz LP + treble */
+    } else {                                             /* DIST+: one leg; RAT2: two */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float x = buf[i], v, g;
+            h1 += P->a1 * (x - h1);
+            h2 += P->a2 * (x - h2);
+            g = P->gA * (x - h1) + P->gB * (x - h2);
+            fb += P->aF * (g - fb);
+            v = ab_rail(x + fb, P->rail);
+            lc += P->aC * (v - lc);
+            zv[i] = lc;
+        }
+    }
+
+    AB_FLUSH(h1); AB_FLUSH(h2); AB_FLUSH(fb); AB_FLUSH(lc);    /* denormals */
+    AB_FLUSH(qa1); AB_FLUSH(qa2); AB_FLUSH(qb1); AB_FLUSH(qb2); AB_FLUSH(qc1); AB_FLUSH(qc2);
+    s->h1 = h1; s->h2 = h2; s->fb = fb; s->lc = lc;
+    s->qa1 = qa1; s->qa2 = qa2; s->qb1 = qb1; s->qb2 = qb2; s->qc1 = qc1; s->qc2 = qc2;
+}
+
+AB_SMALL_FUNC(ab_tone)
+static void ab_tone(AbState *restrict s, const AbParams *restrict P, float *restrict dv)
+{
+    int i, m = P->model;
+    float t1 = s->t1, t2 = s->t2;
+    float qc1 = s->qc1, qc2 = s->qc2, qd1 = s->qd1, qd2 = s->qd2, qe1 = s->qe1, qe2 = s->qe2;
+
+    if (m == M_TS9) {                                    /* 723 Hz LP + treble */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = dv[i];
             t1 += P->aT * (d - t1);
-            d = t1 + P->sk * (d - t1);
-        } else if (m == M_DS1) {                         /* LP <-> HP blend */
+            dv[i] = t1 + P->sk * (d - t1);
+        }
+    } else if (m == M_DS1) {                             /* LP <-> HP blend */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = dv[i];
             t1 += P->aT * (d - t1);
             t2 += P->aU * (d - t2);
-            d = P->wl * t1 + P->wh * (d - t2);
-        } else if (m == M_MUFF) {                        /* tone stack + output roll-off */
-            d = ab_bq(d, &s->qc1, &s->qc2, P->v0, P->v1, P->v2, P->v3, P->v4);
-            d = ab_bq(d, &s->qd1, &s->qd2, BM_O_B0, BM_O_B1, BM_O_B2, BM_O_A1, BM_O_A2);
-        } else if (m == M_SFUZZ) {                       /* 1 kHz scoop */
-            float hp;
+            dv[i] = P->wl * t1 + P->wh * (d - t2);
+        }
+    } else if (m == M_MUFF) {                            /* tone stack + output roll-off */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = ab_bq(dv[i], &qc1, &qc2, P->v0, P->v1, P->v2, P->v3, P->v4);
+            dv[i] = ab_bq(d, &qd1, &qd2, BM_O_B0, BM_O_B1, BM_O_B2, BM_O_A1, BM_O_A2);
+        }
+    } else if (m == M_SFUZZ) {                           /* 1 kHz scoop */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = dv[i], hp;
             t1 += SF_F * t2;
             hp = d - t1 - SF_Q * t2;
             t2 += SF_F * hp;
-            d += P->sk * t2;
-        } else if (m == M_MT2) {                         /* post filter, High shelf */
-            d = ab_bq(d, &s->qd1, &s->qd2, MT_D_B0, MT_D_B1, MT_D_B2, MT_D_A1, MT_D_A2);
-            d = ab_bq(d, &s->qe1, &s->qe2, 1.0f, MT_E_B1, MT_E_B2, MT_E_A1, MT_E_A2);
+            dv[i] = d + P->sk * t2;
+        }
+    } else if (m == M_MT2) {                             /* post filter, High shelf */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = ab_bq(dv[i], &qd1, &qd2, MT_D_B0, MT_D_B1, MT_D_B2, MT_D_A1, MT_D_A2);
+            d = ab_bq(d, &qe1, &qe2, 1.0f, MT_E_B1, MT_E_B2, MT_E_A1, MT_E_A2);
             t2 += P->aT * (d - t2);
-            d += P->sk * (d - t2);
-        } else {                                         /* DIST+, RAT2: low-pass */
-            t1 += P->aT * (d - t1);
-            d = t1;
+            dv[i] = d + P->sk * (d - t2);
         }
-        /* acid EQ */
-        d = ab_bq(d, &s->el1, &s->el2, P->eq[0], P->eq[1], P->eq[2], P->eq[3], P->eq[4]);
-        d = ab_bq(d, &s->em1, &s->em2, P->eq[5], P->eq[6], P->eq[7], P->eq[8], P->eq[9]);
-        d = ab_bq(d, &s->eh1, &s->eh2, P->eq[10], P->eq[11], P->eq[12], P->eq[13], P->eq[14]);
-        if (P->znr) {
-            float r = env * invThr, tgt;
-            if (r >= 1.0f) { hold = AB_HOLD; tgt = 1.0f; }
-            else if (hold > 0) { hold--; tgt = 1.0f; }
-            else { tgt = r * r; tgt *= tgt; }            /* 1:5 downward expander */
-            gz += ((tgt > gz) ? AB_G_ATT : AB_G_REL) * (tgt - gz);
-        } else {
-            gz = 1.0f;
+    } else {                                             /* DIST+, RAT2: low-pass */
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            t1 += P->aT * (dv[i] - t1);
+            dv[i] = t1;
         }
+    }
+
+    AB_FLUSH(t1); AB_FLUSH(t2);                                /* denormals */
+    AB_FLUSH(qc1); AB_FLUSH(qc2); AB_FLUSH(qd1); AB_FLUSH(qd2); AB_FLUSH(qe1); AB_FLUSH(qe2);
+    s->t1 = t1; s->t2 = t2;
+    s->qc1 = qc1; s->qc2 = qc2; s->qd1 = qd1; s->qd2 = qd2; s->qe1 = qe1; s->qe2 = qe2;
+}
+
+/* One 8-sample block, in stages. Each stage is its own branch-free loop over the
+ * block (the model is chosen once, outside the loops), so the compiler can
+ * software-pipeline them; all filter states live in locals and are stored once.
+ * n is always 8 (the pedal's block). Same maths as before, in the same order. */
+AB_ALWAYS_INLINE(ab_process)
+static inline void ab_process(AbState *s, const AbParams *restrict P, float *restrict buf, float *restrict bufR, int n)
+{
+    int i, hold, eqh = s->eqh, m = P->model, tsm = (m == M_TS9);
+    float dcx, dcy, fade, env, nf, gz, invThr;
+    float el1, el2, em1, em2, eh1, eh2;
+    float zv[8], dv[8], xm[8];
+    (void)n;
+
+    if (m != s->model) { s->model = m; ab_clear(s); }
+    dcx = s->dcx; dcy = s->dcy; fade = s->fade;
+    env = s->env; nf = s->nf; gz = s->gz; hold = s->hold;
+    el1 = s->el1; el2 = s->el2; em1 = s->em1; em2 = s->em2; eh1 = s->eh1; eh2 = s->eh2;
+    invThr = ab_inv(nf * P->margin);
+
+    /* the box hears (L + R) / 2; the dry keeps L and R apart */
+    AB_LOOP8
+    for (i = 0; i < 8; i++) xm[i] = 0.5f * (buf[i] + bufR[i]);
+
+    /* 1. before the clipper: zv[] = what the clipper sees */
+    ab_pre(s, P, xm, zv);
+
+    /* 2. the clipper, one copy for all models, and the DC blocker */
+    AB_LOOP8
+    for (i = 0; i < 8; i++) {
+        float y = (tsm ? xm[i] : 0.0f) + ab_diode(zv[i], P);
+        float d = y - dcx + AB_DC_R * dcy;
+        dcx = y; dcy = d;
+        dv[i] = d;
+    }
+
+    /* 3. the pedal's tone control */
+    ab_tone(s, P, dv);
+
+    /* 4. acid EQ. With all three bands at 0 dB the filters are the identity and their
+     * states die away (110 Hz shelf: well under 1e-7 in 192 blocks), so after that long
+     * the EQ is skipped and its states are zero. */
+    if (P->eqon) eqh = AB_EQ_HOLD;
+    if (eqh > 0) {
+        if (!P->eqon) eqh--;
+        AB_LOOP8
+        for (i = 0; i < 8; i++) {
+            float d = ab_bq(dv[i], &el1, &el2, P->eq[0], P->eq[1], P->eq[2], P->eq[3], P->eq[4]);
+            d = ab_bq(d, &em1, &em2, P->eq[5], P->eq[6], P->eq[7], P->eq[8], P->eq[9]);
+            dv[i] = ab_bq(d, &eh1, &eh2, P->eq[10], P->eq[11], P->eq[12], P->eq[13], P->eq[14]);
+        }
+    } else {
+        el1 = 0.0f; el2 = 0.0f; em1 = 0.0f; em2 = 0.0f; eh1 = 0.0f; eh2 = 0.0f;
+    }
+
+    /* 5. ZNR on the clean input (selects, no branches), fade-in, mix */
+    AB_LOOP8
+    for (i = 0; i < 8; i++) {
+        float x = xm[i], ax = (x < 0.0f) ? -x : x, r, tgt, gn, wv;
+        int open, act;
+        env *= AB_ENV_REL;
+        env = (ax > env) ? ax : env;
+        r = env * invThr;
+        open = (r >= 1.0f);
+        act = open | (hold > 0);
+        tgt = r * r; tgt *= tgt;                         /* 1:5 downward expander */
+        tgt = act ? 1.0f : tgt;
+        hold = P->znr ? (open ? AB_HOLD : ((hold > 0) ? hold - 1 : hold)) : hold;
+        gn = gz + ((tgt > gz) ? AB_G_ATT : AB_G_REL) * (tgt - gz);
+        gz = P->znr ? gn : 1.0f;
         fade += AB_FADE * (1.0f - fade);
-        buf[i] = P->dryG * x + P->wetG * (d * P->wetScale * gz * fade);
+        wv = P->wetG * (dv[i] * P->wetScale * gz * fade);   /* the same wet on both sides */
+        buf[i] = P->dryG * buf[i] + wv;
+        bufR[i] = P->dryG * bufR[i] + wv;
     }
 
     /* noise floor: follow the envelope down quickly, creep up slowly */
@@ -663,18 +790,14 @@ static inline void ab_process(AbState *s, const AbParams *P, float *buf, int n)
     if (nf < AB_NF_MIN) nf = AB_NF_MIN;
     if (nf > AB_NF_MAX) nf = AB_NF_MAX;
 
-    AB_FLUSH(h1); AB_FLUSH(h2); AB_FLUSH(fb); AB_FLUSH(lc);    /* denormals */
-    AB_FLUSH(dcy); AB_FLUSH(t1); AB_FLUSH(t2);
-    AB_FLUSH(s->qa1); AB_FLUSH(s->qa2); AB_FLUSH(s->qb1); AB_FLUSH(s->qb2);
-    AB_FLUSH(s->qc1); AB_FLUSH(s->qc2); AB_FLUSH(s->qd1); AB_FLUSH(s->qd2);
-    AB_FLUSH(s->qe1); AB_FLUSH(s->qe2);
-    AB_FLUSH(s->el1); AB_FLUSH(s->el2); AB_FLUSH(s->em1); AB_FLUSH(s->em2);
-    AB_FLUSH(s->eh1); AB_FLUSH(s->eh2);
+    AB_FLUSH(dcy);                                             /* denormals */
+    AB_FLUSH(el1); AB_FLUSH(el2); AB_FLUSH(em1); AB_FLUSH(em2);
+    AB_FLUSH(eh1); AB_FLUSH(eh2);
     if (env < 1e-15f) env = 0.0f;
     if (gz < 1e-15f) gz = 0.0f;
-    s->h1 = h1; s->h2 = h2; s->fb = fb; s->lc = lc; s->dcx = dcx; s->dcy = dcy;
-    s->t1 = t1; s->t2 = t2; s->fade = fade;
-    s->env = env; s->nf = nf; s->gz = gz; s->hold = hold;
+    s->dcx = dcx; s->dcy = dcy; s->fade = fade;
+    s->env = env; s->nf = nf; s->gz = gz; s->hold = hold; s->eqh = eqh;
+    s->el1 = el1; s->el2 = el2; s->em1 = em1; s->em2 = em2; s->eh1 = eh1; s->eh2 = eh2;
 }
 
 /* ---- on-screen text ------------------------------------------------------ */
@@ -739,7 +862,6 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     AbState *s;
-    AbParams P;
     float k[9];
     int i;
 
@@ -777,11 +899,19 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
         k[i] = ab_knob(params[DIRTBOX_MODEL_SLOT + i], k[i], im);
     }
 
-    ab_prepare(&P, k);
-    if (s->magic != AB_MAGIC) ab_init(s, &P);
-    ab_process(s, &P, fxBuf, 8);                 /* mono: left half in place   */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R     */
+    /* the parameters depend on the knobs only: prepare when one moved, else reuse */
+    if (s->magic != AB_MAGIC) {
+        ab_prepare(&s->pc, k);
+        ab_init(s, &s->pc);
+        for (i = 0; i < 9; i++) s->kc[i] = k[i];
+    } else {
+        for (i = 0; i < 9; i++) if (s->kc[i] != k[i]) break;
+        if (i < 9) {
+            ab_prepare(&s->pc, k);
+            for (i = 0; i < 9; i++) s->kc[i] = k[i];
+        }
+    }
+    ab_process(s, &s->pc, fxBuf, fxBuf + 8, 8);  /* hears (L + R) / 2, dry L and R stay apart */
 }
 
 #endif /* DIRTBOX_HOST_TEST */

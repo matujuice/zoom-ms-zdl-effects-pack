@@ -19,7 +19,7 @@ int main(void){
     ChState s; ChParams P; float u[9]={cfg[c][0]-1,cfg[c][1]-1,cfg[c][2],0,0,0,0,120,100};
     ch_prepare(&P,u); ch_init(&s); s.g=0;
     /* 120 bpm: a step = 0.125 s = 5512.5 samples. sample the gate mid-step for 30 steps */
-    static float buf[8]; char line[80]; int n=0; long smp=0;
+    static float buf[16]; char line[80]; int n=0; long smp=0;
     for(int st=0;st<30;st++){
       long target=(long)((st+0.5)*5512.5);
       while(smp<target){for(int i=0;i<8;i++)buf[i]=0.3f;ch_process(&s,&P,buf,8);smp+=8;}

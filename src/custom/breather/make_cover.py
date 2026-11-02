@@ -18,7 +18,7 @@ VARIANT "two": kicks on steps 1 and 5 (16ths, Div 1/4: two beats).
 VARIANT "one": one duck over the whole word (Div 1/2).
 
 Run from anywhere:  py src\\custom\\breather\\make_cover.py [out.png]
-Also writes cover_preview.png next to this script (dark blue on white, stretched 1.4x).
+Also writes cover_preview.png next to this script (LCD look, build/lcd_render.py).
 """
 import json, math, sys
 from pathlib import Path
@@ -251,14 +251,10 @@ def build(variant="two"):
         sq.vline(cx, cyd - 5, cyd)
     return c
 
-def preview(c, path, scale=5):
-    from PIL import Image
-    im = Image.new("RGB", (W, 64), (246, 248, 251))
-    for y in range(64):
-        for x in range(W):
-            if c.pixels[y][x]:
-                im.putpixel((x, y), (28, 52, 120))
-    im.resize((W * scale, round(64 * 1.4 * scale)), Image.NEAREST).save(str(path))
+def preview(c, path):
+    sys.path.insert(0, str(ROOT / "build"))
+    from lcd_render import save_png
+    save_png(c.pixels, path)
 
 if __name__ == "__main__":
     # the chosen cover is build_ds() (Luca, 2026-10-06); build() / build_merged() are the

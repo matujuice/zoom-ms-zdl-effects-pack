@@ -1,94 +1,87 @@
-"""Generate src/airwindows/common/covers/GridDly.json (128x64 cover override).
+"""Generate src/airwindows/common/covers/GRDELAY.json (128x64 cover override).
 
-Concept (DualShft/Breather style, the title is the art): GRIDLY in thick 4 px letters, with
-dithered drips falling from the letters' feet (Breather), and under it the delay as a row of
-hit bumps on a dotted step line: six repeats, each smaller than the last, an arrow at the right
-for the direction it travels.
+GRDELAY, the GRDLOOP cover's pair: the name in GRDLOOP's big font, under it GRDLOOP's rounded
+2 px bar split into 8 grid cells (gaps in the edges, dotted lines). The first cell is the hit,
+then one echo block per cell, the same size, each repeat a lighter dither. Knob row as GRDLOOP.
+(First built as BarDelay, renamed GridDly, renamed GRDELAY on 2026-10-30.)
 
 Run from anywhere:  py src\\custom\\griddly\\make_cover.py
 The build (custom_covers.make_cover) picks the JSON up automatically.
-Also writes cover_preview.png next to this script.
+Also writes cover_preview.png next to this script (LCD look, build/lcd_render.py).
 """
-import json, sys
+import importlib.util, json, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "build"))
-sys.path.insert(0, str(ROOT / "src" / "airwindows" / "common"))
-from screen_image import Canvas
-import custom_covers as cc
-from custom_covers import _VSquash
+spec = importlib.util.spec_from_file_location("grdloop_cover", ROOT / "src" / "custom" / "looper" / "make_cover.py")
+g = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(g)                      # GRDLOOP's helpers; its __main__ does not run
 
-TITLE = "GRIDLY"
+NAME = "GRDELAY"
 LABELS = ("TYPE", "TIME", "FDBK")
-SCALE, GAP, X0, Y0 = 4, 4, 16, 1
-CY = 29                                    # centre line of the bumps
-# the pack font's 3-wide G and Y read badly at this size: own glyphs (Y is 5 wide)
-FONT = dict(Canvas._FONT)
-FONT["G"] = ["111", "100", "101", "101", "111"]
-FONT["Y"] = ["10001", "10001", "01010", "00100", "00100"]
+W, BARS, Y0, Y1 = g.W, g.BARS, g.BAR_Y0, g.BAR_Y1
+X0, X1 = 2, W - 3                               # inside the stroke
 BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
+FONT_Y = ["101", "101", "010", "010", "010"]    # GRDLOOP's clearer Y
 
-def dither(x, y, d):
-    return BAYER[y & 3][x & 3] < d * 16
 
-def title_mask():
-    m = Canvas(); x = X0
-    for ch in TITLE:
-        rows = FONT[ch]
-        for r, row in enumerate(rows):
-            for i, b in enumerate(row):
-                if b == "1":
-                    for dy in range(SCALE):
-                        for dx in range(SCALE):
-                            m.px(x + i * SCALE + dx, Y0 + r * SCALE + dy)
-        x += len(rows[0]) * SCALE + GAP
-    return m
+def title(c):
+    t = g.Canvas()
+    g.Canvas._FONT = dict(g.Canvas._FONT, Y=FONT_Y)
+    tx = (W - g.text_w(NAME) + 1) // 2
+    g.big_text(t, NAME, tx, 1)
+    ink = {(x, y) for y in range(Y0 - 1) for x in range(W) if t.pixels[y][x]}
+    for x, y in ink:                            # 1 px of air, as GRDLOOP
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if 0 <= x + dx < W and 0 <= y + dy < 64:
+                    c.px(x + dx, y + dy, 0)
+    for x, y in ink:
+        c.px(x, y)
+
+
+def gx(i):
+    return X0 + (X1 - X0 + 1) * i // BARS
+
 
 def build():
-    c = Canvas(); m = title_mask()
-    for y in range(64):
-        for x in range(128):
-            if m.pixels[y][x]:
-                c.px(x, y)
-    for y in range(24):                       # drips from the feet of the letters
-        for x in range(128):
-            if m.pixels[y][x] and not m.pixels[y + 1][x]:
-                for k in range(1, 4):
-                    if dither(x, y + k, 0.7 - 0.2 * k) and not m.pixels[y + k][x] and y + k < 25:
-                        c.px(x, y + k)
-    n, x0, pitch = 6, 9, 21
-    for x in range(4, 120, 4):                # the steps
-        if not any(abs(x - (x0 + k * pitch)) < 9 for k in range(n)):
-            c.px(x, CY)
-    for k in range(n):                        # hit bumps, each 22 % smaller
-        cx = x0 + k * pitch; a = 5.0 * 0.78 ** k
-        for j in range(-7, 8):
-            h = int(round(a * (1 - abs(j) / 8.0) ** 1.2))
-            for yy in range(CY - h, CY + h + 1):
-                c.px(cx + j, yy)
-    for i in range(4):                        # arrow
-        c.vline(122 + i, CY - 3 + i, CY + 3 - i)
-    for (kid, kx, ky), label in zip(cc.knob_layout(3), LABELS):
+    c = g.Canvas()
+    title(c)
+    for d in (0, 1):
+        c.rect(d, Y0 + d, W - 1 - d, Y1 - d)
+    by0, by1 = Y0 + 4, Y1 - 4                   # blocks: 2 px of white inside the stroke
+    for k in range(7):                          # cell 0 = the hit, cells 1..6 = repeats
+        bx0, bx1 = gx(k) + 3, gx(k + 1) - 3
+        dens = 1.0 if k == 0 else 0.8 * 0.72 ** (k - 1)
+        for y in range(by0, by1 + 1):
+            for x in range(bx0, bx1 + 1):
+                if BAYER[y & 3][x & 3] < dens * 16:
+                    c.px(x, y)
+    for i in range(1, BARS):                    # GRDLOOP's grid: edge gaps and dotted lines
+        for y in (Y0, Y0 + 1, Y1 - 1, Y1):
+            c.px(gx(i), y, 0)
+        for y in range(Y0 + 2, Y1 - 1, 2):
+            c.px(gx(i), y, 1 - c.pixels[y][gx(i)])
+    for x, y in ((0, 0), (1, 0), (0, 1)):       # round corners, radius 2
+        for px_, py_ in ((x, Y0 + y), (W - 1 - x, Y0 + y), (x, Y1 - y), (W - 1 - x, Y1 - y)):
+            c.px(px_, py_, 0)
+    for px_, py_ in ((1, Y0 + 1), (W - 2, Y0 + 1), (1, Y1 - 1), (W - 2, Y1 - 1)):
+        c.px(px_, py_)
+    for (kid, kx, ky), label in zip(g.cc.knob_layout(3), LABELS):
         cx = kx + 10
         w = len(label) * 4 - 1
         c.draw_text(label, max(2, cx - w // 2), 37, scale=1, spacing=1)
         cyd = ky + 7
-        sq = _VSquash(c, cyd)
+        sq = g._VSquash(c, cyd)
         sq.circle(cx, cyd, 6)
         sq.vline(cx, cyd - 5, cyd)
     return c
 
+
 if __name__ == "__main__":
     c = build()
-    out = ROOT / "src" / "airwindows" / "common" / "covers" / "GridDly.json"
-    out.write_text(json.dumps({"name": "GridDly", "w": 128, "h": 64, "grid": c.pixels}))
-    from PIL import Image
-    im = Image.new("RGB", (128, 64), (246, 248, 252))
-    for y in range(64):
-        for xx in range(128):
-            if c.pixels[y][xx]:
-                im.putpixel((xx, y), (28, 52, 120))
-    im.resize((128 * 5, int(64 * 5 * 1.4)), Image.NEAREST).save(
-        str(Path(__file__).resolve().parent / "cover_preview.png"))
+    out = ROOT / "src" / "airwindows" / "common" / "covers" / f"{NAME}.json"
+    out.write_text(json.dumps({"name": NAME, "w": 128, "h": 64, "grid": c.pixels}))
+    from lcd_render import save_png             # build/ is on sys.path via the GRDLOOP module
+    save_png(c.pixels, Path(__file__).resolve().parent / "cover_preview.png")
     print("wrote", out)

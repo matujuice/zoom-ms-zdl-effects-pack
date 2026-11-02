@@ -1,5 +1,5 @@
 /*
- * griddly.c - "GridDly": one tempo-synced delay with six engines on a Type knob, mono
+ * griddly.c - "GridDly": one tempo-synced delay with six engines on a Type knob, mono or stereo
  *
  * Shown on the pedal as GridDly (Luca picked the name 2026-10-07; first built as BarDelay).
  * Scoped with Luca 2026-10-06/07 (/mnt/project-files/ideas/delay-scope.md): six engines,
@@ -53,6 +53,12 @@
  *   for REVRS see above). Away from TAPE a Time change crossfades from the old read point
  *   to the new one over 23 ms (no pitch bend, no click).
  *
+ * SWITCHING ON AFTER A GAP (Mix above 50)
+ *   With Tail ON nothing enters the ring while the effect is off (and REVRS only plays finished
+ *   chunks), so for one Time after switching on there is nothing to echo, and at Mix 100 (no dry)
+ *   the sound would be cut for that long (about 1 s at Time 1 s, twice that in PING). So the dry
+ *   is held at full level for one Time and then fades to Mix's own over 50 ms.
+ *
  * TAIL (knob 8) and switching off
  *   Off, the input always passes untouched. Tail ON: the input stops entering the ring and
  *   the repeats ring out and decay with the feedback, as the factory delays do with Tail on.
@@ -86,7 +92,7 @@
  *
  * TEMPO AND MIDI TRANSPORT (MOD firmware 0.4 and later; src/custom/common/zmt.h)
  *   No Tempo knob: the BPM is the pedal's (MIDI clock, tap or patch TEMPO), read from the
- *   MOD firmware's transport block; 120 BPM without it. It sets the synced Time (held until
+ *   MOD firmware's transport block; the stock patch tempo without it. It sets the synced Time (held until
  *   it moves by 0.3 BPM). The beat clock (the REVRS chunk phase) runs on every engine: with a
  *   synced Time, while the MIDI transport runs, it is placed on the clock count (beats since
  *   Start / the note's beats), so chunks start on the beat and never drift; a free Time runs
@@ -106,15 +112,19 @@
 #define GD_DO_PRAGMA(x) _Pragma(#x)
 #define GD_EXPAND_PRAGMA(x) GD_DO_PRAGMA(x)
 #define GD_ALWAYS_INLINE(fn) GD_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
+#define GD_EIGHT GD_DO_PRAGMA(MUST_ITERATE(8, 8, 8)) GD_DO_PRAGMA(UNROLL(1))
 #define GD_CODE_SECTION(fn) GD_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
 #define GD_ALWAYS_INLINE(fn)
+#define GD_EIGHT
 #define GD_CODE_SECTION(fn)
 #endif
 
-#define GD_MAGIC      0x47444C32u        /* "GDL2": change whenever GdState changes      */
+#define GD_MAGIC      0x47444C33u        /* "GDL3": change whenever GdState changes      */
 #define GD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
 #define GD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
+#define GD_NS         174000             /* ST / PING: one ring, 3.9 s                   */
+#define GD_MAXDS      172000.0f          /* longest delay there (samples)                */
 #define GD_CLEAR_BLK  2048
 #define GD_TO16       16384.0f
 #define GD_FROM16     6.1035156e-5f      /* 1 / 16384 */
@@ -124,6 +134,7 @@
 #define GD_ENV_REL    0.9999f            /* duck follower release, about 0.23 s */
 #define GD_DG_RATE    0.003f             /* duck gain smoothing, about 7.5 ms */
 #define GD_WL_RATE    0.01f              /* wet level ramp on switch-on, about 2 ms */
+#define GD_DH_INV     4.5351e-4f         /* dry hold fades over 2205 samples (50 ms) */
 #define GD_GLIDE      1.134e-4f          /* TAPE head glide, about 0.2 s */
 
 typedef struct {
@@ -134,17 +145,22 @@ typedef struct {
     float xf;              /* Time crossfade 0..1 (1 = done)                  */
     float ph;              /* chunk phase 0..1 (REVRS chunks, runs on every engine) */
     float L;               /* chunk length the REVRS read uses, latched at each chunk start */
-    float lp, hs;          /* loop low-pass state, loop high-pass's low part  */
+    float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part (per ring) */
+    int   mode;            /* Stereo knob the rings were laid out for         */
+    int   off;             /* the effect was switched off                     */
+    float dh;              /* dry hold after switching on: samples left       */
     float wow, flt;        /* TAPE / DIGI LFO phases 0..1                     */
     float env, dg;         /* duck follower and duck gain                     */
     float wl;              /* wet level: ramps in on switch-on                */
-    float hold, hacc;      /* LOFI sample-hold value and its clock            */
+    float hold[2], hacc[2];   /* LOFI sample-hold value and its clock (per ring) */
     ZtSync zt;             /* MIDI transport (zmt.h)                          */
     short buf[GD_N];
 } GdState;
 
 typedef struct {
     int   rev, taps, lofi, tape, on;
+    int   mode, nch, nn, ping;   /* Stereo: 0 MONO 1 ST 2 PING; rings; ring length   */
+    float lim;             /* longest loop delay the ring holds (samples)     */
     float dT;              /* delay time the knobs ask for (samples)          */
     float L;               /* REVRS chunk length = dT                         */
     float mult;            /* chunks per beat with a synced Time, 0 = free    */
@@ -235,43 +251,30 @@ static inline float gd_lfo(float p)
 GD_ALWAYS_INLINE(gd_sat)
 static inline float gd_sat(float x)
 {
-    if (x > 1.5f) x = 1.5f;
-    if (x < -1.5f) x = -1.5f;
+    x = (x > 1.5f) ? 1.5f : x;
+    x = (x < -1.5f) ? -1.5f : x;
     return x - 0.14814815f * x * x * x;
 }
 
 GD_ALWAYS_INLINE(gd_read)
-static inline float gd_read(const short *b, int wp, float age)
+static inline float gd_read(const short *b, int wp, float age, int nn)
 {
     int a0 = (int)age, j, j1;
     float fr = age - (float)a0, x0, x1;
     j = wp - a0;
-    if (j < 0) j += GD_N;
+    j = (j < 0) ? j + nn : j;
     j1 = j - 1;
-    if (j1 < 0) j1 += GD_N;
+    j1 = (j1 < 0) ? j1 + nn : j1;
     x0 = (float)b[j];
     x1 = (float)b[j1];
     return (x0 + fr * (x1 - x0)) * GD_FROM16;
 }
 
-/* read at the new delay, crossfaded from the old one while a Time change settles */
+/* read at the new delay crossfaded from the old one (xe = 1 once a Time change has settled) */
 GD_ALWAYS_INLINE(gd_xread)
-static inline float gd_xread(const short *b, int wp, float aN, float aO, float xf)
+static inline float gd_xread(const short *b, int wp, float aN, float aO, float xe, int nn)
 {
-    float y = gd_read(b, wp, aN);
-    if (xf < 1.0f) y = xf * y + (1.0f - xf) * gd_read(b, wp, aO);
-    return y;
-}
-
-GD_ALWAYS_INLINE(gd_write)
-static inline void gd_write(GdState *s, float v)
-{
-    v *= GD_TO16;
-    if (v > 32767.0f) v = 32767.0f;
-    if (v < -32767.0f) v = -32767.0f;
-    s->buf[s->wp] = (short)(int)v;
-    s->wp++;
-    if (s->wp >= GD_N) s->wp = 0;
+    return xe * gd_read(b, wp, aN, nn) + (1.0f - xe) * gd_read(b, wp, aO, nn);
 }
 
 GD_ALWAYS_INLINE(gd_init)
@@ -280,8 +283,9 @@ static inline void gd_init(GdState *s)
     s->clr = 0; s->wp = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->ph = 0.0f; s->L = 0.0f;
-    s->lp = 0.0f; s->hs = 0.0f; s->wow = 0.0f; s->flt = 0.25f;
-    s->env = 0.0f; s->dg = 1.0f; s->wl = 0.0f; s->hold = 0.0f; s->hacc = 0.0f;
+    s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f; s->wow = 0.0f; s->flt = 0.25f;
+    s->env = 0.0f; s->dg = 1.0f; s->wl = 0.0f; s->hold[0] = s->hold[1] = 0.0f; s->hacc[0] = s->hacc[1] = 0.0f;
+    s->mode = 0; s->off = 0; s->dh = 0.0f;
     zt_init(&s->zt);
     s->magic = GD_MAGIC;
 }
@@ -309,17 +313,25 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
 
     P->rev = (type == 3); P->taps = (type == 4); P->lofi = (type == 5); P->tape = (type == 1);
     P->on = on;
+    P->mode = (int)(u[9] + 0.5f);                /* 0 MONO (7.9 s), 1 ST, 2 PING (3.9 s) */
+    P->ping = (P->mode == 2);
+    P->nch = (P->mode == 1) ? 2 : 1;
+    P->nn = P->mode ? GD_NS : GD_N;
+    P->lim = P->mode ? GD_MAXDS : GD_MAXD;
 
-    /* Time */
-    lim = P->rev ? GD_MAXD * 0.5f : GD_MAXD;
+    /* Time (PING: the loop is twice the Time, so the loop delay and the chunk are doubled) */
+    lim = P->rev ? P->lim * 0.5f : P->lim;
     P->mult = 0.0f;
     if (n > 100) {
         nb = gd_note_beats(n - 101);
+        if (P->ping) nb += nb;
         d = nb * 2646000.0f * gd_recip(u[7]);    /* u[7] = BPM from zt_update */
         while (d > lim) { d *= 0.5f; nb *= 0.5f; }
         P->mult = gd_recip(nb);                  /* 96 beats hold whole chunks of every note */
     } else {
         d = (float)(int)(12.0f + 0.0988f * (float)(n * n) + 0.5f) * GD_MS;
+        if (P->ping) d += d;
+        if (d > lim) d = lim;
     }
     P->dT = d;
     P->L = d;
@@ -356,13 +368,13 @@ static inline void gd_prepare(GdParams *P, const float *u, int on)
     P->f2 = 0.5f * (float)(z == 0) + 0.75f * (float)(z == 1) + 0.6666667f * (float)(z == 2) + 0.75f * (float)(z == 3);
 
     /* REVRS edge fade 1 % .. 25 % of the chunk */
-    P->fadeInv = gd_recip(0.01f + 0.24f * ch);
+    P->fadeInv = P->rev ? gd_recip(0.01f + 0.24f * ch) : 1.0f;
 
     /* LOFI: 12 .. 4 bits, hold 1 .. 8 samples */
     bits = 12 - (int)(8.0f * ch + 0.5f);
     P->qk = (float)(1 << (bits - 1));
-    P->qinv = gd_recip(P->qk);
-    P->hinc = gd_recip(1.0f + 7.0f * ch);
+    P->qinv = P->lofi ? gd_recip(P->qk) : 1.0f;
+    P->hinc = P->lofi ? gd_recip(1.0f + 7.0f * ch) : 0.0f;   /* 0: the hold clock only runs in LOFI */
 
     /* Duck, Mix, Tail */
     P->duck = u[5] * 0.01f;
@@ -390,74 +402,151 @@ static inline void gd_restart(GdState *s, const GdParams *P)
 GD_ALWAYS_INLINE(gd_process)
 static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
 {
-    int i, wp;
-    float ph = s->ph, L = s->L, invL = gd_recip(P->L), lp = s->lp, hs = s->hs;
+    int i, pass, ch, npass = 1, hz = 0, wp0, rev = P->rev, taps = P->taps, tape = P->tape;
+    const int nn = P->nn, nch = P->nch, ping = P->ping, st = (P->nch == 2);
+    float ph = s->ph, L = s->L, invL = gd_recip(P->L), ph0, L0;
     float wow = s->wow, flt = s->flt, env = s->env, dg = s->dg, wl = s->wl;
-    float dCur = s->dCur, xf = s->xf, wlT = P->wetG;
+    float dCur = s->dCur, xf = s->xf, wlT = P->wetG, dOld;
+    float xs[2][8], dl[8], dr[8], gk[8], dc[8], md[8], xe[8], pr[8], wr[8], y0[8], yf[8], ym[8], wo[2][8];
+    const float cl = P->cl, ch_ = P->ch, inG = P->inG, fb = P->fb, drive = P->drive, dinv = P->dinv;
+    const float hinc = P->hinc, qk = P->qk, qinv = P->qinv, dryG = P->dryG, duck = P->duck;
+    const float modInc = P->modInc, modA = P->modA, fltInc = P->fltInc, fltA = P->fltA;
+    const float PL = P->L, dT = P->dT, fadeInv = P->fadeInv, f1 = P->f1, f2 = P->f2;
+    const int lofi = P->lofi;
+    float dh = s->dh;
+    short * restrict sb = s->buf;
+    (void)n;                                      /* always 8 */
 
     if (L <= 0.0f) L = P->L;
-    if (P->rev && L > GD_MAXD * 0.5f) L = P->L;   /* chunk latched on another Type: too long to read backwards */
+    if (P->rev && L > P->lim * 0.5f) L = P->L;    /* chunk latched on another Type: too long to read backwards */
     if (dCur <= 0.0f) dCur = P->dT;
     if (P->tape) xf = 1.0f;
     else if (xf >= 1.0f && (P->dT - dCur > 0.5f || dCur - P->dT > 0.5f)) {
         s->dOld = dCur; dCur = P->dT; xf = 0.0f;  /* Time changed: crossfade to it */
     }
     if (!P->on && wlT == 0.0f) wl = 0.0f;         /* Tail OFF: repeats stop at once */
+    dOld = s->dOld;
+    wp0 = s->wp;
+    ph0 = ph; L0 = L;
 
-    for (i = 0; i < n; i++) {
-        float x = buf[i], ax = (x < 0.0f) ? -x : x, y, v, mod, tg;
-
-        /* duck: peak follower on the input */
+    /* Pass 1, state only: duck, beat clock, LFOs, head glide, Time crossfade -> per-sample
+     * numbers. Nothing here touches the ring. The input to the ring is (L + R) / 2 in MONO
+     * and PING and each side's own in ST; the dry L and R are kept apart for the output. */
+    GD_EIGHT
+    for (i = 0; i < 8; i++) {
+        float xl = buf[i], xr = buf[i + 8], ax = (xl < 0.0f) ? -xl : xl, axr = (xr < 0.0f) ? -xr : xr, tg, mod, w, w2;
+        int wf;
+        ax = (axr > ax) ? axr : ax;
         env = (ax > env) ? ax : env * GD_ENV_REL;
-        tg = env * 3.0f; if (tg > 1.0f) tg = 1.0f;
-        dg += (1.0f - P->duck * tg - dg) * GD_DG_RATE;
+        tg = env * 3.0f; tg = (tg > 1.0f) ? 1.0f : tg;
+        dg += (1.0f - duck * tg - dg) * GD_DG_RATE;
         wl += (wlT - wl) * GD_WL_RATE;
-
         /* beat clock: runs at the current Time; the REVRS read keeps the chunk length it
          * started with, so a Time change mid-chunk slows or speeds that chunk, never clicks */
         ph += invL;
-        if (ph >= 1.0f) { ph -= 1.0f; L = P->L; }
-
+        wf = (ph >= 1.0f);
+        ph = wf ? ph - 1.0f : ph;
+        L = wf ? PL : L;
         /* LFOs (offsets are >= 0, so the read never gets nearer than the set time) */
-        wow += P->modInc; if (wow >= 1.0f) wow -= 1.0f;
-        flt += P->fltInc; if (flt >= 1.0f) flt -= 1.0f;
-        mod = P->modA * (1.0f + gd_lfo(wow)) + P->fltA * (1.0f + gd_lfo(flt));
-        if (P->tape) dCur += (P->dT - dCur) * GD_GLIDE;
-
-        wp = s->wp;
-        if (P->rev) {
-            float w = ph * P->fadeInv, w2 = (1.0f - ph) * P->fadeInv;
-            if (w2 < w) w = w2;
-            if (w > 1.0f) w = 1.0f;
-            y = w * gd_read(s->buf, wp, (ph + ph) * L + 1.0f);
-            v = y;
-        } else {
-            y = gd_xread(s->buf, wp, dCur + mod, s->dOld + mod, xf);
-            v = y;
-            if (P->taps)
-                y = 0.5f * y + 0.85f * gd_xread(s->buf, wp, P->f1 * dCur + 1.0f, P->f1 * s->dOld + 1.0f, xf)
-                             + 0.65f * gd_xread(s->buf, wp, P->f2 * dCur + 1.0f, P->f2 * s->dOld + 1.0f, xf);
-            if (xf < 1.0f) { xf += GD_XF_STEP; if (xf > 1.0f) xf = 1.0f; }
-        }
-
-        /* feedback loop: low-pass, high-pass, saturate (LOFI: crush and hold) */
-        lp += P->cl * (v - lp);
-        hs += P->ch * (lp - hs);
-        v = P->inG * x + P->fb * (lp - hs);
-        v = gd_sat(v * P->drive) * P->dinv;
-        if (P->lofi) {
-            s->hacc += P->hinc;
-            if (s->hacc >= 1.0f) {
-                s->hacc -= 1.0f;
-                s->hold = (float)(int)(v * P->qk + ((v < 0.0f) ? -0.5f : 0.5f)) * P->qinv;
-            }
-            v = s->hold;
-        }
-        gd_write(s, v);
-
-        buf[i] = P->dryG * x + wl * dg * y;
+        wow += modInc; wow = (wow >= 1.0f) ? wow - 1.0f : wow;
+        flt += fltInc; flt = (flt >= 1.0f) ? flt - 1.0f : flt;
+        mod = modA * (1.0f + gd_lfo(wow)) + fltA * (1.0f + gd_lfo(flt));
+        dCur = tape ? dCur + (dT - dCur) * GD_GLIDE : dCur;
+        w = ph * fadeInv; w2 = (1.0f - ph) * fadeInv;
+        w = (w2 < w) ? w2 : w;
+        w = (w > 1.0f) ? 1.0f : w;
+        dl[i] = xl; dr[i] = xr;
+        xs[0][i] = st ? xl : 0.5f * (xl + xr); xs[1][i] = xr;
+        gk[i] = wl * dg; dc[i] = dCur; md[i] = mod;
+        pr[i] = (ph + ph) * L + 1.0f;             /* REVRS read age */
+        wr[i] = rev ? w : 1.0f;                   /* REVRS edge fade */
+        xe[i] = rev ? 1.0f : xf;
+        xf = (!rev && xf < 1.0f) ? (xf + GD_XF_STEP > 1.0f ? 1.0f : xf + GD_XF_STEP) : xf;
     }
-    s->ph = ph; s->L = L; s->lp = lp; s->hs = hs;
+
+    /* The reads below only see what was in the ring before this block. The old per-sample
+     * code also saw the block's own writes, which matters only for a read younger than 9
+     * samples: REVRS right after a chunk start (age 1 + 2 x phase x L). That block runs the
+     * three loops once per sample (keeping only that sample's results), so it sees them. */
+    if (rev && (ph0 + 9.0f * invL >= 1.0f || ph0 * L0 < 24.0f)) { hz = 1; npass = 8; }
+
+    /* The ring loop, once per ring: MONO and PING have one, ST has two (the right one at
+     * +GD_NS) with their own filter states. In PING the loop delay is twice the Time: the
+     * loop tap (right side) holds the even repeats, a tap half way (left side) the odd ones. */
+    for (ch = 0; ch < nch; ch++) {
+    short * restrict rb = sb + ch * GD_NS;
+    float lp = s->lp[ch], hs = s->hs[ch], hacc = s->hacc[ch], hold = s->hold[ch];
+    for (pass = 0; pass < npass; pass++) {
+        /* Pass 2, loads only: the first tap (REVRS: the reversed read) and TAPS' two more */
+        GD_EIGHT
+        for (i = 0; i < 8; i++) {
+            int wpk = wp0 + i;
+            float aN = rev ? pr[i] : dc[i] + md[i], aO = rev ? pr[i] : dOld + md[i];
+            wpk = (wpk >= nn) ? wpk - nn : wpk;
+            y0[i] = wr[i] * gd_xread(rb, wpk, aN, aO, xe[i], nn);
+            yf[i] = y0[i];
+        }
+        if (taps) {
+            GD_EIGHT
+            for (i = 0; i < 8; i++) {
+                int wpk = wp0 + i;
+                wpk = (wpk >= nn) ? wpk - nn : wpk;
+                yf[i] = 0.5f * y0[i] + 0.85f * gd_xread(rb, wpk, f1 * dc[i] + 1.0f, f1 * dOld + 1.0f, xe[i], nn)
+                                     + 0.65f * gd_xread(rb, wpk, f2 * dc[i] + 1.0f, f2 * dOld + 1.0f, xe[i], nn);
+            }
+        }
+        if (ping) {                                /* the half-way tap: the odd repeats */
+            GD_EIGHT
+            for (i = 0; i < 8; i++) {
+                int wpk = wp0 + i;
+                wpk = (wpk >= nn) ? wpk - nn : wpk;
+                ym[i] = gd_xread(rb, wpk, 0.5f * dc[i] + md[i], 0.5f * dOld + md[i], xe[i], nn);
+            }
+        }
+        /* Pass 3: feedback loop (low-pass, high-pass, saturate; LOFI: crush and hold), ring
+         * write, wet out */
+        GD_EIGHT
+        for (i = 0; i < 8; i++) {
+            int wpk = wp0 + i, act = (!hz) | (i == pass);
+            float x = xs[ch][i], v = y0[i], lpn, hsn, hn, hv, c;
+            wpk = (wpk >= nn) ? wpk - nn : wpk;
+            lpn = lp + cl * (v - lp);
+            hsn = hs + ch_ * (lpn - hs);
+            v = inG * x + fb * (lpn - hsn);
+            v = gd_sat(v * drive) * dinv;
+            hn = hacc + hinc;
+            hv = (hn >= 1.0f) ? (float)(int)(v * qk + ((v < 0.0f) ? -0.5f : 0.5f)) * qinv : hold;
+            hn = (hn >= 1.0f) ? hn - 1.0f : hn;
+            v = lofi ? hv : v;
+            c = v * GD_TO16;
+            c = (c > 32767.0f) ? 32767.0f : c;
+            c = (c < -32767.0f) ? -32767.0f : c;
+            if (act) rb[wpk] = (short)(int)c;
+            if (act) wo[ch][i] = gk[i] * yf[i];
+            lp = act ? lpn : lp; hs = act ? hsn : hs;
+            hacc = act ? hn : hacc; hold = act ? hv : hold;
+        }
+    }
+    s->lp[ch] = lp; s->hs[ch] = hs; s->hacc[ch] = hacc; s->hold[ch] = hold;
+    }
+
+    /* Output: the dry keeps L and R apart; the wet is one signal on both sides (MONO), each
+     * side's own (ST) or the odd repeats left and the even right (PING) */
+    GD_EIGHT
+    for (i = 0; i < 8; i++) {
+        float wL = wo[0][i], wR = st ? wo[1][i] : wo[0][i];
+        float hg = dh * GD_DH_INV, dgx;           /* dry hold: full dry while the ring refills, then Mix's own */
+        hg = (hg > 1.0f) ? 1.0f : hg;
+        dh = (dh > 0.0f) ? dh - 1.0f : 0.0f;
+        dgx = dryG + (1.0f - dryG) * hg;
+        wL = ping ? gk[i] * ym[i] : wL;
+        buf[i] = dgx * dl[i] + wL;
+        buf[i + 8] = dgx * dr[i] + wR;
+    }
+    s->dh = dh;
+    wp0 += 8;
+    s->wp = (wp0 >= nn) ? wp0 - nn : wp0;
+    s->ph = ph; s->L = L;
     s->wow = wow; s->flt = flt; s->env = env; s->dg = dg; s->wl = wl;
     s->dCur = dCur; s->xf = xf;
 }
@@ -530,6 +619,14 @@ int ZDL_GetLabel_7(unsigned int value, char *out)
     return gd_put4(out, 'O', 'F', 'F', 0, 0);
 }
 
+/* Stereo: MONO / ST / PING */
+int ZDL_GetLabel_8(unsigned int value, char *out)
+{
+    if (value >= 2u) return gd_put4(out, 'P', 'I', 'N', 'G', 0);
+    if (value == 1u) { out[0] = 'S'; out[1] = 'T'; out[2] = 0; return 2; }
+    return gd_put4(out, 'M', 'O', 'N', 'O', 0);
+}
+
 #ifndef GRIDDLY_HOST_TEST
 
 #include "griddly_params.h"
@@ -553,7 +650,7 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     GdState *s;
     GdParams P;
-    float u[9], beats, t;
+    float u[10], beats, t;
     int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -581,10 +678,17 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     u[5] = gd_ui(params[GRIDDLY_DUCK_SLOT],  (float)GRIDDLY_DUCK_UI_DEFAULT,  100.0f);
     u[6] = gd_ui(params[GRIDDLY_MIX_SLOT],   (float)GRIDDLY_MIX_UI_DEFAULT,   100.0f);
     u[8] = gd_ui(params[GRIDDLY_TAIL_SLOT],  (float)GRIDDLY_TAIL_UI_DEFAULT,  1.0f);
+    u[9] = gd_ui(params[GRIDDLY_STEREO_SLOT], (float)GRIDDLY_STEREO_UI_DEFAULT, 2.0f);
 
     if (s->magic != GD_MAGIC) gd_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     gd_prepare(&P, u, params[0] >= 0.5f);
+    if (s->mode != P.mode) { s->mode = P.mode; s->wp = 0; s->clr = 0; }   /* rings laid out anew: start over */
+    if (!P.on) s->off = 1;
+    else if (s->off) {                           /* just switched on: with Tail ON nothing went into the ring while off, and */
+        s->off = 0;                              /* REVRS plays a finished chunk, so for one Time the ring has nothing to echo: */
+        s->dh = (u[8] >= 0.5f || P.rev) ? P.dT + 2205.0f : 0.0f;   /* hold the dry up to full (no cut when Mix > 50) */
+    }
     if (start) gd_restart(s, &P);                /* MIDI Start: chunk back to the downbeat */
     if (run && P.mult > 0.0f) {                  /* synced Time on the clock: chunk phase */
         t = beats * P.mult;                      /* = beats since Start / the note's beats */
@@ -593,9 +697,7 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
         s->ph = t;
     }
     if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
-    gd_process(s, &P, fxBuf, 8);                 /* mono: left half in place */
-
-    for (i = 0; i < 8; i++) fxBuf[i + 8] = fxBuf[i];   /* same signal to R */
+    gd_process(s, &P, fxBuf, 8);                 /* L and R in place; off, the dry of both sides passes untouched */
 }
 
 #endif /* GRIDDLY_HOST_TEST */

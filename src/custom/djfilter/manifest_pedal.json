@@ -1,0 +1,31 @@
+{
+  "effect_name": "DJFilter",
+  "comment": "DJFilter - the DJ mixer filter you ride by hand (Xone / DJM style) plus a kick kill. One DJ knob: -100 LP ... 0 ... +100 HP, -3..+3 flat (skipped). Exponential sweep (-100 about 40 Hz, +100 about 10 kHz). Resonance rises as the filter closes; Reso sets the far-end amount. Kill = independent 24 dB/oct low cut. Slope 12/24, Glide smooths DJ, Level trim, Mix = DJ crossfade. Footswitch on/off is ramped over a few ms. Linked stereo.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 502,
+  "fxid_comment": "480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 493 Breather, 495 GRDELAY, 496 Sweep, 497 Looper (this pack). 502 (484 clashed with the community effect Gyre; 482 and 483 are old aliases of other projects). Unique inside the repo; check other community effects.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {"name": "DJ", "max": 200, "default": 100,
+     "comment": "One-knob DJ filter, shown -100 ... 0 ... +100 (value - 100). Left = low-pass, right = high-pass, -3..+3 flat. Exponential: -100 closes to about 40 Hz, +100 to about 10 kHz."},
+    {"name": "Reso", "max": 100, "default": 30,
+     "comment": "Resonance at the far end of the sweep. None when the filter is open, rising as it closes, capped well below self-oscillation (Q about 5 at 100). Default 30."},
+    {"name": "Kill", "max": 281, "default": 0,
+     "comment": "Independent 24 dB/oct low cut. 0 = OFF, 1..281 = 20..300 Hz in 1 Hz steps. Default OFF."},
+    {"name": "Slope", "max": 1, "default": 1,
+     "comment": "Slope of the DJ filter: 0 = 12 dB/oct (gentle, warm), 1 = 24 dB/oct (hard DJ-mixer cut). Default 24. Kill is always 24."},
+    {"name": "Glide", "max": 100, "default": 44,
+     "comment": "How fast DJ follows the knob. 0 = instant, 1..100 = 1 to 1000 ms on a log scale. Default 44 = about 20 ms."},
+    {"name": "Level", "max": 36, "default": 24,
+     "comment": "Output trim in 0.5 dB steps: 0 = -12 dB, 24 = 0 dB, 36 = +6 dB. Default 0 dB."},
+    {"name": "Mix", "max": 100, "default": 100,
+     "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. Default 100."}
+  ],
+  "audio_func_name": "Fx_DLY_DJFilter",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 40.0,
+  "dsp_cost_comment": "Previous build measured 5% (2,700 cycles). This build skips the dry/level pass at Mix 100, 0 dB: estimated about 4.3% (2,350 cycles). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD)."
+}
