@@ -65,6 +65,7 @@ src/custom/common/     zmt.h, the custom firmware's MIDI transport block (tempo,
 src/airwindows/common/ shared cover and parameter helpers; covers/*.json are the generated covers
 build/                 the ZDL linker and tools (from ZoomMultistompZDL, see Credits)
 docs/                  knob reference, install guide, DSP rules
+graphics/              each effect's cover as the pedal shows it (py build/make_gallery_png.py)
 tests/                 host tests: python3 tests/run.py
 tools/                 zoom_sysex.py, a USB connection test script
 ```
