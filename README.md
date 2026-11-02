@@ -41,6 +41,10 @@ Release v2.0 has all seventeen effects, made for MIDISTOMP v2.0 and working on s
 
 Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 GRDLOOP, 501 Gooey, 502 DJFilter). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
+## What's next
+
+- **Modwerk integration:** the effects (and the [MIDISTOMP](https://github.com/matujuice/zoom-ms-midistomp) firmware mods) inside Modwerk, so you pick them and load them onto the pedal from the browser, without Zoom Effect Manager or a build.
+
 ## Build from source
 
 You need Python 3 and the TI C6000 compiler (`ti-cgt-c6000_8.5.0.LTS`, free from Texas Instruments). The build scripts look in the usual install places (`C:\ti`, your Downloads folder, `/Applications/ti`); otherwise set `TI_CGT_ROOT` to the folder that contains `bin` and `include`.
