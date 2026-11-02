@@ -311,12 +311,15 @@ int main(void)
       printf("LED armed: %d changes, lit %.2f of the time (state %d)\n", ch, (double)lit1 / BLK(0.8), S()->state);
       CHECK(S()->state == ST_WAIT && ch >= 2 && lit1 > 0 && lit1 < BLK(0.8), "LED does not pulse while armed");
       CHECK(gon == 1u && goff == 1u, "LED registers not written with the mask");
+      tk_led_host[0] = 1u; tk_led_host[1] = 0u; blk();   /* a flip: the stock LED task would rewrite the LED */
+      CHECK(tk_led_host[1] == 1u, "stock LED task not kept quiet while armed");
       run_to(6.1); lit1 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit1 += (S()->led == 1); }
       run_to(7.5); lit2 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit2 += (S()->led == 1); }
       printf("LED UP sweep: lit %.2f early, %.2f late\n", (double)lit1 / BLK(0.4), (double)lit2 / BLK(0.4));
       CHECK(lit2 > 4 * lit1 + 10, "LED does not fade up with the sweep");
       run_to(8.5); gon = goff = 0u; run_to(9.5);
       CHECK(S()->led != 1, "LED left lit after the sweep");
+      CHECK((tk_led_host[1] & 1u) != (tk_led_host[0] & 1u), "LED not handed back to the stock task when idle");
       CHECK(gon == 0u && goff == 0u, "LED written while idle after the sweep");
       tk_svc_host[0] = 0x5A4C5300u; foot = 1; run_to(11.0); foot = 0; run_to(11.5);
       CHECK(gon == 0u && goff == 0u, "LED written on stock (no services magic)"); }

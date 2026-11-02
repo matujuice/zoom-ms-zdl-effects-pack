@@ -43,8 +43,11 @@
  * LED (MOD firmware services block 0xC00F3000, magic 0x5A4C5301): while word 22 = our params pointer (we
  *   are the effect under the cursor in play mode) the effect drives the footswitch LED by PWM, one step a
  *   block, 32 steps (172 Hz), through the firmware's GPIO words 13 (on) / 14 (off) / 15 (mask): armed = a
- *   pulse on every beat (FREE: every second), sweeping = brightness x^2 (fades up on UP, down on DOWN),
- *   otherwise no writes (one "off" if it was left lit). Not ours or no block: nothing is written.
+ *   pulse on every beat (FREE: every second), sweeping = brightness x^2 (fades up on UP, down on DOWN).
+ *   While armed or sweeping it writes the LED every block and tells the stock LED task its state is already
+ *   written (0xC00EEB10 bit 0 = 0xC00EEB08 bit 0), so a footswitch flip cannot overwrite it; when it goes idle
+ *   it flips 0xC00EEB10 bit 0 once and the stock LED (on/off) comes back. Not ours: nothing is written (the
+ *   firmware hands the LED back when the cursor owner changes).
  *
  *
  * IDLE: nothing sounding and the Space tail died (32 blocks under -120 dB) = no synthesis, no reverb,
@@ -104,6 +107,16 @@ static unsigned int tk_svc_host[32];     /* host tests: no firmware; tests fill 
 #define SV_LEDOFF    14
 #define SV_LEDMASK   15
 #define SV_CURSOR    22                  /* params pointer of the effect under the cursor (play mode), or 0 */
+/* The stock LED task (every 16 ms) rewrites the LED when its wanted bit 0 differs from the bit it wrote last,
+ * which a footswitch flip causes. While we drive the LED we set "written" = "wanted" so it stays quiet. */
+#ifdef __TI_COMPILER_VERSION__
+#define TK_LEDWANT   0xC00EEB08u
+#define TK_LEDDONE   0xC00EEB10u
+#else
+static unsigned int tk_led_host[2];      /* host tests: [0] wanted, [1] written */
+#define TK_LEDWANT   ((uintptr_t)&tk_led_host[0])
+#define TK_LEDDONE   ((uintptr_t)&tk_led_host[1])
+#endif
 
 typedef struct {
     int   act, rv;
@@ -381,12 +394,14 @@ static inline void tk_led(TkState *s, const int *u, unsigned int me)
     } else if (s->state == ST_SWEEP || s->state == ST_HOLD) {
         lev = (int)(s->x * s->x * (float)TK_PWM + 0.5f);
     }
-    if (lev < 0) { if (s->led != 1) return; lit = 0; }   /* idle: no writes, one off if left lit */
-    else lit = (s->pwm < lev);
-    if (lit != s->led) {
-        *(volatile unsigned int *)(uintptr_t)(lit ? b[SV_LEDON] : b[SV_LEDOFF]) = b[SV_LEDMASK];
-        s->led = lit;
+    if (lev < 0) {                                       /* idle: hand the LED back to the stock task once */
+        if (s->led >= 0) { *(volatile unsigned int *)TK_LEDDONE ^= 1u; s->led = -1; }
+        return;
     }
+    lit = (s->pwm < lev);
+    *(volatile unsigned int *)TK_LEDDONE = (*(volatile unsigned int *)TK_LEDDONE & ~1u) | (*(volatile unsigned int *)TK_LEDWANT & 1u);
+    *(volatile unsigned int *)(uintptr_t)(lit ? b[SV_LEDON] : b[SV_LEDOFF]) = b[SV_LEDMASK];   /* every block: a flip's stock write is undone at once */
+    s->led = lit;
 }
 
 /* once per block: the riser (zero when not active), then the reverb, added on both sides. n = 8 */
