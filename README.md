@@ -2,7 +2,7 @@
 
 Free custom effects for Zoom MultiStomp pedals, with source code.
 
-<img width="1920" height="870" alt="effects pack cover v2 0" src="https://github.com/user-attachments/assets/05fa2d7e-31a2-4922-80b3-30e40b32e8f8" />
+<p align="center"><img alt="effects pack cover v2 0" src="https://github.com/user-attachments/assets/2f8fa485-b7cb-44c6-ad30-2468fd3668cd" width="720"></p>
 
 | Effect | What it is |
 |---|---|
