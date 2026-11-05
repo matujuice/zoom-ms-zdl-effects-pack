@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/banner.jpg" alt="MATUJUICE EFFECT PACK v2.0 on the screen of a Zoom MultiStomp" width="720"></p>
+
 # Matujuice Zoom MS ZDL effects pack
 
 Free custom effects for Zoom MultiStomp pedals, with source code.
