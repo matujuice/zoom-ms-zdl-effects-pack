@@ -95,7 +95,7 @@
  *   MOD firmware's transport block; the stock patch tempo without it. It sets the synced Time (held until
  *   it moves by 0.3 BPM). The beat clock (the REVRS chunk phase) runs on every engine: with a
  *   synced Time, while the MIDI transport runs, it is placed on the clock count (beats since
- *   Start / the note's beats), so chunks start on the beat and never drift; a free Time runs
+ *   Start / the note's beats; eased in, snapped only when far off), so chunks start on the beat and never drift; a free Time runs
  *   free. MIDI Start restarts the chunk. After Stop it runs on at
  *   the last tempo. Switched off it keeps following the clock.
  *
@@ -650,7 +650,7 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     GdState *s;
     GdParams P;
-    float u[10], beats, t;
+    float u[10], beats, t, e;
     int i, run, start;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
@@ -693,8 +693,16 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     if (run && P.mult > 0.0f) {                  /* synced Time on the clock: chunk phase */
         t = beats * P.mult;                      /* = beats since Start / the note's beats */
         t -= (float)(int)t;
-        if (t < s->ph - 0.5f) s->L = P.L;        /* wrapped: new chunk, latch its length */
-        s->ph = t;
+        e = t - s->ph;                           /* clock vs running phase, -0.5..0.5 */
+        if (e > 0.5f) e -= 1.0f; else if (e < -0.5f) e += 1.0f;
+        if (e > 0.05f || e < -0.05f) {           /* far off (load, tempo jump): snap */
+            if (t < s->ph - 0.5f) s->L = P.L;    /* wrapped: new chunk, latch its length */
+            s->ph = t;
+        } else {                                 /* #36: ease in; a snap at every clock clicked the REVRS read */
+            t = s->ph + e * 0.0078125f;
+            if (t >= 1.0f) { t -= 1.0f; s->L = P.L; } else if (t < 0.0f) t = 0.0f;
+            s->ph = t;
+        }
     }
     if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
     gd_process(s, &P, fxBuf, 8);                 /* L and R in place; off, the dry of both sides passes untouched */

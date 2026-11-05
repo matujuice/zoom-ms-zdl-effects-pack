@@ -316,7 +316,7 @@ Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a fu
 ### GRDLOOP: a bar-synced looper on the song grid
 
 <img src="../graphics/grdloop.png" width="320" alt="GRDLOOP on the pedal screen">
-Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo.
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 9 s mono or 4.9 s stereo.
 
 The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
 
@@ -342,7 +342,7 @@ Record, stop and play wait for the Next line; delete is always at once. MIDI Sta
 
 Old Looper patches load: Length 2 bars reads as SLAVE (others OWN), When maps to Next (IMMED = NOW) and Amount to Cycle.
 
-**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 10 s mono or 5 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change.
+**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 23.3 s stereo or 43.2 s mono, so 8 bars stereo from 83 BPM and mono from 45 BPM. On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 9 s mono or 4.9 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change. Everything GRDLOOP leaves in the slot's memory reads as silence, so a stock delay or reverb loaded into that slot afterwards starts clean.
 
 **Screen and LED** (MIDISTOMP v2.0). A box on GRDLOOP's screens (top right of the knob pages, under LOOPER on the cover) shows EMPTY, REC WAIT, REC (REC MONO when the loop fell back to mono), PLAY, STOP or DEL WAIT, with a bar that is always there: it fills as the recording goes on, shows the place in the loop while playing or stopped, and fills up to the line while REC WAIT waits. Only the bar blinks, never the whole box: while recording it goes off for an 1/8 every 2 beats; while an action waits it blinks (STOP or PLAY show while waiting to stop or play), faster as the moment comes, from once per 2 bars down to 1/8 notes. The LED, while GRDLOOP is under the cursor: off when empty or stopped, a fade every 2 beats while recording, on while playing, the same countdown blink while an action waits. A double press while stopped deletes at once.
 
