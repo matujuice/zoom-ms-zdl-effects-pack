@@ -95,7 +95,7 @@
  *   MOD firmware's transport block; the stock patch tempo without it. It sets the synced Time (held until
  *   it moves by 0.3 BPM). The beat clock (the REVRS chunk phase) runs on every engine: with a
  *   synced Time, while the MIDI transport runs, it is placed on the clock count (beats since
- *   Start / the note's beats; eased in, snapped only when far off), so chunks start on the beat and never drift; a free Time runs
+ *   Start / the note's beats; the REVRS read glides over each correction), so chunks start on the beat and never drift; a free Time runs
  *   free. MIDI Start restarts the chunk. After Stop it runs on at
  *   the last tempo. Switched off it keeps following the clock.
  *
@@ -120,7 +120,7 @@
 #define GD_CODE_SECTION(fn)
 #endif
 
-#define GD_MAGIC      0x47444C33u        /* "GDL3": change whenever GdState changes      */
+#define GD_MAGIC      0x47444C34u        /* "GDL4": change whenever GdState changes      */
 #define GD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
 #define GD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
 #define GD_NS         174000             /* ST / PING: one ring, 3.9 s                   */
@@ -136,6 +136,7 @@
 #define GD_WL_RATE    0.01f              /* wet level ramp on switch-on, about 2 ms */
 #define GD_DH_INV     4.5351e-4f         /* dry hold fades over 2205 samples (50 ms) */
 #define GD_GLIDE      1.134e-4f          /* TAPE head glide, about 0.2 s */
+#define GD_AO_DECAY   0.999f             /* REVRS clock-snap offset fades over ~23 ms (#36) */
 
 typedef struct {
     unsigned int magic;
@@ -145,6 +146,7 @@ typedef struct {
     float xf;              /* Time crossfade 0..1 (1 = done)                  */
     float ph;              /* chunk phase 0..1 (REVRS chunks, runs on every engine) */
     float L;               /* chunk length the REVRS read uses, latched at each chunk start */
+    float ao;              /* REVRS read age offset (samples): absorbs clock snaps, fades to 0 */
     float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part (per ring) */
     int   mode;            /* Stereo knob the rings were laid out for         */
     int   off;             /* the effect was switched off                     */
@@ -282,7 +284,7 @@ static inline void gd_init(GdState *s)
 {
     s->clr = 0; s->wp = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
-    s->ph = 0.0f; s->L = 0.0f;
+    s->ph = 0.0f; s->L = 0.0f; s->ao = 0.0f;
     s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f; s->wow = 0.0f; s->flt = 0.25f;
     s->env = 0.0f; s->dg = 1.0f; s->wl = 0.0f; s->hold[0] = s->hold[1] = 0.0f; s->hacc[0] = s->hacc[1] = 0.0f;
     s->mode = 0; s->off = 0; s->dh = 0.0f;
@@ -404,7 +406,7 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
 {
     int i, pass, ch, npass = 1, hz = 0, wp0, rev = P->rev, taps = P->taps, tape = P->tape;
     const int nn = P->nn, nch = P->nch, ping = P->ping, st = (P->nch == 2);
-    float ph = s->ph, L = s->L, invL = gd_recip(P->L), ph0, L0;
+    float ph = s->ph, L = s->L, invL = gd_recip(P->L), ph0, L0, ao = s->ao, lim = P->lim;
     float wow = s->wow, flt = s->flt, env = s->env, dg = s->dg, wl = s->wl;
     float dCur = s->dCur, xf = s->xf, wlT = P->wetG, dOld;
     float xs[2][8], dl[8], dr[8], gk[8], dc[8], md[8], xe[8], pr[8], wr[8], y0[8], yf[8], ym[8], wo[2][8];
@@ -458,7 +460,10 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
         dl[i] = xl; dr[i] = xr;
         xs[0][i] = st ? xl : 0.5f * (xl + xr); xs[1][i] = xr;
         gk[i] = wl * dg; dc[i] = dCur; md[i] = mod;
-        pr[i] = (ph + ph) * L + 1.0f;             /* REVRS read age */
+        tg = (ph + ph) * L + 1.0f + ao;           /* REVRS read age, plus the clock-snap offset */
+        tg = (tg < 1.0f) ? 1.0f : tg;
+        pr[i] = (tg > lim) ? lim : tg;
+        ao *= GD_AO_DECAY;
         wr[i] = rev ? w : 1.0f;                   /* REVRS edge fade */
         xe[i] = rev ? 1.0f : xf;
         xf = (!rev && xf < 1.0f) ? (xf + GD_XF_STEP > 1.0f ? 1.0f : xf + GD_XF_STEP) : xf;
@@ -546,7 +551,7 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
     s->dh = dh;
     wp0 += 8;
     s->wp = (wp0 >= nn) ? wp0 - nn : wp0;
-    s->ph = ph; s->L = L;
+    s->ph = ph; s->L = L; s->ao = ao;
     s->wow = wow; s->flt = flt; s->env = env; s->dg = dg; s->wl = wl;
     s->dCur = dCur; s->xf = xf;
 }
@@ -693,16 +698,10 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     if (run && P.mult > 0.0f) {                  /* synced Time on the clock: chunk phase */
         t = beats * P.mult;                      /* = beats since Start / the note's beats */
         t -= (float)(int)t;
-        e = t - s->ph;                           /* clock vs running phase, -0.5..0.5 */
-        if (e > 0.5f) e -= 1.0f; else if (e < -0.5f) e += 1.0f;
-        if (e > 0.05f || e < -0.05f) {           /* far off (load, tempo jump): snap */
-            if (t < s->ph - 0.5f) s->L = P.L;    /* wrapped: new chunk, latch its length */
-            s->ph = t;
-        } else {                                 /* #36: ease in; a snap at every clock clicked the REVRS read */
-            t = s->ph + e * 0.0078125f;
-            if (t >= 1.0f) { t -= 1.0f; s->L = P.L; } else if (t < 0.0f) t = 0.0f;
-            s->ph = t;
-        }
+        e = 2.0f * (s->ph - t) * s->L + s->ao;   /* #36: keep the REVRS read where it was, */
+        s->ao = (e > 2205.0f || e < -2205.0f) ? 0.0f : e;   /* the offset fades out (no click) */
+        if (t < s->ph - 0.5f) { s->L = P.L; s->ao = 0.0f; }  /* wrapped: new chunk, latch its length */
+        s->ph = t;
     }
     if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
     gd_process(s, &P, fxBuf, 8);                 /* L and R in place; off, the dry of both sides passes untouched */

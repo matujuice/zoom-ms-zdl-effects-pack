@@ -3,7 +3,9 @@
  * input passes untouched: with Mix 50 the live part is full and nothing plays yet. */
 #include "../src/custom/looper/looper.c"
 typedef LpState STATE;
-#define PHASE(s) (((float)((s)->gu & 7) + (s)->gf) * 0.125f)
+/* the state is sealed between blocks (#41): read an unsealed copy */
+static float lt_phase(const LpState *s) { LpState c = *s; lp_unseal(&c); return ((float)(c.gu & 7) + c.gf) * 0.125f; }
+#define PHASE(s) lt_phase(s)
 #define ENTRY Fx_DLY_Looper
 #define MULT 1.0
 #define D(n) params[LOOPER_##n##_SLOT] = LOOPER_##n##_UI_DEFAULT / 100.0f

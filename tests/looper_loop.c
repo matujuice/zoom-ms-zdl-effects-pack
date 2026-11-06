@@ -317,12 +317,12 @@ int main(void)
     zt_host[2] = 0u; clk_per = 0.0;
 
     /* 9: fit: stereo / mono / shorter in the 705 KB arena and with the services' big buffer
-     * (3.3 MB with the arena) */
+     * (3.3 MB with the arena; 12-bit words with bits 30, 29 clear, #41) */
     {
         LpParams P; float bpm;
         struct { float bpm; int len; int bufbig; int want_st; int want_U; } c[] = {
             { 120, 1, 0, 1, 32 }, { 120, 2, 0, 1, 64 }, { 120, 4, 0, 0, 128 }, { 120, 8, 0, 0, 128 }, { 40, 8, 0, 0, 32 },
-            { 79, 8, 1, 1, 256 }, { 78, 8, 1, 0, 256 }, { 40, 8, 1, 0, 256 }, { 40, 4, 1, 1, 128 },
+            { 83, 8, 1, 1, 256 }, { 82, 8, 1, 0, 256 }, { 45, 8, 1, 0, 256 }, { 44, 8, 1, 1, 128 }, { 42, 4, 1, 1, 128 }, { 41, 4, 1, 0, 128 },
             { 250, 8, 1, 1, 256 }, { 100, 8, 1, 1, 256 },
         };
         for (k = 0; k < (long)(sizeof c / sizeof c[0]); k++) {
@@ -334,12 +334,12 @@ int main(void)
                   "fit %.0f BPM %d bars %s: stereo %d bars %d, want %d %d",
                   c[k].bpm, c[k].len, c[k].bufbig ? "big" : "arena", S->stereo, S->U >> 5, c[k].want_st, c[k].want_U >> 5);
         }
-        /* the big buffer across its four regions: record and read back 8 bars stereo at 80 */
+        /* the big buffer across its four regions: record and read back 8 bars stereo at 85 */
         fresh(); services(0);
-        U[4] = 7; U[1] = 0; tempo_word(80);
+        U[4] = 7; U[1] = 0; tempo_word(85);
         run(800); fw_press(); rec_start = t - 8;
         while (S->st != LP_PLAY) block();
-        CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 80 BPM: want 8 bars stereo in 4 regions");
+        CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 85 BPM: want 8 bars stereo in 4 regions");
         worst = 0.0f;
         for (i = 0; i < S->L / 8; i++) {
             block();
@@ -350,7 +350,7 @@ int main(void)
                 if (e > worst) worst = e;
             }
         }
-        printf("big buffer, 8 bars stereo at 80 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
+        printf("big buffer, 8 bars stereo at 85 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
         CHECK(worst < 2e-3f, "big buffer loop does not match (%.2e)", worst);
     }
 
@@ -505,7 +505,7 @@ int main(void)
         printf("arena safety: %d header + %d seal + %ld loop words, %ld with bit 30 or 29 set\n", LP_NHDR, LP_NSEAL, nw, bad);
         CHECK(bad == 0, "arena safety: %ld words would read as NaN, Inf or a loud float", bad);
         lp_unseal(S);
-        CHECK(!memcmp(hdr, S, sizeof hdr), "arena safety: unseal did not give the state back");
+        CHECK(!memcmp(hdr, S, 4u * LP_NHDR), "arena safety: unseal did not give the state back");
         memset(arena, 0xC9, sizeof arena); lp_unseal(S);
         CHECK(S->magic != LP_MAGIC, "arena safety: a stale arena passed the magic");
     }
