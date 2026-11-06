@@ -251,7 +251,7 @@ Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark
 ### Takeoff: risers and downlifters
 Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
 
-Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Length, at once (no wait for the bar). A flip during the sweep or the tail drops it. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Length. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 (play mode, cursor on Takeoff) the footswitch LED lights when the sweep starts and fades to off by its end (with Tail, by the end of the tail); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Length, at once (no wait for the bar). A flip during the sweep or the tail drops it. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Length. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 (play mode, cursor on Takeoff) the footswitch LED is off at rest and follows the sound: it fades up with the riser and out with the tail; on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -262,7 +262,7 @@ Adds a riser or a downlifter on top of what you play, like DubSiren: the input i
 | Grain | 0..100 | Noise texture: 0 = smooth hiss, up = coarse, crackly, gritty. Default 0. |
 | Range | 0..100 | How far the noise sweep travels (0..5 octaves): small = a short, subtle lift, 100 = from deep rumble to full air. Default 60 (3 octaves). |
 | Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind and Grain, drawn once per sweep. Length, Dir, Tail and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
-| Tail | Off, 1/2/4/8/16 bars, or 1..31 s | UP only: at the peak the noise fades out over this time instead of cutting (also after a hold). Does nothing on DOWN. Default Off. |
+| Tail | Off, 1/2/4/8/16 bars, or 1..31 s | UP only: after the peak the noise settles about 6 dB lower, like a reverb after the hit, and fades out over this time instead of cutting (also after a hold). Does nothing on DOWN. Default Off. |
 | Vol | 0..100 | Level of the added sound. Default 50. |
 
 Try: UP, Length 8 bars, Wind 60, Tail 1 bar for a classic build-up; Range 20, Length 1 bar for a quick lift into a chorus; DOWN, Color 80 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
