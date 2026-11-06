@@ -7,7 +7,7 @@
  *   One position x runs 0..1 (UP) or 1..0 (DOWN). The frequency is f0 * 2^(range * curve(x)) (exponential),
  *   the volume swells as x^2. f0 = 50 Hz (moved by Var's pitch draw); the noise filter sits at 8 x f0.
  *   UP at the top: Tail Off = a clean cut (a 1.5 ms fade, no click); Tail on = the noise holds its top pitch
- *   and fades (level tl^2, tl 1 -> 0) over Tail. DOWN falls to silence (Tail does nothing).
+ *   and fades over Tail (level tl^2, tl 1 -> 0), settling 6 dB under the peak in ~30 ms: the hit, then a quieter tail. DOWN falls to silence (Tail does nothing).
  *   The level is ramped sample by sample inside each block (never a per-block step).
  *
  * KNOBS (screen values, param order)
@@ -39,14 +39,14 @@
  *
  * LED (MOD firmware services block 0xC00F3000, magic 0x5A4C5301): while word 22 = our params pointer (we
  *   are the effect under the cursor in play mode) the effect drives the footswitch LED by PWM, one step a
- *   block, 32 steps (172 Hz), through the firmware's GPIO words 13 (on) / 14 (off) / 15 (mask): fully on at
- *   the start, off at the end of the run (the sweep plus its Tail), brightness = (what is left)^2.
- *   While running it writes the LED every block and tells the stock LED task its state is already written
- *   (0xC00EEB10 bit 0 = 0xC00EEB08 bit 0), so a footswitch flip cannot overwrite it; when it goes idle it
- *   flips 0xC00EEB10 bit 0 once and the stock LED (on/off) comes back. Not ours (stock firmware, Perform
+ *   block, 32 steps (172 Hz), through the firmware's GPIO words 13 (on) / 14 (off) / 15 (mask): off at
+ *   rest, then the sound's own level (x^2, the Tail's fade and dip): it fades up with the riser.
+ *   It writes the LED every block and tells the stock LED task its state is already written
+ *   (0xC00EEB10 bit 0 = 0xC00EEB08 bit 0), so a footswitch flip cannot overwrite it; when the cursor leaves
+ *   the firmware writes the stock LED (on/off) again. Not ours (stock firmware, Perform
  *   mode, cursor on another effect): nothing is written.
  *
- * IDLE: nothing sounding = no synthesis, nothing but the LED hand-back.
+ * IDLE: nothing sounding = no synthesis, nothing but the LED (off).
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static arrays, no libm, no float or integer division, no
  * switch, no double. CPU: the knob maths run only when a knob, the BPM or a sweep start changes them.
@@ -69,11 +69,12 @@
 #define TK_CODE_SECTION(fn)
 #endif
 
-#define TK_MAGIC     0x544B4F39u         /* "TKO9": change whenever TkState changes */
+#define TK_MAGIC     0x544B4F41u         /* "TKOA": change whenever TkState changes */
 #define HZ_TO_INC    2.2675737e-5f       /* 1 / 44100 */
 #define HOLD_SAMPLES 22050               /* 0.5 s */
 #define HOLD_GUARD   220                 /* blocks (40 ms): a release flip after word 6 falls */
 #define TK_PWM       32                  /* LED PWM steps, one per block */
+#define TAIL_DIP     0.5f                /* the Tail settles 6 dB under the peak (a reverb after the hit), in ~30 ms */
 #define NOISE_GAIN   0.25f               /* bandpass output -> about +-0.5 at the top (tuned in tests/takeoff_sounds.c) */
 
 enum { ST_IDLE = 0, ST_SWEEP, ST_HOLD, ST_DROP, ST_TAIL };
@@ -116,7 +117,7 @@ typedef struct {
     int   inited, prev_foot, state, holdT, chk;
     int   prev_hold, rel, pwm, led, wt, pf, ff;   /* pf: this press already flipped, ff: blocks since a flip */
     unsigned int rng, rngW, rngV;
-    float x, g, tl, pa;            /* position, gain, Tail level 1..0, last block's amplitude (in-block ramp) */
+    float x, g, tl, tg, pa;        /* position, gain, Tail level 1..0, Tail dip 1..TAIL_DIP, last block's amplitude (in-block ramp) */
     float nh, nq, gw[2], gt;       /* held noise (Grain), noise low-pass (darker hiss), gust smoothers, gust target */
     float vR, vP, vC, vCo, vWi, vGr;   /* Var draws: Range factor, pitch st, curve, Color/Wind/Grain */
     float sv[2];                   /* filter state */
@@ -211,7 +212,7 @@ static inline void tk_init(TkState *s)
     s->prev_hold = 0; s->rel = 0; s->pwm = 0; s->led = -1; s->wt = 0; s->pf = 0; s->ff = HOLD_GUARD;
     s->rng = 12345u; s->rngW = 4242u; s->rngV = 2718281u;
     s->vR = 1.0f; s->vP = 0.0f; s->vC = 0.0f; s->vCo = 0.0f; s->vWi = 0.0f; s->vGr = 0.0f;
-    s->x = 0.0f; s->g = 0.0f; s->tl = 1.0f; s->pa = 0.0f; s->dx = 0.0f; s->tdx = 0.0f;
+    s->x = 0.0f; s->g = 0.0f; s->tl = 1.0f; s->tg = 1.0f; s->pa = 0.0f; s->dx = 0.0f; s->tdx = 0.0f;
     s->nh = 0.0f; s->nq = 0.0f; s->gt = 0.0f; s->gw[0] = 0.0f; s->gw[1] = 0.0f;
     s->sv[0] = 0.0f; s->sv[1] = 0.0f;
     for (k = 0; k < 10; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
@@ -278,7 +279,7 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
 
     if (flip) {
         if (s->state == ST_IDLE || s->state == ST_DROP) {           /* fire at once */
-            s->state = ST_SWEEP; s->holdT = 0; s->chk = 1; s->tl = 1.0f;
+            s->state = ST_SWEEP; s->holdT = 0; s->chk = 1; s->tl = 1.0f; s->tg = 1.0f;
             s->x = up ? -dx : 1.0f + dx;                            /* the step below brings it to the start */
             tk_vary(s, u[6]);
         } else { s->state = ST_DROP; s->chk = 0; }                  /* during a sweep or its tail: drop */
@@ -298,6 +299,7 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
     }
     if (s->state == ST_TAIL) {                                      /* the peak fades over Tail */
         s->tl -= s->tdx;
+        s->tg += 0.006f * (TAIL_DIP - s->tg);
         if (s->tl <= 0.0f) { s->tl = 0.0f; s->state = ST_IDLE; s->g = 0.0f; s->x = 0.0f; }
     }
     if (s->state == ST_DROP && s->g <= 0.0f) { s->state = ST_IDLE; s->x = 0.0f; }
@@ -317,7 +319,7 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
     }
 
     P->gT = (s->state == ST_SWEEP || s->state == ST_HOLD || s->state == ST_TAIL) ? 1.0f : 0.0f;
-    P->lvl = s->x * s->x * s->tl * s->tl * s->vol;
+    P->lvl = s->x * s->x * s->tl * s->tl * s->tg * s->vol;
     P->act = ((P->gT > 0.0f || s->g > 0.0f) && P->lvl > 1.0e-7f);
     if (!P->act) s->g = P->gT;                   /* silent anyway: no ramp needed */
 
@@ -337,24 +339,15 @@ static inline void tk_prepare(TkState *s, TkParams *P, const int *u, int foot, i
 
 /* once per block, after tk_prepare: the footswitch LED while the firmware says we are under the cursor */
 TK_ALWAYS_INLINE(tk_led)
-static inline void tk_led(TkState *s, const int *u, unsigned int me)
+static inline void tk_led(TkState *s, unsigned int me)
 {
     volatile unsigned int *b = (volatile unsigned int *)TK_SVC;
-    int   lev = -1, lit;
+    int   lev, lit;
     float r;
     if (b[0] != SV_MAGIC || b[SV_CURSOR] != me || b[SV_LEDON] == 0u || b[SV_LEDOFF] == 0u) { s->led = -1; return; }
     s->pwm = (s->pwm + 1) & (TK_PWM - 1);
-    if (s->state == ST_SWEEP || s->state == ST_HOLD || s->state == ST_TAIL) {
-        if (u[0] != 0) r = s->x;                                    /* DOWN: x runs 1 -> 0 */
-        else if (u[7] > 0)                                          /* UP + Tail: what is left of sweep + tail, by time */
-            r = ((1.0f - s->x) * s->tdx + s->tl * s->dx) * tk_recip(s->dx + s->tdx);
-        else r = 1.0f - s->x;
-        lev = (int)(r * r * (float)TK_PWM + 0.5f);                  /* on at the start, off at the end */
-    }
-    if (lev < 0) {                                       /* idle: hand the LED back to the stock task once */
-        if (s->led >= 0) { *(volatile unsigned int *)TK_LEDDONE ^= 1u; s->led = -1; }
-        return;
-    }
+    r = (s->state == ST_IDLE || s->state == ST_DROP) ? 0.0f : s->x * s->x * s->tl * s->tl * s->tg;
+    lev = (int)(r * (float)TK_PWM + 0.5f);                          /* off at rest, the sound's level while it plays */
     lit = (s->pwm < lev);
     *(volatile unsigned int *)TK_LEDDONE = (*(volatile unsigned int *)TK_LEDDONE & ~1u) | (*(volatile unsigned int *)TK_LEDWANT & 1u);
     *(volatile unsigned int *)(uintptr_t)(lit ? b[SV_LEDON] : b[SV_LEDOFF]) = b[SV_LEDMASK];   /* every block: a flip's stock write is undone at once */
@@ -524,7 +517,7 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
 
     (void)run; (void)start; (void)beats;               /* no grid: a press fires at once */
     tk_prepare(s, &s->P, s->u, foot, hold, bpm);
-    tk_led(s, s->u, ctx[1]);
+    tk_led(s, ctx[1]);
     tk_process(s, &s->P, fxBuf);
 }
 
