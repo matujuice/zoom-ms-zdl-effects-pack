@@ -265,8 +265,8 @@ A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside
 | Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GRDELAY, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
 | Wash | 0..100 | Diffusion: how much each pass smears. 0 skips the diffusers. Default 70. |
 | Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
-| HiCut | 0..100 | Low-pass in the loop, so each pass gets darker. 0 = off. |
-| LoCut | 0..100 | High-pass in the loop, so each pass gets thinner. 0 = off. |
+| HiCut | 0..100 | Low-pass on the repeats: the first repeat is darker, each pass darker still. 0 = off. |
+| LoCut | 0..100 | High-pass on the repeats: the first repeat is thinner, each pass thinner still. 0 = off. |
 | Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
 | Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
 
@@ -277,21 +277,21 @@ Try: Send 50 to sit the cloud under the dry; Fdbk 100, then Send 0 to freeze the
 <img src="../graphics/takeoff.png" width="320" alt="Takeoff on the pedal screen">
 Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
 
-Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Len. Without a MIDI clock it starts at once. While the MIDI clock runs it is quantized: it waits for the next Len line from bar 1, so it ends on the beat; a flip up to 150 ms late joins the line it just missed, and a flip while it waits cancels. A flip during the sweep drops it early. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Len. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 the footswitch LED pulses on the beat while a sweep waits for the bar, then fades up with an UP sweep (down with DOWN); on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Length, at once (no wait for the bar). A flip during the sweep or the tail drops it. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Length. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 (play mode, cursor on Takeoff) the footswitch LED is off at rest and follows the sound: it fades up with the riser and out with the tail; on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Dir | UP / DOWN | UP sweeps up and cuts clean at the end. DOWN starts at the top, falls and fades. Default UP. |
-| Len | 1/2/4/8/16 bars, or 1..31 s | Sweep length (bars at the pedal's tempo). Default 4 bars. |
+| Dir | UP / DOWN | UP sweeps up and cuts clean at the end (or fades over Tail). DOWN starts at the top, falls and fades. Default UP. |
+| Length | 1/2/4/8/16 bars, or 1..31 s | Sweep length (bars at the pedal's tempo). Default 4 bars. |
 | Color | 0..100 | Noise tone: low = a narrow whistling resonance, high = a wide airy hiss. Default 25. |
 | Wind | 0..100 | Slow random gusts: the noise filter and level drift on their own, apart on left and right. 0 = steady. Default 40. |
 | Grain | 0..100 | Noise texture: 0 = smooth hiss, up = coarse, crackly, gritty. Default 0. |
 | Range | 0..100 | How far the noise sweep travels (0..5 octaves): small = a short, subtle lift, 100 = from deep rumble to full air. Default 60 (3 octaves). |
-| Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind and Grain, drawn once per sweep. Len, Dir and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
-| Space | 0..100 | Reverb tail on the riser's own sound, ringing on after the cut. 0 = off. Default 0. |
+| Var | 0..100 | How much each takeoff differs from the last: Range (up to a third more or less), start pitch, curve, Color, Wind and Grain, drawn once per sweep. Length, Dir, Tail and Vol never change and the level stays even. 0 = the same takeoff every time. Default 35. |
+| Tail | Off, 1/2/4/8/16 bars, or 1..31 s | UP only: after the peak the noise settles about 6 dB lower, like a reverb after the hit, and fades out over this time instead of cutting (also after a hold). Does nothing on DOWN. Default Off. |
 | Vol | 0..100 | Level of the added sound. Default 50. |
 
-Try: UP, Len 8 bars, Wind 60, Space 40 for a classic build-up; Range 20, Len 1 bar for a quick lift into a chorus; DOWN, Color 80, Space 60 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
+Try: UP, Length 8 bars, Wind 60, Tail 1 bar for a classic build-up; Range 20, Length 1 bar for a quick lift into a chorus; DOWN, Color 80 for a wide downlifter; Color 0, Grain 70 for a gritty whistle; Var 0 when every drop must sound the same.
 
 ### Gooey: a mix bus compressor
 
@@ -316,7 +316,7 @@ Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a fu
 ### GRDLOOP: a bar-synced looper on the song grid
 
 <img src="../graphics/grdloop.png" width="320" alt="GRDLOOP on the pedal screen">
-Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 10 s mono or 5 s stereo.
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 9 s mono or 4.9 s stereo.
 
 The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
 
@@ -342,7 +342,7 @@ Record, stop and play wait for the Next line; delete is always at once. MIDI Sta
 
 Old Looper patches load: Length 2 bars reads as SLAVE (others OWN), When maps to Next (IMMED = NOW) and Amount to Cycle.
 
-**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 24.7 s stereo or 48.4 s mono, so 8 bars stereo from 79 BPM and mono at every tempo (40-250). On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 10 s mono or 5 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change.
+**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 23.3 s stereo or 43.2 s mono, so 8 bars stereo from 83 BPM and mono from 45 BPM. On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 9 s mono or 4.9 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change. Everything GRDLOOP leaves in the slot's memory reads as silence, so a stock delay or reverb loaded into that slot afterwards starts clean.
 
 **Screen and LED** (MIDISTOMP v2.0). A box on GRDLOOP's screens (top right of the knob pages, under LOOPER on the cover) shows EMPTY, REC WAIT, REC (REC MONO when the loop fell back to mono), PLAY, STOP or DEL WAIT, with a bar that is always there: it fills as the recording goes on, shows the place in the loop while playing or stopped, and fills up to the line while REC WAIT waits. Only the bar blinks, never the whole box: while recording it goes off for an 1/8 every 2 beats; while an action waits it blinks (STOP or PLAY show while waiting to stop or play), faster as the moment comes, from once per 2 bars down to 1/8 notes. The LED, while GRDLOOP is under the cursor: off when empty or stopped, a fade every 2 beats while recording, on while playing, the same countdown blink while an action waits. A double press while stopped deletes at once.
 

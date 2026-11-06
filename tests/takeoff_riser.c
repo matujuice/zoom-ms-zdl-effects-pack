@@ -1,8 +1,8 @@
-/* Takeoff: the input passes untouched in every state, a flip fires a timed sweep that ends at Len, a flip
- * mid-sweep drops it, the footswitch hold (transport word 6) rises, sits and drops and its release flip is
- * swallowed, QUANT starts a press on the next Len line, every Sound makes sound in both Dirs, Color/Wind/Grain
- * stay bounded, the riser is mono (same on L and R), idle does no work, no clicks at start or drop,
- * Space rings after the cut, the LED pulses while armed, follows the sweep and is never written when idle. */
+/* Takeoff: the input passes untouched in every state, a flip fires a timed sweep at once (with or without the
+ * MIDI clock) that ends at Length, a flip mid-sweep drops it, the footswitch hold (transport word 6) rises, sits
+ * and drops and its release flip is swallowed, both Dirs make sound, Color/Wind/Grain stay bounded, the riser
+ * is mono (same on L and R), idle does no work, no clicks at start, drop or cut, Tail fades the peak over its
+ * length (UP only), the LED goes from on to off over the run and is never written when idle or not ours. */
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -26,15 +26,15 @@ static TkState *S(void) { return (TkState *)(((uintptr_t)se_desc[0] + 3u) & ~(ui
 
 static int clkOn;
 static long clk0;
-static void fresh(int dir, int len, int var, int space, int vol, int zt)
+static void fresh(int dir, int len, int var, int tail, int vol, int zt)
 {
     memset(se_m + 4096, 0, ARENA);
     memset(zt_host, 0, sizeof zt_host);
     if (zt) { zt_host[0] = ZT_MAGIC; zt_host[5] = 12000u; }
     memset(tk_svc_host, 0, sizeof tk_svc_host);
     foot = 0; T = 0; inf = 0; clkOn = 0;
-    SET(DIR, dir); SET(LEN, len); SET(RANGE, 60); SET(VAR, var);
-    SET(COLOR, 25); SET(WIND, 40); SET(GRAIN, 0); SET(SPACE, space); SET(VOL, vol);
+    SET(DIR, dir); SET(LENGTH, len); SET(RANGE, 60); SET(VAR, var);
+    SET(COLOR, 25); SET(WIND, 40); SET(GRAIN, 0); SET(TAIL, tail); SET(VOL, vol);
 }
 
 static void blk(void)
@@ -76,10 +76,10 @@ int main(void)
     /* 1. the input passes untouched: out == in + added, the added part does not depend on the input */
     for (snd = 0; snd < 2; snd++) {             /* snd: Dir, and Var 0 / 100 */
         long bad = 0, badIdle = 0;
-        fresh(snd, 6, 100 * snd, 40, 100, 1);
+        fresh(snd, 6, 100 * snd, 6, 100, 1);
         foot = 0; run_to(0.5); foot = 1; run_to(5.0);
         for (i = 0; i < T; i++) { ZL[i] = A[i]; ZR[i] = B[i]; }
-        fresh(snd, 6, 100 * snd, 40, 100, 1);
+        fresh(snd, 6, 100 * snd, 6, 100, 1);
         inf = in_noise;
         foot = 0; run_to(0.5); foot = 1; run_to(5.0);
         for (i = 0; i < T; i++) {
@@ -136,9 +136,8 @@ int main(void)
         CHECK(labs(last_loud(D, T, 1e-4f) - t0 - 2 * SEC) < SEC / 20, "no-firmware press not timed"); }
 
     /* 5. the real MOD firmware order: word 6 rises up to 16 ms BEFORE the press flip (the 16 ms poll), and a
-     *    momentary release flips again. Press and hold, with and without the MIDI clock (Len 1 bar / 2 s):
-     *    the sweep must sound within Len (+ the wait for the line), the LED must light, the release must not
-     *    start a second sweep */
+     *    momentary release flips again. Press and hold, with and without the MIDI clock (Length 1 bar / 2 s):
+     *    the sweep must sound, the LED must light, the release must not start a second sweep */
     { int ck, hd;
       for (ck = 0; ck < 2; ck++) for (hd = 0; hd < 2; hd++) {
           unsigned int *gw = (unsigned int *)(se_m + 2048); long t0, t1, k; int lit = 0; float pk;
@@ -174,28 +173,17 @@ int main(void)
         CHECK(rm > 0.01 && pk < 1.0f && !nan, "sound %d dir %d: rms %.4f peak %.3f nan %d", snd, dir, rm, pk, nan);
     }
 
-    /* 8. idle: nothing is synthesised and the reverb stops once the tail has died */
+    /* 8. idle: nothing is synthesised */
     fresh(0, 6, 0, 0, 100, 0);
     run_to(2.0);
     CHECK(S()->rng == 12345u && S()->sv[0] == 0.0f && S()->sv[1] == 0.0f, "idle ran the synthesis");
-    fresh(0, 6, 0, 50, 100, 0);
-    run_to(0.2); foot = 1; run_to(2.5);
-    { int rw0; double tail;
-      tail = rms(D, 2 * SEC + 4000, 2 * SEC + 12000); printf("Space 50: tail rms %.4f just after the cut\n", tail);
-      CHECK(tail > 1e-3, "Space tail does not ring after the cut");
-      run_to(22.0); rw0 = S()->rw;
-      printf("tail died: quiet %d (idle at %d)\n", S()->quiet, QUIET_BLOCKS);
-      CHECK(S()->quiet >= QUIET_BLOCKS, "tail never died");
-      { long t1 = T; run_to(23.0); CHECK(S()->rw == rw0 && peak(D, t1, T) == 0.0f, "idle after the tail still runs the reverb"); } }
     { /* cost: blocks per second idle vs sounding (host speed, for comparison only) */
-      clock_t c0; double idle, snd1, snd2; long n = 200000, b;
+      clock_t c0; double idle, snd1; long n = 200000, b;
       fresh(0, 6, 0, 0, 100, 0);
       c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = 0.0f; Fx_DLY_Takeoff(ctx); } idle = (double)(clock() - c0) / CLOCKS_PER_SEC;
       fresh(0, 35, 0, 0, 100, 0); params[0] = 0.0f; blk(); foot = 1;
-      c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = (b == 0) ? 1.0f : 1.0f; Fx_DLY_Takeoff(ctx); } snd1 = (double)(clock() - c0) / CLOCKS_PER_SEC;
-      fresh(0, 35, 0, 60, 100, 0); params[0] = 0.0f; blk(); foot = 1;
-      c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = 1.0f; Fx_DLY_Takeoff(ctx); } snd2 = (double)(clock() - c0) / CLOCKS_PER_SEC;
-      printf("host time for %ld blocks: idle %.4f s, sounding %.4f s, sounding + Space %.4f s\n", n, idle, snd1, snd2);
+      c0 = clock(); for (b = 0; b < n; b++) { int j; for (j = 0; j < 16; j++) fx[j] = 0.0f; params[0] = 1.0f; Fx_DLY_Takeoff(ctx); } snd1 = (double)(clock() - c0) / CLOCKS_PER_SEC;
+      printf("host time for %ld blocks: idle %.4f s, sounding %.4f s\n", n, idle, snd1);
       CHECK(idle * 2.0 < snd1 + 1e-9, "idle is not 2x cheaper than sounding"); }
 
     /* 9. no clicks at the start, the drop and the cut (noise; steps against the signal's own steady step) */
@@ -214,14 +202,36 @@ int main(void)
         { float sd = maxstep(D, t1 - 10, t1 + 600); printf("hold release: max step %.4f, steady %.4f\n", sd, st);
           CHECK(sd <= 1.2f * st, "click at the hold release"); } }
 
-    /* 10. Space: a tail with Space on, none with Space 0, and the tail never runs away */
-    fresh(0, 6, 0, 100, 100, 0);
-    run_to(0.2); foot = 1; run_to(6.0);
-    CHECK(peak(D, 0, T) < 4.0f, "Space 100 peak %.2f", peak(D, 0, T));
-    printf("Space 100: peak %.3f, tail rms 0.3 s after the cut %.4f\n", peak(D, 0, T), rms(D, 2 * SEC + 13000, 2 * SEC + 20000));
+    /* 10. Tail: UP Length 2 s + Tail 1 s (6) fades from the peak and ends 1 s later, steadily, no click at the
+     *     peak; Tail 1 bar (1) at 120 BPM = 2 s; DOWN ignores Tail; a flip during the tail drops it */
+    fresh(0, 6, 0, 6, 100, 0);
+    run_to(0.2); { long t0 = T, te, tp = t0 + 2 * SEC; double r0, r1, r2, r3; float st, sp; foot = 1; run_to(4.0);
+        te = last_loud(D, T, 1e-4f);
+        r0 = rms(D, tp - 4000, tp); r1 = rms(D, tp + 1000, tp + 5000); r2 = rms(D, tp + 20000, tp + 24000); r3 = rms(D, tp + 38000, tp + 42000);
+        st = maxstep(D, tp - 6000, tp - 3000); sp = maxstep(D, tp - 200, tp + 400);
+        printf("Tail 1 s: ends %.3f s after the peak, rms %.4f (peak) %.4f %.4f %.4f, step at the peak %.4f steady %.4f\n",
+               (double)(te - tp) / SEC, r0, r1, r2, r3, sp, st);
+        CHECK(labs(te - tp - SEC) < SEC / 20, "Tail 1 s ended %.3f s after the peak", (double)(te - tp) / SEC);
+        CHECK(r1 > 0.8 * r0 && r1 > r2 && r2 > r3, "Tail does not fade from the peak");
+        CHECK(sp <= 1.2f * st, "click at the peak with Tail on");
+        CHECK(S()->state == ST_IDLE, "Tail left state %d", S()->state); }
+    fresh(0, 6, 0, 1, 100, 1);
+    run_to(0.2); { long tp = T + 2 * SEC; foot = 1; run_to(6.0);
+        printf("Tail 1 bar at 120 BPM: ends %.3f s after the peak\n", (double)(last_loud(D, T, 1e-4f) - tp) / SEC);
+        CHECK(labs(last_loud(D, T, 1e-4f) - tp - 2 * SEC) < SEC / 20, "Tail 1 bar not 2 s"); }
+    fresh(1, 6, 0, 6, 100, 0);
+    run_to(0.2); { long t0 = T; foot = 1; run_to(4.0);
+        CHECK(last_loud(D, T, 1e-4f) < t0 + 2 * SEC, "DOWN with Tail rings past Length"); }
+    fresh(0, 6, 0, 10, 100, 0);
+    run_to(0.2); foot = 1; run_to(2.5); { long t1 = T; foot = 0; run_to(4.0);
+        CHECK(peak(D, t1 + 300, T) < 1e-6f, "a flip during the tail did not drop it"); }
+    fresh(0, 6, 0, 6, 100, 1);           /* a hold released at the top fades over Tail too */
+    run_to(0.2); foot = 1; zt_host[6] = 1u; run_to(3.0); { long t1 = T; zt_host[6] = 0u; run_to(3.01); foot = 0; run_to(5.0);
+        long te = last_loud(D, T, 1e-4f);
+        printf("hold release with Tail 1 s: ends %.3f s after the release\n", (double)(te - t1) / SEC);
+        CHECK(labs(te - t1 - SEC) < SEC / 20, "hold release did not fade over Tail"); }
 
-    /* 11. QUANT: without the MIDI clock a press starts at once; with it a press waits for the next bar line,
-     *     a press just after a line joins it, a second press while waiting cancels */
+    /* 11. no grid: a press fires at once, without and with the MIDI clock running */
     fresh(0, 6, 0, 0, 100, 0);
     run_to(0.2); { long t0 = T, ts, te; foot = 1; run_to(1.0); foot = 0; run_to(3.0); foot = 1; run_to(6.0);
         ts = t0; while (ts < T && fabsf(D[ts]) < 1e-7f) ts++;   /* noise starts very quiet (x^2 swell) */
@@ -231,22 +241,12 @@ int main(void)
         CHECK(ts - t0 < SEC / 20, "no clock: press did not start at once");
         CHECK(labs(te - 5 * SEC) < SEC / 20, "no clock: second press did not start at once"); }
     fresh(0, 0, 0, 0, 100, 1);
-    run_to(0.2); clkOn = 1; clk0 = T; run_to(2.25); { long te; foot = 1; run_to(6.0);
+    run_to(0.2); clkOn = 1; clk0 = T; run_to(3.2); { long t0 = T, ts, te; foot = 1; run_to(7.0);
+        ts = t0; while (ts < T && fabsf(D[ts]) < 1e-7f) ts++;
         te = last_loud(D, T, 1e-4f);
-        printf("QUANT late press (50 ms after the line): ends at %.3f s (want 4)\n", (double)(te - clk0) / SEC);
-        CHECK(labs(te - clk0 - 4 * SEC) < SEC / 20, "late press did not join the line"); }
-    fresh(0, 0, 0, 0, 100, 1);
-    run_to(0.2); clkOn = 1; clk0 = T; run_to(3.0); { long t1; foot = 1; run_to(3.2); foot = 0; t1 = T; run_to(7.0);
-        printf("QUANT cancel: peak after %.2e, state %d\n", peak(D, t1, T), S()->state);
-        CHECK(peak(D, t1, T) < 1e-6f && S()->state == ST_IDLE, "second press while waiting did not cancel"); }
-    /* with the MIDI clock: lines on the bar from Start (1 bar = 2 s at 120 BPM) */
-    fresh(0, 0, 0, 0, 100, 1);
-    run_to(0.2); clkOn = 1; clk0 = T; run_to(3.2); { long ts, te; foot = 1; ts = T; run_to(9.0);
-        while (ts < T && fabsf(D[ts]) < 1e-7f) ts++;
-        te = last_loud(D, T, 1e-4f);
-        printf("QUANT clock: press at 3.0 s from Start, starts %.3f, ends %.3f (want 4, 6)\n",
+        printf("clock running: press at 3.0 s from Start, starts %.3f, ends %.3f (want 3.0, 5.0)\n",
                (double)(ts - clk0) / SEC, (double)(te - clk0) / SEC);
-        CHECK(labs(ts - clk0 - 4 * SEC) < SEC / 20 && labs(te - clk0 - 6 * SEC) < SEC / 20, "clocked QUANT off the bar"); }
+        CHECK(ts - t0 < SEC / 20 && labs(te - t0 - 2 * SEC) < SEC / 20, "clock running: press did not fire at once"); }
 
     /* 12. Color / Wind / Grain: NOISE stays bounded and sounding at every corner, and each knob changes it */
     { int c, w, g;
@@ -292,36 +292,37 @@ int main(void)
           CHECK(s0 <= 1.2f * st, "Var %d: click at the 2nd start", vv);
       } }
 
-    /* 13. LED: never written unless the firmware says we are under the cursor; pulses while armed; follows the
-     *     sweep (UP: duty rises); idle writes nothing */
+    /* 13. LED: never written unless the firmware says we are under the cursor; on at the start of the run, off
+     *     at its end (UP: duty falls; with Tail it is still partly lit in the tail); idle writes nothing */
     { unsigned int *gr = (unsigned int *)(se_m + 2048); long k;   /* GPIO stand-ins in low memory */
 #define gon gr[0]
 #define goff gr[1]
-      int lit1, lit2, ch;
-      fresh(0, 0, 0, 0, 100, 1); clkOn = 1; clk0 = 0;   /* bar lines at 0, 2, 4, 6 s */
+      int lit1, lit2, lit3;
+      fresh(0, 6, 0, 0, 100, 1);
       tk_svc_host[0] = SV_MAGIC; tk_svc_host[SV_LEDON] = (unsigned)(uintptr_t)&gon;
       tk_svc_host[SV_LEDOFF] = (unsigned)(uintptr_t)&goff; tk_svc_host[SV_LEDMASK] = 1u;
       tk_svc_host[SV_CURSOR] = 0u; gon = goff = 0u;
-      run_to(0.2); foot = 1; run_to(1.0);        /* armed until 2.0, sweep 2-4 */
+      run_to(0.2); foot = 1; run_to(1.0);        /* sweep 0.2 - 2.2 s with the cursor elsewhere */
       CHECK(gon == 0u && goff == 0u, "LED written with the cursor elsewhere");
-      run_to(4.5); tk_svc_host[SV_CURSOR] = (unsigned)(uintptr_t)params; run_to(4.8);
+      run_to(2.5); tk_svc_host[SV_CURSOR] = (unsigned)(uintptr_t)params; run_to(2.8);
       CHECK(gon == 0u && goff == 0u, "LED written while idle");
-      foot = 0; ch = 0; lit1 = 0;                /* armed at 4.8 until the line at 6.0: a flash a beat */
-      for (k = 0; k < BLK(0.8); k++) { int l0 = S()->led; blk(); if (S()->led != l0) ch++; lit1 += (S()->led == 1); }
-      printf("LED armed: %d changes, lit %.2f of the time (state %d)\n", ch, (double)lit1 / BLK(0.8), S()->state);
-      CHECK(S()->state == ST_WAIT && ch >= 2 && lit1 > 0 && lit1 < BLK(0.8), "LED does not pulse while armed");
+      foot = 0; lit1 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit1 += (S()->led == 1); }   /* sweep 2.8 - 4.8 */
       CHECK(gon == 1u && goff == 1u, "LED registers not written with the mask");
       tk_led_host[0] = 1u; tk_led_host[1] = 0u; blk();   /* a flip: the stock LED task would rewrite the LED */
-      CHECK(tk_led_host[1] == 1u, "stock LED task not kept quiet while armed");
-      run_to(6.1); lit1 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit1 += (S()->led == 1); }
-      run_to(7.5); lit2 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit2 += (S()->led == 1); }
+      CHECK(tk_led_host[1] == 1u, "stock LED task not kept quiet while running");
+      run_to(4.3); lit2 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit2 += (S()->led == 1); }
       printf("LED UP sweep: lit %.2f early, %.2f late\n", (double)lit1 / BLK(0.4), (double)lit2 / BLK(0.4));
-      CHECK(lit2 > 4 * lit1 + 10, "LED does not fade up with the sweep");
-      run_to(8.5); gon = goff = 0u; run_to(9.5);
+      CHECK(lit1 > BLK(0.4) / 2 && lit1 > 4 * lit2 + 10, "LED does not go from on to off over the sweep");
+      run_to(5.5); gon = goff = 0u; run_to(6.0);
       CHECK(S()->led != 1, "LED left lit after the sweep");
       CHECK((tk_led_host[1] & 1u) != (tk_led_host[0] & 1u), "LED not handed back to the stock task when idle");
       CHECK(gon == 0u && goff == 0u, "LED written while idle after the sweep");
-      tk_svc_host[0] = 0x5A4C5300u; foot = 1; run_to(11.0); foot = 0; run_to(11.5);
+      /* Tail 2 s (7) after a 2 s sweep: the LED is about half way down at the peak and dark at the end */
+      SET(TAIL, 7); foot = 1; run_to(7.9); lit3 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit3 += (S()->led == 1); }
+      printf("LED with Tail: lit %.2f around the peak (state %d)\n", (double)lit3 / BLK(0.4), S()->state);
+      CHECK(S()->state == ST_TAIL && lit3 > BLK(0.4) / 8 && lit3 < BLK(0.4) * 3 / 4, "LED not part lit at the start of the tail");
+      run_to(10.5); CHECK(S()->state == ST_IDLE && S()->led != 1, "LED not dark after the tail");
+      tk_svc_host[0] = 0x5A4C5300u; gon = goff = 0u; foot = 0; run_to(11.0); foot = 1; run_to(11.5);
       CHECK(gon == 0u && goff == 0u, "LED written on stock (no services magic)"); }
 #undef gon
 #undef goff
@@ -329,8 +330,9 @@ int main(void)
     /* labels */
     { char b[8]; unsigned v[] = {0, 2, 4, 5, 6, 35}; int k;
       for (k = 0; k < 6; k++) { ZDL_GetLabel_1(v[k], b); printf("Len%u=%s ", v[k], b); }
-      ZDL_GetLabel_7(0, b); printf("Space0=%s ", b); CHECK(b[0] == 'O', "Space 0 label");
-      ZDL_GetLabel_7(100, b); printf("Space100=%s\n", b);
+      ZDL_GetLabel_7(0, b); printf("Tail0=%s ", b); CHECK(b[0] == 'O', "Tail 0 label");
+      ZDL_GetLabel_7(1, b); printf("Tail1=%s ", b); CHECK(b[0] == '1' && b[1] == 'b', "Tail 1 label");
+      ZDL_GetLabel_7(36, b); printf("Tail36=%s\n", b); CHECK(b[0] == '3' && b[1] == '1' && b[2] == 's', "Tail 36 label");
       ZDL_GetLabel_1(4, b); CHECK(b[0] == '1' && b[1] == '6' && b[5] == 0, "Len 16bar label");
       ZDL_GetLabel_1(35, b); CHECK(b[0] == '3' && b[1] == '1' && b[2] == 's' && b[3] == 0, "Len 31s label"); }
 

@@ -1,6 +1,6 @@
 {
   "effect_name": "Takeoff",
-  "comment": "Takeoff - risers and downlifters that only add sound on top (the input passes through untouched; the added sound is mono, the same on both sides). The sound is noise through a resonant sweeping filter, shaped by Color, Wind and Grain. Range sets how far it travels. Var makes each takeoff a little different (Range, start pitch, curve, Color, Wind, Grain; drawn once per sweep, never Len, Dir or Vol; 0 = the same every time). Volume swells with the sweep, exponential curve. Dir UP sweeps up and cuts clean at the end, DOWN starts at the top and falls and fades. Space = reverb tail on the riser's own sound. QUANT: an on/off flip waits for the end of the current Len cycle (the MIDI clock's bar grid, or the cycle of the first sweep), a flip during a sweep drops it at once, holding the footswitch (needs the MOD firmware) rises while held and drops on release. MOD firmware: the footswitch LED pulses while a sweep waits and fades with the sweep.",
+  "comment": "Takeoff - risers and downlifters that only add sound on top (the input passes through untouched; the added sound is mono, the same on both sides). The sound is noise through a resonant sweeping filter, shaped by Color, Wind and Grain. Range sets how far it travels. Var makes each takeoff a little different (Range, start pitch, curve, Color, Wind, Grain; drawn once per sweep, never Length, Dir or Vol; 0 = the same every time). Volume swells with the sweep, exponential curve. Dir UP sweeps up and at the top cuts clean (Tail Off) or fades over Tail; DOWN starts at the top and falls and fades. An on/off flip fires a sweep at once, a flip during a sweep drops it, holding the footswitch (needs the MOD firmware) rises while held and drops or fades on release. MOD firmware (play mode, cursor on Takeoff): the footswitch LED goes from on to off over the run.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 494,
@@ -10,8 +10,8 @@
   "params": [
     {"name": "Dir", "max": 1, "default": 0,
      "comment": "0 UP: sweeps up and cuts clean at the end (the drop). 1 DOWN: starts at the top, falls and fades to silence. Default UP."},
-    {"name": "Len", "max": 35, "default": 2,
-     "comment": "Sweep length, and the QUANT cycle. 0..4 = 1, 2, 4, 8, 16 bars at the pedal's tempo (MIDI clock, tap or patch). 5..35 = FREE, 1..31 seconds. Default 2 = 4 bars."},
+    {"name": "Length", "max": 35, "default": 2,
+     "comment": "Sweep length. 0..4 = 1, 2, 4, 8, 16 bars at the pedal's tempo (MIDI clock, tap or patch). 5..35 = FREE, 1..31 seconds. Default 2 = 4 bars."},
     {"name": "Color", "max": 100, "default": 25,
      "comment": "Noise filter width: 0 = a narrow whistling band, 100 = wide air. Level stays about the same. Default 25."},
     {"name": "Wind", "max": 100, "default": 40,
@@ -21,9 +21,9 @@
     {"name": "Range", "max": 100, "default": 60,
      "comment": "How far the noise sweep travels (the filter's move from start to end), 0..100 = 0..5 octaves. Small = a short, subtle lift; 100 = from deep rumble to full air. Default 60 = 3 octaves."},
     {"name": "Var", "max": 100, "default": 35,
-     "comment": "How much each takeoff differs from the last, so a live set does not repeat itself. Drawn once when a sweep starts: Range (x 1 +-0.35), start pitch, curve shape, Color, Wind and Grain. Never Len, Dir or Vol; the level stays about the same. 0 = the same takeoff every time. Default 35."},
-    {"name": "Space", "max": 100, "default": 0,
-     "comment": "Reverb tail on the riser's own sound only, ringing on after the cut. 0 = off. Default 0."},
+     "comment": "How much each takeoff differs from the last, so a live set does not repeat itself. Drawn once when a sweep starts: Range (x 1 +-0.35), start pitch, curve shape, Color, Wind and Grain. Never Length, Dir or Vol; the level stays about the same. 0 = the same takeoff every time. Default 35."},
+    {"name": "Tail", "max": 36, "default": 0,
+     "comment": "UP only: after the peak the noise holds its top pitch and fades out over Tail instead of cutting. 0 = Off (clean cut). 1..5 = 1, 2, 4, 8, 16 bars at the pedal's tempo, 6..36 = 1..31 seconds. DOWN ignores it. Default Off."},
     {"name": "Vol", "max": 100, "default": 50,
      "comment": "Level of the added sound (linear). The input is never changed. Default 50."}
   ],
@@ -31,5 +31,5 @@
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
   "dsp_cost": 59.0,
-  "dsp_cost_comment": "Previous build measured 14% (7,600 cycles). This build drops the key listener, runs the riser and the reverb mono (one noise, one filter, one reverb, copied to both sides) and the filter maths every 4th block: estimated about 6.5% (3,500 cycles). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost_comment": "Previous build measured 14% (7,600 cycles). This build drops the key listener and the Space reverb, runs the riser mono (one noise, one filter, copied to both sides) and the filter maths every 4th block: estimated about 5% (2,700 cycles); the declared value is kept from the previous build until measured. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD)."
 }

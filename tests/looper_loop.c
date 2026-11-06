@@ -100,8 +100,8 @@ int main(void)
         for (j = 0; j < 16; j++) { x[j] = lev * (float)sin(1.7 * j + k); y[j] = -lev * (float)cos(0.9 * j + k); if (fabsf(x[j]) > pk) pk = fabsf(x[j]); if (fabsf(y[j]) > pk) pk = fabsf(y[j]); }
         for (j = 0; j < 16; j++) lp_write(S, x[j], y[j]);
         for (j = 0; j < 16; j++) {
-            LpVoice v = { (int)k * 16 + j, -1 }; float l, r;
-            lp_read(S, &v, &l, &r);
+            LpVoice v = { (int)k * 16 + j, -1 }; float l, r, bl[16], br[16];
+            lp_read(S, &v, bl, br, &l, &r);
             e = fmaxf(fabsf(l - x[j]), fabsf(r - y[j])) / fmaxf(pk, 2.5e-4f);
             if (k < 108 && e > worst) worst = e;           /* up to +18 dB; under -72 dB the step stays at -138 dBFS */
         }
@@ -191,7 +191,7 @@ int main(void)
         CHECK(S->roll == 8 && S->ru0 == bar_line, "Roll did not start on the bar line (roll %d ru0 %d gu %d)", S->roll, S->ru0, S->gu);
         /* the slice: the loop's first beat of the bar from bar_line */
         u0 = lp_imod(bar_line - S->lu0, S->U);
-        for (j = 0; j < 64; j++) { LpVoice v = { (int)(u0 * S->spu + 0.5f) + 400 + j, -1 }; float l, r; lp_read(S, &v, &l, &r); ref[j] = l; }
+        for (j = 0; j < 64; j++) { LpVoice v = { (int)(u0 * S->spu + 0.5f) + 400 + j, -1 }; float l, r, bl[16], br[16]; lp_read(S, &v, bl, br, &l, &r); ref[j] = l; }
         for (k = 0; k < 3; k++) {                          /* three repeats: same audio each beat */
             long beat_start = t;
             while (S->v[S->mi].pos < (int)(u0 * S->spu + 0.5f) + 400 || S->v[S->mi].pos > (int)(u0 * S->spu + 0.5f) + 500) block();
@@ -317,12 +317,12 @@ int main(void)
     zt_host[2] = 0u; clk_per = 0.0;
 
     /* 9: fit: stereo / mono / shorter in the 705 KB arena and with the services' big buffer
-     * (3.3 MB with the arena) */
+     * (3.3 MB with the arena; 12-bit words with bits 30, 29 clear, #41) */
     {
         LpParams P; float bpm;
         struct { float bpm; int len; int bufbig; int want_st; int want_U; } c[] = {
             { 120, 1, 0, 1, 32 }, { 120, 2, 0, 1, 64 }, { 120, 4, 0, 0, 128 }, { 120, 8, 0, 0, 128 }, { 40, 8, 0, 0, 32 },
-            { 79, 8, 1, 1, 256 }, { 78, 8, 1, 0, 256 }, { 40, 8, 1, 0, 256 }, { 40, 4, 1, 1, 128 },
+            { 83, 8, 1, 1, 256 }, { 82, 8, 1, 0, 256 }, { 45, 8, 1, 0, 256 }, { 44, 8, 1, 1, 128 }, { 42, 4, 1, 1, 128 }, { 41, 4, 1, 0, 128 },
             { 250, 8, 1, 1, 256 }, { 100, 8, 1, 1, 256 },
         };
         for (k = 0; k < (long)(sizeof c / sizeof c[0]); k++) {
@@ -334,12 +334,12 @@ int main(void)
                   "fit %.0f BPM %d bars %s: stereo %d bars %d, want %d %d",
                   c[k].bpm, c[k].len, c[k].bufbig ? "big" : "arena", S->stereo, S->U >> 5, c[k].want_st, c[k].want_U >> 5);
         }
-        /* the big buffer across its four regions: record and read back 8 bars stereo at 80 */
+        /* the big buffer across its four regions: record and read back 8 bars stereo at 85 */
         fresh(); services(0);
-        U[4] = 7; U[1] = 0; tempo_word(80);
+        U[4] = 7; U[1] = 0; tempo_word(85);
         run(800); fw_press(); rec_start = t - 8;
         while (S->st != LP_PLAY) block();
-        CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 80 BPM: want 8 bars stereo in 4 regions");
+        CHECK(S->stereo == 1 && S->U == 256 && S->big && S->nreg == 4, "big buffer 85 BPM: want 8 bars stereo in 4 regions");
         worst = 0.0f;
         for (i = 0; i < S->L / 8; i++) {
             block();
@@ -350,7 +350,7 @@ int main(void)
                 if (e > worst) worst = e;
             }
         }
-        printf("big buffer, 8 bars stereo at 80 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
+        printf("big buffer, 8 bars stereo at 85 BPM (%.1f s): worst error %.2e\n", S->L / 44100.0, worst);
         CHECK(worst < 2e-3f, "big buffer loop does not match (%.2e)", worst);
     }
 
@@ -373,7 +373,8 @@ int main(void)
         CHECK(ls_host[LS_LEVEL] >= 4 && ls_host[LS_LEVEL] <= 32, "recording level %u", ls_host[LS_LEVEL]);
         while (S->st != LP_PLAY) block();
         run(400); text(tx);
-        CHECK(!strcmp(tx, "PLAY    ") && (ls_host[LS_PROG] & 0xFFFFu) < 16 && ls_host[LS_INV] == 0, "playing text '%s' progress %u", tx, (ls_host[LS_PROG] & 0xFFFFu));
+        CHECK(!strcmp(tx, "PLAY    ") && (ls_host[LS_PROG] & 0xFFFFu) < 16, "playing text '%s' progress %u", tx, (ls_host[LS_PROG] & 0xFFFFu));
+        CHECK(ls_host[20] == LP_PLAY && ls_host[22] == 0u, "state word: 20 = %u (want %d), 22 = %u (the firmware's, want untouched)", ls_host[20], LP_PLAY, ls_host[22]);
         /* LED: only while under the cursor; the duty follows the level */
         CHECK(led_writes == 0 && gpio_clr == 0 && gpio_set == 0, "LED written while not under the cursor");
         ls_host[LS_MINE] = 1u;
@@ -394,7 +395,8 @@ int main(void)
                 if (ls_host[LS_LEVEL] != lv) { if (S->pu - S->gu >= 8) ch1++; else ch2++; }
                 lv = ls_host[LS_LEVEL];
                 CHECK(lv == 0 || lv == 32, "countdown level %u", lv);
-                CHECK(ls_host[LS_INV] == 0 && (lv || !S->pend || (ls_host[LS_PROG] & 0xFFFFu) == 0), "countdown: box inverted or bar shown while blinked off");
+                CHECK(lv || !S->pend || (ls_host[LS_PROG] & 0xFFFFu) == 0, "countdown: bar shown while blinked off");
+                CHECK(ls_host[20] == ((unsigned int)S->st | ((unsigned int)S->pend << 8)) && ls_host[22] == 0u, "countdown: state word 20 = %#x, 22 = %u", ls_host[20], ls_host[22]);
             }
             printf("LED, countdown: %ld changes before the last beat, %ld in it (%ld blocks)\n", ch1, ch2, blk);
             CHECK(ch2 >= 3 && ch2 <= 5, "last beat: %ld changes, want 1/8 blinks (4)", ch2);
@@ -481,6 +483,31 @@ int main(void)
         /* mono stores (L+R)/2 */
         S->stereo = 0; S->wi = 0; lp_write(S, 0.5f, -0.25f);
         CHECK(fabsf(S->stl[0] - 0.125f) < 1e-6f, "mono: stored %.3f, want (L+R)/2 = 0.125", S->stl[0]);
+    }
+
+    /* 12: arena safety (#41): sealed between blocks, every word GRDLOOP wrote to the arena
+     * reads as a tiny float (bits 30, 29 clear), and unsealing gives the state back */
+    {
+        static unsigned char hdr[sizeof(LpState)];
+        const unsigned int *w = (const unsigned int *)arena;
+        long b0, nw, bad = 0, n;
+        fresh(); tempo_word(120); U[4] = 0;              /* 1 bar, stereo, arena only */
+        block(); press();
+        while (S->st != LP_PLAY) block();
+        run(8000);                                       /* the tail is written too */
+        CHECK(S->stereo && S->tail == 0, "arena safety: not a finished stereo loop");
+        b0 = (long)(S->ab - (uintptr_t)arena) >> 2;
+        nw = (long)((S->wi + 15) >> 4) * (S->bs >> 2);
+        memcpy(hdr, S, sizeof hdr);
+        lp_seal(S);
+        for (n = 0; n < LP_NHDR + LP_NSEAL; n++) if (w[n] & 0x60000000u) bad++;
+        for (n = 0; n < nw; n++) if (w[b0 + n] & 0x60000000u) bad++;
+        printf("arena safety: %d header + %d seal + %ld loop words, %ld with bit 30 or 29 set\n", LP_NHDR, LP_NSEAL, nw, bad);
+        CHECK(bad == 0, "arena safety: %ld words would read as NaN, Inf or a loud float", bad);
+        lp_unseal(S);
+        CHECK(!memcmp(hdr, S, 4u * LP_NHDR), "arena safety: unseal did not give the state back");
+        memset(arena, 0xC9, sizeof arena); lp_unseal(S);
+        CHECK(S->magic != LP_MAGIC, "arena safety: a stale arena passed the magic");
     }
 
     /* 11: random knobs, presses, tempo and clock: no NaN, bounded, indices in range */

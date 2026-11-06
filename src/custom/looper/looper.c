@@ -61,15 +61,30 @@
  *
  * LOOP FORMAT
  *   12-bit block floating point, 16 frames per block: one 4-bit shift for the block (shared
- *   by L and R, as Luca's A/B), then 12-bit samples packed two in three bytes. 49 bytes per
- *   stereo block (3.06 B per frame), 25 per mono block. A mono loop stores the left input.
- *   Stereo or mono is picked when recording starts: stereo whenever Length fits.
+ *   by L and R, as Luca's A/B), then 12-bit samples in 32-bit words that use 30 bits each:
+ *   bits 30 and 29 are always 0 (see ARENA SAFETY). Word 0 holds the shift and the first
+ *   L and R sample; then five samples per two words (s0, s1 / s2, s3 in bits 0..23, s4 split
+ *   over bits 24..28 and 31 of both). 52 bytes per stereo block (3.25 B per frame), 28 per
+ *   mono block. A mono loop stores (L+R)/2.
+ *   Stereo or mono is picked when recording starts: stereo whenever the cycle fits.
  *   Memory: the firmware's big buffer (free RAM regions 3, 2, 1 from the services block)
- *   plus the effect's own arena, 3.3 MB: 8 bars stereo from 79 BPM, mono at every tempo.
- *   The looper that holds the services claim gets it, picked when recording starts; a
- *   second looper, or older firmware, has the arena alone (705 KB: about 10 s mono, 5 s
- *   stereo). Recorded audio is never read before it is written, so a new
- *   arena needs no clearing; a new arena (patch change, reload) means an empty looper.
+ *   plus the effect's own arena, 3.3 MB: 23.3 s stereo or 43.2 s mono, so 8 bars stereo
+ *   from 83 BPM and mono from 45 BPM. The looper that holds the services claim gets it,
+ *   picked when recording starts; a second looper, or older firmware, has the arena alone
+ *   (705 KB: about 9 s mono, 4.9 s stereo). Recorded audio is never read before it is
+ *   written, so a new arena needs no clearing; a new arena (patch change, reload) means an
+ *   empty looper.
+ *
+ * ARENA SAFETY (pack issue #41)
+ *   The slot's arena outlives the effect: there is no unload hook, and a stock delay or
+ *   reverb loaded into the slot later reads what we left there as float audio. A NaN or Inf
+ *   in its delay line silences it until a power cycle. So every word we write to the arena
+ *   keeps bits 30 and 29 clear: as a float its exponent is under 64, |x| < 2^-63, silent.
+ *   The loop words are packed that way. The state's header (ints, pointers, the magic) is
+ *   sealed at the end of every block: bits 30 and 29 of each header word move to the seal
+ *   words (14 pairs per word), and come back at the start of the next block. The audio-range
+ *   floats at the state's end (the block being recorded, the voices' decoded blocks) stay
+ *   as they are: at worst a stock delay echoes 2 ms of real audio once.
  *
  * PLAYBACK ON THE GRID (tempo changes)
  *   The loop's place is tied to the song grid: on every 1/16 line the playhead is checked
@@ -103,6 +118,7 @@
  */
 
 #include <stdint.h>
+#include <stddef.h>
 #include "../common/zmt.h"
 
 #ifdef __TI_COMPILER_VERSION__
@@ -115,7 +131,7 @@
 #define LP_CODE_SECTION(fn)
 #endif
 
-#define LP_MAGIC   0x4C4F4F34u           /* "LOO4": change whenever LpState changes        */
+#define LP_MAGIC   0x4C4F4F35u           /* "LOO5": change whenever LpState changes        */
 #define LP_OPEN    0x40000000            /* rend: OWN recording, no second press yet       */
 #define LP_X       128                   /* seam crossfade, samples (2.9 ms)               */
 #define LP_XINV    0.0078125f
@@ -126,8 +142,9 @@
 #define LP_GLIDE   0.005f                /* gain glide per sample: ~5 ms                   */
 #define LP_UNIT    3.0234014e-6f         /* grid units (1/8 beat) per sample per BPM       */
 #define LP_SPB     2646000.0f            /* samples per beat x BPM                         */
-#define LP_BS2     49                    /* bytes per stereo block                         */
-#define LP_BS1     25                    /* bytes per mono block                           */
+#define LP_BS2     52                    /* bytes per stereo block (13 words)               */
+#define LP_BS1     28                    /* bytes per mono block (7 words)                  */
+#define LP_NSEAL   7                     /* seal words: 14 header words each               */
 #define LP_NREG    4                     /* buffer regions: the big buffer's 3 + the arena */
 #ifndef LP_ON_JUMP
 #define LP_ON_JUMP()                     /* host tests count the seams */
@@ -157,9 +174,8 @@ static unsigned int ls_host[32];         /* host tests: no firmware; tests fill 
 #define LS_LEVEL   16                    /* ours: LED level 0..32 (PWM duty)                */
 #define LS_TEXT    17                    /* ours: 8 status characters (words 17, 18)       */
 #define LS_PROG    19                    /* ours: loop progress 0..256 (status box fill)    */
-#define LS_STATE   22                    /* Perform: st | pend << 8                         */
+#define LS_STATE   20                    /* Perform: st | pend << 8 (22 is the firmware's S_LEDOWN) */
 #define LS_PASS    23                    /* Perform: +1 per loop pass                       */
-#define LS_INV     20                    /* ours: 1 = status box inverted (pulse, blink)    */
 #define LS_CYCLE   21                    /* Perform: the patch's CYCLE in bars, 0 = none   */
 #define LS_LEFT    30                    /* ours: the status bar's left text as a code (lp_out) */
 #define LP_PWM     32                    /* LED PWM steps (one per block: 172 Hz)          */
@@ -176,8 +192,7 @@ static unsigned int ls_host[32];         /* host tests: no firmware; tests fill 
 
 typedef struct {
     int   pos;             /* frame being read, -1 = silent                      */
-    int   blk;             /* block decoded into l, r (-1 = none)                */
-    float l[16], r[16];
+    int   blk;             /* block decoded into its vl, vr (-1 = none)          */
 } LpVoice;
 
 typedef struct {
@@ -212,7 +227,6 @@ typedef struct {
     int   L;               /* loop length, frames                                */
     float spu;             /* frames per unit                                    */
     int   tail;            /* frames still to record after the loop end          */
-    float stl[16], str[16];/* the block being recorded                           */
     LpVoice v[2];
     int   mi;              /* v[mi] is heard, v[mi ^ 1] fades out                */
     int   fade;            /* samples of the fade left                           */
@@ -239,7 +253,14 @@ typedef struct {
     uintptr_t rb[LP_NREG]; /* region start                                       */
     int   rsz[LP_NREG];    /* bytes                                              */
     int   rcnt[LP_NREG];   /* blocks in this format                              */
+    /* everything above is the header, sealed between blocks (ARENA SAFETY) */
+    unsigned int seal[LP_NSEAL];   /* the header's bits 30, 29, 14 words per seal word */
+    float stl[16], str[16];/* the block being recorded                           */
+    float vl[2][16], vr[2][16];    /* each voice's decoded block                 */
 } LpState;
+
+#define LP_NHDR ((int)(offsetof(LpState, seal) >> 2))   /* header words */
+typedef char lp_seal_fits[(offsetof(LpState, seal) <= 4u * 14u * LP_NSEAL) ? 1 : -1];
 
 typedef struct {
     float tgd, tgw;        /* Mix gains                                          */
@@ -333,11 +354,11 @@ static inline int lp_count(LpState *s, int bs)
 }
 
 LP_ALWAYS_INLINE(lp_addr)
-static inline unsigned char *lp_addr(const LpState *s, int n)
+static inline unsigned int *lp_addr(const LpState *s, int n)
 {
     int k;
     for (k = 0; k < s->nreg; k++) {
-        if (n < s->rcnt[k]) return (unsigned char *)(s->rb[k] + (uintptr_t)(n * s->bs));
+        if (n < s->rcnt[k]) return (unsigned int *)(s->rb[k] + (uintptr_t)(n * s->bs));
         n -= s->rcnt[k];
     }
     return 0;
@@ -353,31 +374,51 @@ static inline int lp_q12(float x, float sc)
     return q & 4095;
 }
 
-/* 16 samples, two per three bytes */
-LP_ALWAYS_INLINE(lp_pack)
-static inline void lp_pack(unsigned char *p, const float *x, float sc)
+/* 12-bit code (bits 0..11 of a) back to a signed int */
+LP_ALWAYS_INLINE(lp_sx)
+static inline int lp_sx(unsigned int a)
 {
-    int j, a, b;
-    for (j = 0; j < 16; j += 2) {
-        a = lp_q12(x[j], sc); b = lp_q12(x[j + 1], sc);
-        p[0] = (unsigned char)(a & 255);
-        p[1] = (unsigned char)((a >> 8) | ((b & 15) << 4));
-        p[2] = (unsigned char)(b >> 4);
-        p += 3;
+    int q = (int)(a & 4095u);
+    return (q & 2048) ? q - 4096 : q;
+}
+
+/* 6 bits into a word's free bits 24..28 and 31 (bits 30, 29 stay 0), and back */
+LP_ALWAYS_INLINE(lp_put6)
+static inline unsigned int lp_put6(int c)
+{
+    return ((unsigned int)(c & 31) << 24) | ((unsigned int)(c & 32) << 26);
+}
+
+LP_ALWAYS_INLINE(lp_get6)
+static inline int lp_get6(unsigned int w)
+{
+    return (int)((w >> 24) & 31u) | (int)((w >> 26) & 32u);
+}
+
+/* 15 samples in 6 words, five per two: s0, s1 / s2, s3 in bits 0..23, s4 split in two */
+LP_ALWAYS_INLINE(lp_pack)
+static inline void lp_pack(unsigned int *p, const float *x, float sc)
+{
+    int j, e;
+    for (j = 0; j < 15; j += 5) {
+        e = lp_q12(x[j + 4], sc);
+        p[0] = (unsigned int)lp_q12(x[j], sc) | ((unsigned int)lp_q12(x[j + 1], sc) << 12) | lp_put6(e);
+        p[1] = (unsigned int)lp_q12(x[j + 2], sc) | ((unsigned int)lp_q12(x[j + 3], sc) << 12) | lp_put6(e >> 6);
+        p += 2;
     }
 }
 
 LP_ALWAYS_INLINE(lp_unpack)
-static inline void lp_unpack(const unsigned char *p, float *x, float g)
+static inline void lp_unpack(const unsigned int *p, float *x, float g)
 {
-    int j, a, b;
-    for (j = 0; j < 16; j += 2) {
-        a = (int)p[0] | (((int)p[1] & 15) << 8);
-        b = ((int)p[1] >> 4) | ((int)p[2] << 4);
-        if (a & 2048) a -= 4096;
-        if (b & 2048) b -= 4096;
-        x[j] = (float)a * g; x[j + 1] = (float)b * g;
-        p += 3;
+    int j;
+    unsigned int a, b;
+    for (j = 0; j < 15; j += 5) {
+        a = p[0]; b = p[1];
+        x[j] = (float)lp_sx(a) * g;     x[j + 1] = (float)lp_sx(a >> 12) * g;
+        x[j + 2] = (float)lp_sx(b) * g; x[j + 3] = (float)lp_sx(b >> 12) * g;
+        x[j + 4] = (float)lp_sx((unsigned int)(lp_get6(a) | (lp_get6(b) << 6))) * g;
+        p += 2;
     }
 }
 
@@ -388,7 +429,7 @@ LP_ALWAYS_INLINE(lp_flush)
 static inline void lp_flush(LpState *s, int n)
 {
     union { float f; unsigned int u; } c;
-    unsigned char *p = lp_addr(s, (s->wi - 1) >> 4);
+    unsigned int *p = lp_addr(s, (s->wi - 1) >> 4);
     float m = 0.0f, a, sc;
     int k, e;
     for (k = n; k < 16; k++) { s->stl[k] = 0.0f; s->str[k] = 0.0f; }
@@ -402,9 +443,10 @@ static inline void lp_flush(LpState *s, int n)
     if (e < 0) e = 0;
     if (!p) return;
     sc = 2047.0f * lp_pow2i(e - 3);
-    p[0] = (unsigned char)e;
-    lp_pack(p + 1, s->stl, sc);
-    if (s->stereo) lp_pack(p + 25, s->str, sc);
+    p[0] = ((unsigned int)e << 24) | (unsigned int)lp_q12(s->stl[0], sc)
+         | (s->stereo ? (unsigned int)lp_q12(s->str[0], sc) << 12 : 0u);
+    lp_pack(p + 1, s->stl + 1, sc);
+    if (s->stereo) lp_pack(p + 7, s->str + 1, sc);
 }
 
 /* record one frame */
@@ -417,11 +459,11 @@ static inline void lp_write(LpState *s, float l, float r)
     if ((s->wi & 15) == 0) lp_flush(s, 16);
 }
 
-/* read the voice's frame and move it on */
+/* read the voice's frame and move it on; vl, vr = its decoded block */
 LP_ALWAYS_INLINE(lp_read)
-static inline void lp_read(const LpState *s, LpVoice *v, float *l, float *r)
+static inline void lp_read(const LpState *s, LpVoice *v, float *vl, float *vr, float *l, float *r)
 {
-    const unsigned char *p;
+    const unsigned int *p;
     int b, k;
     float g;
     *l = 0.0f; *r = 0.0f;
@@ -436,12 +478,13 @@ static inline void lp_read(const LpState *s, LpVoice *v, float *l, float *r)
                 p = lp_addr(s, b);
                 v->blk = b;
                 if (p) {
-                    g = 4.8851979e-4f * lp_pow2i(3 - (int)(p[0] & 15));   /* 2^(3-e) / 2047 */
-                    lp_unpack(p + 1, v->l, g);
-                    if (s->stereo) lp_unpack(p + 25, v->r, g);
+                    g = 4.8851979e-4f * lp_pow2i(3 - (int)((p[0] >> 24) & 15u));   /* 2^(3-e) / 2047 */
+                    vl[0] = (float)lp_sx(p[0]) * g; vr[0] = (float)lp_sx(p[0] >> 12) * g;
+                    lp_unpack(p + 1, vl + 1, g);
+                    if (s->stereo) lp_unpack(p + 7, vr + 1, g);
                 }
             }
-            *l = v->l[k]; *r = s->stereo ? v->r[k] : v->l[k];
+            *l = vl[k]; *r = s->stereo ? vr[k] : vl[k];
         }
     }
     v->pos++;
@@ -529,9 +572,9 @@ static inline void lp_regions(LpState *s)
         m = (int)b[LS_NREG];
         if (m > LP_NREG - 1) m = LP_NREG - 1;
         for (k = 0; k < m; k++) {
-            s->rb[n] = (uintptr_t)b[2 + 2 * k];
-            s->rsz[n] = (int)b[3 + 2 * k];
-            if (s->rb[n] != 0u && s->rsz[n] > 0) n++;
+            s->rb[n] = ((uintptr_t)b[2 + 2 * k] + 3u) & ~(uintptr_t)3u;   /* whole words */
+            s->rsz[n] = (int)b[3 + 2 * k] - (int)(s->rb[n] - (uintptr_t)b[2 + 2 * k]);
+            if (b[2 + 2 * k] != 0u && s->rsz[n] > 0) n++;
         }
     }
     s->big = (n > 0);
@@ -757,10 +800,10 @@ static inline void lp_process(LpState *s, const LpParams *P, float bpm, float du
             } else if (s->wi >= s->capf - LP_X - 16) lp_finish(s);   /* memory full */
         }
 
-        lp_read(s, &s->v[s->mi], &ml, &mr);
+        lp_read(s, &s->v[s->mi], s->vl[s->mi], s->vr[s->mi], &ml, &mr);
         if (s->fade > 0) {
             g = (float)s->fade * s->fi;
-            lp_read(s, &s->v[s->mi ^ 1], &fl, &fr);
+            lp_read(s, &s->v[s->mi ^ 1], s->vl[s->mi ^ 1], s->vr[s->mi ^ 1], &fl, &fr);
             ml += g * (fl - ml); mr += g * (fr - mr);
             if (--s->fade == 0) s->v[s->mi ^ 1].pos = -1;
         }
@@ -895,8 +938,7 @@ static inline void lp_out(LpState *s, const LpParams *P)
     b[LS_LEVEL] = (unsigned int)lev;
     b[LS_PROG] = (unsigned int)prog | ((unsigned int)P->cyc << 16)
                | (clk ? ((unsigned int)((g >> 5) + 1) << 22) | ((unsigned int)((g >> 3) & 3) << 28) : (1u << 30));
-    b[LS_INV] = 0u;                                     /* the box never inverts (Luca) */
-    b[LS_STATE] = (unsigned int)s->st | ((unsigned int)s->pend << 8);   /* Perform's events */
+    b[LS_STATE] = (unsigned int)s->st | ((unsigned int)s->pend << 8);   /* Perform's events (word 20) */
     b[LS_PASS] = s->npass;
     if (!b[LS_MINE] || b[LS_LEDON] == 0u || b[LS_LEDOFF] == 0u) { s->led = -1; return; }
     s->pwm++;
@@ -905,6 +947,38 @@ static inline void lp_out(LpState *s, const LpParams *P)
     if (lit != s->led) {
         *(volatile unsigned int *)(uintptr_t)(lit ? b[LS_LEDON] : b[LS_LEDOFF]) = b[LS_LEDMASK];
         s->led = lit;
+    }
+}
+
+/* ---- arena safety (#41) --------------------------------------------------- */
+
+/* end of a block: move bits 30, 29 of each header word into the seal words, so every word
+ * left in the arena reads as a tiny float */
+LP_ALWAYS_INLINE(lp_seal)
+static inline void lp_seal(LpState *s)
+{
+    unsigned int *w = (unsigned int *)s, c;
+    int i = 0, j, k;
+    for (k = 0; k < LP_NSEAL; k++) {
+        c = 0u;
+        for (j = 0; j < 28 && i < LP_NHDR; j += 2, i++) {
+            c |= ((w[i] >> 29) & 3u) << j;
+            w[i] &= 0x9FFFFFFFu;
+        }
+        s->seal[k] = c;
+    }
+}
+
+/* start of a block: put them back (a stale arena decodes to garbage and fails the magic) */
+LP_ALWAYS_INLINE(lp_unseal)
+static inline void lp_unseal(LpState *s)
+{
+    unsigned int *w = (unsigned int *)s, c;
+    int i = 0, j, k;
+    for (k = 0; k < LP_NSEAL; k++) {
+        c = s->seal[k];
+        for (j = 0; j < 28 && i < LP_NHDR; j += 2, i++)
+            w[i] = (w[i] & 0x9FFFFFFFu) | (((c >> j) & 3u) << 29);
     }
 }
 
@@ -1033,11 +1107,13 @@ void LOOPER_AUDIO_FUNC(unsigned int *ctx)
     u[5] = lp_ui(params[LOOPER_STOP_SLOT],   (float)LOOPER_STOP_UI_DEFAULT,   1.0f);
 
     lp_prepare(&P, u);
+    lp_unseal(s);
     if (s->magic != LP_MAGIC) lp_init(s, bufBase, (int)(end - bufBase));
     s->me = ctx[1];                              /* our claim on the looper services */
     bpm = lp_block(s, &P, params[0], &du);       /* on/off only counts presses */
     lp_process(s, &P, bpm, du, fxBuf);
     lp_out(s, &P);
+    lp_seal(s);                                  /* left safe for a stock effect (#41) */
 }
 
 #endif /* LOOPER_HOST_TEST */

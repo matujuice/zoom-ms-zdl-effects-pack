@@ -3,10 +3,12 @@
  * into a reverb-like cloud (the Octatrack-style washout for transitions).
  *
  * SIGNAL (per side, L and R each have their own ring and their own diffusers)
- *   in --Send--> + --> soft clip --> ring (16-bit, 3.8 s) --> read at Time --+--> wet out
- *                ^                                                           |
- *                +-- Fdbk x LoCut <- HiCut <- 4 all-pass diffusers (Wash) <--+
- *   The wet output is the diffused read, so even the first repeat is smeared. Every pass
+ *   in --Send--> + --> soft clip --> ring (16-bit, 3.8 s) --> read at Time
+ *                ^                                                   |
+ *                |                              4 all-pass diffusers (Wash)
+ *                |                                                   |
+ *                +---------------- Fdbk x <------ LoCut <- HiCut <---+--> wet out
+ *   The wet output is the diffused, cut read, so even the first repeat is smeared. Every pass
  *   through the loop smears it again, so the repeats melt into a cloud.
  *
  * DIFFUSERS: 4 Schroeder all-passes in series (unity gain at every frequency, so they lose no
@@ -15,7 +17,8 @@
  *   much so a synced Time still lands on the beat). Fixed whole-sample lengths: no modulation.
  *   The ring read is whole samples (the Time is rounded), so the loop has no interpolation loss.
  * LOOP FILTERS: HiCut = one-pole low-pass 11.6 kHz (1) .. 375 Hz (100); LoCut = one-pole
- *   high-pass 25 Hz (1) .. 800 Hz (100). 0 = off and skipped.
+ *   high-pass 25 Hz (1) .. 800 Hz (100). 0 = off and skipped. The wet out is taken after the
+ *   cuts, so the first repeat is already cut (6 dB/oct) and each pass cuts it again.
  * FDBK 0..120: gain into the loop = screen / 100, so 100 = 1:1. The diffusers lose no level, so
  *   Fdbk 100 + Send 0 + both cuts off holds the cloud. Above 100 it grows until the soft clip
  *   (transparent below 0.7, flat at 1.0) holds it, so it stays bounded.
@@ -354,7 +357,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 #undef WD_AP
     }
 
-    /* the wet out is the diffused read; then loop filters (always run; off = pass through), Send, soft clip,
+    /* loop filters (always run; off = pass through), the wet out after them, then Send, soft clip,
      * both sides in one loop */
     {
         const float bl = hc ? cl : 1.0f, al = 1.0f - bl, bh = lc ? ch_ : 0.0f, ah = 1.0f - bh;
@@ -362,9 +365,9 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         WD_EIGHT
         for (i = 0; i < 8; i++) {
             float v0, v1, a0, a1;
-            wo[0][i] = yl[i]; wo[1][i] = yr[i];
             l0 = al * l0 + bl * yl[i]; l1 = al * l1 + bl * yr[i];
             h0 = ah * h0 + bh * l0;    h1 = ah * h1 + bh * l1;
+            wo[0][i] = l0 - h0; wo[1][i] = l1 - h1;   /* wet after the cuts: the 1st repeat is cut too */
             v0 = wd_sat(sgv[i] * xs[0][i] + fb * (l0 - h0)) * WD_TO16;
             v1 = wd_sat(sgv[i] * xs[1][i] + fb * (l1 - h1)) * WD_TO16;
             cv[i] = v0; cv[i + 8] = v1;
