@@ -588,18 +588,22 @@ LP_ALWAYS_INLINE(lp_record)
 static inline void lp_record(LpState *s, const LpParams *P, float bpm, int u, float f)
 {
     float beat = LP_SPB * lp_recip(bpm), need;
-    int len = P->cyc, cs, cm;
+    int len = P->cyc, cs = 0, cm, t;
     lp_regions(s);
-    cs = lp_count(s, LP_BS2); cm = lp_count(s, LP_BS1);
     s->want = len;
-    for (;;) {
-        need = 4.02f * (float)len * beat + (float)(LP_X + 32);   /* 0.5 % for a tempo drift */
-        if (need <= (float)cs) { s->stereo = 1; break; }
-        if (need <= (float)cm || len == 1) { s->stereo = 0; break; }
-        len >>= 1;
+    /* one lp_count for all three counts: inlined three times GRDLOOP goes over 32 KB */
+    for (t = 0; t < 3; t++) {
+        cm = lp_count(s, t == 0 ? LP_BS2 : t == 1 ? LP_BS1 : s->bs);
+        if (t == 0) { cs = cm; continue; }
+        if (t == 2) { s->capf = cm; break; }
+        for (;;) {
+            need = 4.02f * (float)len * beat + (float)(LP_X + 32);   /* 0.5 % for a tempo drift */
+            if (need <= (float)cs) { s->stereo = 1; break; }
+            if (need <= (float)cm || len == 1) { s->stereo = 0; break; }
+            len >>= 1;
+        }
+        s->bs = s->stereo ? LP_BS2 : LP_BS1;
     }
-    s->bs = s->stereo ? LP_BS2 : LP_BS1;
-    s->capf = lp_count(s, s->bs);
     s->U = len << 5;
     s->lu0 = u; s->lu0f = f;
     s->eu = u + s->U; s->ef = f;
@@ -954,9 +958,8 @@ static inline void lp_out(LpState *s, const LpParams *P)
 /* ---- arena safety (#41) --------------------------------------------------- */
 
 /* end of a block: move bits 30, 29 of each header word into the seal words, so every word
- * left in the arena reads as a tiny float */
-/* n is volatile so cl6x keeps the 14-word groups a loop: a known length unrolls all six
- * and GRDLOOP goes over 32 KB */
+ * left in the arena reads as a tiny float. n is volatile so cl6x keeps the 14-word groups a
+ * loop: a known length unrolls all six and GRDLOOP goes over 32 KB */
 LP_ALWAYS_INLINE(lp_seal)
 static inline void lp_seal(LpState *s) { volatile int n = LP_NHDR; za_seal(s, n, s->seal); }
 
