@@ -2,7 +2,8 @@
  * MIDI clock) that ends at Length, a flip mid-sweep drops it, the footswitch hold (transport word 6) rises, sits
  * and drops and its release flip is swallowed, both Dirs make sound, Color/Wind/Grain stay bounded, the riser
  * is mono (same on L and R), idle does no work, no clicks at start, drop or cut, Tail fades the peak over its
- * length (UP only), the LED goes from on to off over the run and is never written when idle or not ours. */
+ * length (UP only), the LED follows the sound's level (off at rest, fades up with the riser) and is never written
+ * when not ours. */
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -202,7 +203,7 @@ int main(void)
         { float sd = maxstep(D, t1 - 10, t1 + 600); printf("hold release: max step %.4f, steady %.4f\n", sd, st);
           CHECK(sd <= 1.2f * st, "click at the hold release"); } }
 
-    /* 10. Tail: UP Length 2 s + Tail 1 s (6) fades from the peak and ends 1 s later, steadily, no click at the
+    /* 10. Tail: UP Length 2 s + Tail 1 s (6) dips ~6 dB after the peak, fades and ends 1 s later, no click at the
      *     peak; Tail 1 bar (1) at 120 BPM = 2 s; DOWN ignores Tail; a flip during the tail drops it */
     fresh(0, 6, 0, 6, 100, 0);
     run_to(0.2); { long t0 = T, te, tp = t0 + 2 * SEC; double r0, r1, r2, r3; float st, sp; foot = 1; run_to(4.0);
@@ -212,13 +213,14 @@ int main(void)
         printf("Tail 1 s: ends %.3f s after the peak, rms %.4f (peak) %.4f %.4f %.4f, step at the peak %.4f steady %.4f\n",
                (double)(te - tp) / SEC, r0, r1, r2, r3, sp, st);
         CHECK(labs(te - tp - SEC) < SEC / 20, "Tail 1 s ended %.3f s after the peak", (double)(te - tp) / SEC);
-        CHECK(r1 > 0.8 * r0 && r1 > r2 && r2 > r3, "Tail does not fade from the peak");
+        CHECK(r1 > 0.4 * r0 && r1 < 0.8 * r0 && r1 > r2 && r2 > r3, "Tail does not dip and fade from the peak");
         CHECK(sp <= 1.2f * st, "click at the peak with Tail on");
         CHECK(S()->state == ST_IDLE, "Tail left state %d", S()->state); }
     fresh(0, 6, 0, 1, 100, 1);
     run_to(0.2); { long tp = T + 2 * SEC; foot = 1; run_to(6.0);
         printf("Tail 1 bar at 120 BPM: ends %.3f s after the peak\n", (double)(last_loud(D, T, 1e-4f) - tp) / SEC);
-        CHECK(labs(last_loud(D, T, 1e-4f) - tp - 2 * SEC) < SEC / 20, "Tail 1 bar not 2 s"); }
+        /* 2.5 % of the length: the 6 dB dip ends the audible fade a little early */
+        CHECK(labs(last_loud(D, T, 1e-4f) - tp - 2 * SEC) < SEC / 10, "Tail 1 bar not 2 s"); }
     fresh(1, 6, 0, 6, 100, 0);
     run_to(0.2); { long t0 = T; foot = 1; run_to(4.0);
         CHECK(last_loud(D, T, 1e-4f) < t0 + 2 * SEC, "DOWN with Tail rings past Length"); }
@@ -292,8 +294,8 @@ int main(void)
           CHECK(s0 <= 1.2f * st, "Var %d: click at the 2nd start", vv);
       } }
 
-    /* 13. LED: never written unless the firmware says we are under the cursor; on at the start of the run, off
-     *     at its end (UP: duty falls; with Tail it is still partly lit in the tail); idle writes nothing */
+    /* 13. LED: never written unless the firmware says we are under the cursor; then off at rest and the sound's
+     *     level while it plays (UP: duty rises; with Tail it is still partly lit in the tail) */
     { unsigned int *gr = (unsigned int *)(se_m + 2048); long k;   /* GPIO stand-ins in low memory */
 #define gon gr[0]
 #define goff gr[1]
@@ -305,19 +307,18 @@ int main(void)
       run_to(0.2); foot = 1; run_to(1.0);        /* sweep 0.2 - 2.2 s with the cursor elsewhere */
       CHECK(gon == 0u && goff == 0u, "LED written with the cursor elsewhere");
       run_to(2.5); tk_svc_host[SV_CURSOR] = (unsigned)(uintptr_t)params; run_to(2.8);
-      CHECK(gon == 0u && goff == 0u, "LED written while idle");
+      CHECK(gon == 0u && goff == 1u, "LED not held off while idle");
       foot = 0; lit1 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit1 += (S()->led == 1); }   /* sweep 2.8 - 4.8 */
       CHECK(gon == 1u && goff == 1u, "LED registers not written with the mask");
       tk_led_host[0] = 1u; tk_led_host[1] = 0u; blk();   /* a flip: the stock LED task would rewrite the LED */
       CHECK(tk_led_host[1] == 1u, "stock LED task not kept quiet while running");
       run_to(4.3); lit2 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit2 += (S()->led == 1); }
       printf("LED UP sweep: lit %.2f early, %.2f late\n", (double)lit1 / BLK(0.4), (double)lit2 / BLK(0.4));
-      CHECK(lit1 > BLK(0.4) / 2 && lit1 > 4 * lit2 + 10, "LED does not go from on to off over the sweep");
+      CHECK(lit2 > BLK(0.4) / 2 && lit2 > 4 * lit1 + 10, "LED does not fade up over the sweep");
       run_to(5.5); gon = goff = 0u; run_to(6.0);
       CHECK(S()->led != 1, "LED left lit after the sweep");
-      CHECK((tk_led_host[1] & 1u) != (tk_led_host[0] & 1u), "LED not handed back to the stock task when idle");
-      CHECK(gon == 0u && goff == 0u, "LED written while idle after the sweep");
-      /* Tail 2 s (7) after a 2 s sweep: the LED is about half way down at the peak and dark at the end */
+      CHECK(gon == 0u && goff == 1u, "LED not held off while idle after the sweep");
+      /* Tail 2 s (7) after a 2 s sweep: the LED is part lit after the dip and dark at the end */
       SET(TAIL, 7); foot = 1; run_to(7.9); lit3 = 0; for (k = 0; k < BLK(0.4); k++) { blk(); lit3 += (S()->led == 1); }
       printf("LED with Tail: lit %.2f around the peak (state %d)\n", (double)lit3 / BLK(0.4), S()->state);
       CHECK(S()->state == ST_TAIL && lit3 > BLK(0.4) / 8 && lit3 < BLK(0.4) * 3 / 4, "LED not part lit at the start of the tail");
