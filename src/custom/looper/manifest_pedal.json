@@ -49,5 +49,6 @@
       "comment": "KEEP: MIDI Stop and clock loss are ignored, the loop plays on at the last tempo and waiting actions keep waiting; the next MIDI Start restarts the loop at bar 1. HALT: MIDI Stop stops the loop and drops waiting actions; Start plays it from bar 1. Default KEEP."
     }
   ],
-  "dsp_cost": 32.0
+  "dsp_cost": 36.0,
+  "dsp_cost_comment": "Measured 1,894 net cycles (M0 probe, 2026-10-17), before the arena seal. Seal (MIDISTOMP #60, 78 words, outer loop kept rolled for size): about +250 cycles a block, (1,894 + 250) / 75 + 25 % = 36."
 }
