@@ -7,7 +7,7 @@
 They check the DSP logic (patterns, levels, no NaN), not the pedal. They do not replace
 listening on hardware. Needs gcc and Python 3. Generated param headers go to tests/_gen.
 """
-import subprocess, sys, json
+import os, subprocess, sys, json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -46,7 +46,7 @@ for src in sorted(HERE.glob("*.c")):
         continue
     exe = GEN / src.stem
     print(f"\n=== {src.stem}")
-    if subprocess.run(["gcc", "-O1", "-no-pie", f"-I{GEN}", str(src), "-lm", "-o", str(exe)]).returncode != 0:
+    if subprocess.run(["gcc", "-O1", "-no-pie", f"-I{GEN}"] + ([f"-I{HERE / 'win'}"] if os.name == "nt" else []) + [ str(src), "-lm", "-o", str(exe)]).returncode != 0:
         failed.append(src.stem); continue
     if subprocess.run([str(exe)]).returncode != 0:
         failed.append(src.stem)

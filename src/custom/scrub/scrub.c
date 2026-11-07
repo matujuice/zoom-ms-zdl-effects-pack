@@ -125,6 +125,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SC_DO_PRAGMA(x) _Pragma(#x)
@@ -138,15 +139,15 @@
 #define SC_CODE_SECTION(fn)
 #endif
 
-#define SC_MAGIC      0x53435238u        /* "SCR8": change whenever ScState changes */
+#define SC_MAGIC      0x53435239u        /* "SCR9": change whenever ScState changes */
 #define SC_N          348000             /* buffer length: 7.9 s at 44.1 kHz            */
 #define SC_AGE_MAX    347997.0f          /* oldest age a read may use (SC_N - 3), MONO  */
 #define SC_NS         174000             /* ST: one side's ring, 3.9 s                  */
 #define SC_AGE_MAXS   173997.0f          /* ST: oldest age (SC_NS - 3)                  */
 #define SC_POS_MAX    600                /* Pos steps: 10 ms each, 6 s                  */
 #define SC_CLEAR_BLK  2048               /* samples cleared per block after loading     */
-#define SC_TO16       16384.0f
-#define SC_FROM16     6.1035156e-5f      /* 1 / 16384 */
+#define SC_TO16       4096.0f            /* 14-bit codes in the ring (zarena.h) */
+#define SC_FROM16     2.4414062e-4f      /* 1 / 4096 */
 #define SC_FIN_STEP   0.0022675737f      /* wet fade-in after switching on: 10 ms       */
 #define SC_XF_SCALE   2.0f               /* fade over the first 1/4 cycle: q = 2p, 0..0.5 */
 
@@ -173,8 +174,10 @@ typedef struct {
     int   bC, bO;          /* 1 = that voice plays backward                   */
     float fin;             /* wet fade-in 0..1                                */
     ZtSync zt;             /* MIDI transport (zmt.h)                          */
-    short buf[SC_N];
+    unsigned int seal[ZA_NSEAL(32)]; /* header bits 30, 29 between blocks (zarena.h) */
+    short buf[SC_N];       /* 14-bit codes: za_s14 / za_u14                   */
 } ScState;
+ZA_CHECK(ScState);
 
 typedef struct {
     float inc;             /* grain phase increment per sample (1 / length)   */
@@ -267,8 +270,8 @@ static inline float sc_read(const short *b, int wp, float age, int nn)
     j = (j < 0) ? j + nn : j;
     j1 = j - 1;
     j1 = (j1 < 0) ? j1 + nn : j1;
-    x0 = (float)b[j];
-    x1 = (float)b[j1];
+    x0 = (float)za_u14(b[j]);
+    x1 = (float)za_u14(b[j1]);
     return (x0 + fr * (x1 - x0)) * SC_FROM16;
 }
 
@@ -277,9 +280,9 @@ SC_ALWAYS_INLINE(sc_put)
 static inline void sc_put(short *b, int wp, float in)
 {
     float v = in * SC_TO16;
-    v = (v > 32767.0f) ? 32767.0f : v;
-    v = (v < -32767.0f) ? -32767.0f : v;
-    b[wp] = (short)(int)v;
+    v = (v > ZA_S14_MAX) ? ZA_S14_MAX : v;
+    v = (v < -ZA_S14_MAX) ? -ZA_S14_MAX : v;
+    b[wp] = za_s14((int)v);
 }
 
 /* random number 0..1 */
@@ -718,23 +721,26 @@ void SCRUB_AUDIO_FUNC(unsigned int *ctx)
     u[6] = sc_ui(params[SCRUB_MIX_SLOT],    (float)SCRUB_MIX_UI_DEFAULT,    100.0f);
     u[8] = sc_ui(params[SCRUB_STEREO_SLOT], (float)SCRUB_STEREO_UI_DEFAULT, 1.0f);
 
+    za_unseal(s, ZA_HDR(ScState), s->seal);
     if (s->magic != SC_MAGIC) sc_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     sc_prepare(&P, u);
     sc_layout(s, &P);                            /* the Stereo knob moved: start over */
     if (sc_clearing(s)) {                        /* first ~31 ms after loading: dry */
         if (run) sc_lock(s, &P, beats);          /* but a mid-song load lands on the clock */
-        return;
+        goto done;
     }
     if (params[0] < 0.5f) {                      /* effect switched off */
         s->was_off = 1;
         sc_bypassed(s, &P, fxBuf, 8);
-        return;
+        goto done;
     }
     if (s->was_off) { sc_switched_on(s, &P); s->was_off = 0; }
     else if (start && s->started) sc_restart(s, &P);  /* MIDI Start: new grain now */
     if (run) sc_lock(s, &P, beats);              /* on the clock (synced grain only) */
     sc_process(s, &P, fxBuf, 8);                 /* L and R in place */
+done:
+    za_seal(s, ZA_HDR(ScState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* SCRUB_HOST_TEST */
