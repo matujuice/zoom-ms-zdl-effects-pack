@@ -47,7 +47,8 @@
 #define ZM_NONE    0xFFFFFFFFu
 #define ZM_COL     9.67498108e-5f           /* columns per 8-sample block per BPM: 32 a beat */
 #define ZM_MID     ((ZM_TOP + 64u) >> 1)    /* the line: first row under the box             */
-#define ZM_NOLV    0xFFFFu                  /* level of an empty column                       */
+#define ZM_NOLV    0x1FFFu                  /* level of an empty column; levels stop at 2304, and
+                                               * under 0x2000 lv[] reads as a tiny float (zarena.h) */
 #define ZM_DB0     24.0f                    /* level 0 = +24 dB, 16 levels a dB down          */
 
 typedef char zm_cap_check[(ZM_CAP >= 1536u && ZM_TOP <= 24u) ? 1 : -1];

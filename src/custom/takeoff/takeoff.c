@@ -54,6 +54,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define TK_DO_PRAGMA(x) _Pragma(#x)
@@ -69,7 +70,7 @@
 #define TK_CODE_SECTION(fn)
 #endif
 
-#define TK_MAGIC     0x544B4F41u         /* "TKOA": change whenever TkState changes */
+#define TK_MAGIC     0x544B4F42u         /* "TKOB": change whenever TkState changes */
 #define HZ_TO_INC    2.2675737e-5f       /* 1 / 44100 */
 #define HOLD_SAMPLES 22050               /* 0.5 s */
 #define HOLD_GUARD   220                 /* blocks (40 ms): a release flip after word 6 falls */
@@ -126,7 +127,9 @@ typedef struct {
     float dx, tdx, fz, vol, wd;    /* knob maths: step a block, Tail step a block, root Hz, level, Wind amount */
     TkParams P;
     ZtSync zt;
+    unsigned int seal[ZA_NSEAL(71)];  /* header bits 30, 29 between blocks (zarena.h) */
 } TkState;
+ZA_CHECK(TkState);
 
 TK_ONE_COPY(tk_ui)
 static int tk_ui(float raw, int def)
@@ -485,6 +488,7 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     if (stateBase + sizeof(TkState) > end) return;
 
     s = (TkState *)stateBase;
+    za_unseal(s, ZA_HDR(TkState), s->seal);
     if (s->magic != TK_MAGIC) tk_init(s);
 
     bpm = zt_update(&s->zt, &run, &beats, &start);
@@ -519,6 +523,8 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     tk_prepare(s, &s->P, s->u, foot, hold, bpm);
     tk_led(s, ctx[1]);
     tk_process(s, &s->P, fxBuf);
+done:
+    za_seal(s, ZA_HDR(TkState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* TAKEOFF_HOST_TEST */

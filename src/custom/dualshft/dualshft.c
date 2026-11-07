@@ -98,6 +98,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 /* TI toolchain pragmas, same pattern as TapeEcho4: every helper is forced
  * inline so the object carries no .text and no local call relocations.
@@ -127,7 +128,7 @@
 #define DLY_DEADBAND     1.0f                /* target move (samples) that counts */
 #define CLEAR_CHUNK      1024                /* lazy ring clear per call       */
 
-#define DS_MAGIC         0x44533039u         /* "DS09": arena holds valid state */
+#define DS_MAGIC         0x44533130u         /* "DS10": arena holds valid state */
 
 #define SHAPE_TRI        0
 #define SHAPE_SQUARE     1
@@ -166,8 +167,10 @@ typedef struct {
     float dlyA, dlyB;      /* delays in use, samples, <0 = not set      */
     float gA, gB;          /* wet fade gain per voice, 0..1             */
     ZtSync zt;             /* MIDI transport (zmt.h)                    */
+    unsigned int seal[ZA_NSEAL(20)]; /* header bits 30, 29 between blocks (zarena.h) */
     float ring[RING_SIZE]; /* input history                             */
 } DualShift;
+ZA_CHECK(DualShift);
 
 /* Per-block derived parameters, computed once per 8-sample block. */
 typedef struct {
@@ -898,6 +901,7 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
     k[1] = ds_knob(params[DUALSHFT_PTCH2_SLOT], (float)DUALSHFT_PTCH2_UI_DEFAULT, 0.0151515152f);
     k[2] = ds_knob(params[DUALSHFT_DLY1_SLOT],   (float)DUALSHFT_DLY1_UI_DEFAULT,   0.008928571f);
     k[3] = ds_knob(params[DUALSHFT_DLY2_SLOT],   (float)DUALSHFT_DLY2_UI_DEFAULT,   0.008928571f);
+    za_unseal(s, ZA_HDR(DualShift), s->seal);
     ds_ensure_init(s);
     k[4] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     k[5] = ds_knob(params[DUALSHFT_DIV_SLOT],    (float)DUALSHFT_DIV_UI_DEFAULT,    0.0625f);
@@ -919,9 +923,11 @@ void DUALSHFT_AUDIO_FUNC(unsigned int *ctx)
             s->lfo_phase += P.lfo_inc * 8.0f;
             if (s->lfo_phase >= 1.0f) s->lfo_phase -= 1.0f;
         }
-        return;
+        goto done;
     }
     ds_process(s, &P, fxBuf, fxBuf + 8, 8);      /* hears (L + R) / 2, dry L and R stay apart */
+done:
+    za_seal(s, ZA_HDR(DualShift), s->seal);      /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* DUALSHIFT_HOST_TEST */

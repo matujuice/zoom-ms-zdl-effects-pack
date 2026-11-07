@@ -153,6 +153,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -176,7 +177,7 @@
 #define SR_NOSWP
 #endif
 
-#define CH_MAGIC      0x43483043u          /* "CH0C" */
+#define CH_MAGIC      0x43483044u          /* "CH0D" */
 #define CH_NS         6                    /* singers                                 */
 #define CH_RING       256                  /* tracker history at fs/8 (power of 2)    */
 #define CH_RMASK      255
@@ -209,14 +210,12 @@
 
 typedef struct {
     unsigned int magic;
-    /* ---- from hpx to gn: what ch_clear sets to zero (one loop) ---- */
+    /* ---- from hpx to gn: what ch_clear sets to zero (one loop; ring and dm are cleared apart) ---- */
     /* tracker */
     float hpx, hpy, l1, l2, m1, m2;        /* DC blocker, 2-pole low-pass (TDF-II)    */
     float e2, ef;                          /* input power followers, ~9 ms and ~0.5 ms */
     int   onset;                           /* blocks left since a fast attack         */
     int   wp;                              /* newest sample; it is also at wp + CH_RING */
-    float ring[2 * CH_RING];               /* doubled, so t blocks ago is ring[wp + t], no wrap */
-    float dm[CH_MAXLAG + 2];               /* running mean of the squared difference per lag */
     float cand;                            /* candidate note, octaves                 */
     int   stable, hold;                    /* blocks the candidate held; left to sing */
     float lref;                            /* input power at the last good reading    */
@@ -245,7 +244,6 @@ typedef struct {
     float wsm;                             /* smoothed vowel blend (-1 after a clear) */
     float gn;                              /* voice gain (1 after a clear)            */
     /* ---- kept by ch_clear ---- */
-    float cc[CH_MAXLAG + 2];               /* running mean's coefficient, 1 / (2 lag) */
     float vtab[12];                        /* vowel_par of vowels vta, vtb            */
     int   vta, vtb;                        /* -1 after ch_init: none yet              */
     int   rr;                              /* section whose formants are due          */
@@ -261,8 +259,14 @@ typedef struct {
     float lfo_ph;                          /* movement phase, 0..1                    */
     ZtSync zt;                             /* MIDI transport (zmt.h)                  */
     int   was_off;
+    unsigned int seal[ZA_NSEAL(184)];      /* header bits 30, 29 between blocks (zarena.h) */
+    /* audio-range float arrays */
+    float ring[2 * CH_RING];               /* doubled, so t blocks ago is ring[wp + t], no wrap */
+    float dm[CH_MAXLAG + 2];               /* running mean of the squared difference per lag */
+    float cc[CH_MAXLAG + 2];               /* running mean's coefficient, 1 / (2 lag) */
     float cnote[CH_CRING], clvl[CH_CRING]; /* CANON: note and level per block (last: cold) */
 } ChState;
+ZA_CHECK(ChState);
 
 typedef struct {
     float lfo_inc, mult;                   /* phase per block; cycles per beat (Pace) */
@@ -463,6 +467,9 @@ static void ch_clear(ChState *s)
     unsigned int *p = (unsigned int *)&s->hpx;   /* every field is 4 bytes */
     SR_NOUNROLL
     while (p < (unsigned int *)&s->wsm) *p++ = 0u;
+    p = (unsigned int *)s->ring;
+    SR_NOUNROLL
+    while (p < (unsigned int *)&s->cc) *p++ = 0u;   /* ring and dm, side by side */
     s->wsm = -1.0f; s->gn = 1.0f;
 }
 
@@ -1238,6 +1245,7 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     }
 
     k[8] = sr_knob(params[FORMANT_WIDTH_SLOT], (float)FORMANT_WIDTH_UI_DEFAULT, 0.01f);   /* Width */
+    za_unseal(s, ZA_HDR(ChState), s->seal);
     if (s->magic != CH_MAGIC) ch_init(s);
     bpm = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     ch_prepare(&P, k, bpm);
@@ -1245,10 +1253,12 @@ void FORMANT_AUDIO_FUNC(unsigned int *ctx)
     ch_tick(s, &P, run, beats);
     if (params[0] < 0.5f) {                      /* switched off: input untouched, the */
         s->was_off = 1;                          /* movement keeps following the clock */
-        return;
+        goto done;
     }
     if (s->was_off) { ch_clear(s); s->was_off = 0; }
     ch_process(s, &P, fxBuf);                    /* L and R in place; tracks (L + R) / 2 */
+done:
+    za_seal(s, ZA_HDR(ChState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* FORMANT_HOST_TEST */

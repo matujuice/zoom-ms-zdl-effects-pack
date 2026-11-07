@@ -63,6 +63,7 @@
  */
 
 #include <stdint.h>
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SG_DO_PRAGMA(x) _Pragma(#x)
@@ -78,7 +79,7 @@
 #define SG_LOOP8
 #endif
 
-#define SG_MAGIC      0x53474E36u        /* "SGN6": change whenever SgState changes */
+#define SG_MAGIC      0x53474E37u        /* "SGN7": change whenever SgState changes */
 #define SG_PK_MAX     17640              /* samples: 400 ms (stereo: two sets of four buffers fit the arena) */
 #define SG_PKB_MAX    2205               /* SG_PK_MAX / 8 */
 #define SG_MS_PER_BLK 0.18140590f        /* 8 / 44.1: one block in ms */
@@ -149,8 +150,10 @@ typedef struct {
     int   hn, hc;          /* hold length, counter                             */
     float uc[9];           /* knobs the cached parameters were made from       */
     SgParams pc;           /* cached parameters: prepare only when a knob moved */
+    unsigned int seal[ZA_NSEAL(95)];  /* header bits 30, 29 between blocks (zarena.h) */
     float buf[4][2][SG_PK_MAX];   /* the four packets, each L then R (one loss decision for both) */
 } SgState;
+ZA_CHECK(SgState);
 
 
 /* The pedal hands every knob over as (screen number) / 100, whatever the knob's
@@ -651,6 +654,7 @@ void SGNL_AUDIO_FUNC(unsigned int *ctx)
     u[7] = sg_ui(params[SGNL_EDGE_SLOT],  (float)SGNL_EDGE_UI_DEFAULT,  100.0f);
     u[8] = sg_ui(params[SGNL_MIX_SLOT],   (float)SGNL_MIX_UI_DEFAULT,   100.0f);
 
+    za_unseal(s, ZA_HDR(SgState), s->seal);
     /* the parameters depend on the knobs only: prepare when one moved, else reuse */
     if (s->magic != SG_MAGIC) {
         sg_prepare(&s->pc, u);
@@ -664,6 +668,8 @@ void SGNL_AUDIO_FUNC(unsigned int *ctx)
         }
     }
     sg_process(s, &s->pc, fxBuf, 8);             /* stereo: L and R in place, one loss for both */
+done:
+    za_seal(s, ZA_HDR(SgState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* SGNL_HOST_TEST */

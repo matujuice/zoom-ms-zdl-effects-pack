@@ -100,6 +100,7 @@
  */
 
 #include <stdint.h>
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define AB_DO_PRAGMA(x) _Pragma(#x)
@@ -121,7 +122,7 @@
 #define AB_SMALL_FUNC(fn)
 #endif
 
-#define AB_MAGIC        0x41423032u          /* "AB02" */
+#define AB_MAGIC        0x41423033u          /* "AB03" */
 #define AB_W            0.00014247585f       /* 2 pi / 44100: Hz -> radians per sample */
 #define AB_DC_R         0.9993f              /* DC blocker pole                  */
 #define AB_REF          0.2f                 /* makeup reference input peak      */
@@ -228,7 +229,9 @@ typedef struct {
     int eqh;               /* blocks the EQ still runs after it went flat */
     float kc[9];           /* knobs the cached parameters were made from */
     AbParams pc;           /* cached parameters: prepare only when a knob moved */
+    unsigned int seal[ZA_NSEAL(96)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
 } AbState;
+ZA_CHECK(AbState);
 
 
 AB_ALWAYS_INLINE(ab_clamp01)
@@ -884,6 +887,8 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
 
     s = (AbState *)stateBase;
 
+    za_unseal(s, ZA_HDR(AbState), s->seal);
+
     /* the nine knobs sit in consecutive slots (checked below at compile time);
      * one loop keeps one copy of ab_knob. k[] starts at each knob's default. */
     k[0] = (float)DIRTBOX_MODEL_UI_DEFAULT; k[1] = (float)DIRTBOX_DRIVE_UI_DEFAULT;
@@ -912,6 +917,7 @@ void DIRTBOX_AUDIO_FUNC(unsigned int *ctx)
         }
     }
     ab_process(s, &s->pc, fxBuf, fxBuf + 8, 8);  /* hears (L + R) / 2, dry L and R stay apart */
+    za_seal(s, ZA_HDR(AbState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* DIRTBOX_HOST_TEST */

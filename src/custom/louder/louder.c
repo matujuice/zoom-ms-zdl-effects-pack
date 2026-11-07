@@ -58,7 +58,7 @@
 #define LO_BLOCK_LOOP()
 #endif
 
-#define LO_MAGIC     0x4C4F5534u            /* "LOU4": change when LoState changes */
+#define LO_MAGIC     0x4C4F5535u            /* "LOU5": change when LoState changes */
 #define LO_DELAY     64u                    /* look-ahead in samples = 8 blocks */
 #define LO_NMIN      9                      /* blocks in the lowest-need window */
 #define LO_NAVG      8                      /* blocks in the mean               */
@@ -78,6 +78,7 @@ extern unsigned char LO_PIC_(LOUDER_AUDIO_FUNC)[];       /* the cover data; the 
 #endif
 #include "louder_layout.h"                  /* ZM_TOP / ZM_CAP, from build.py */
 #include "../common/zdl_meter.h"
+#include "../common/zarena.h"
 
 typedef struct {
     unsigned int magic;
@@ -87,10 +88,14 @@ typedef struct {
     unsigned int k_gain, k_ceil, k_rels;    /* knob values the cached numbers are for */
     float gainLin, ceilLin, cF;
     float gprev, rF, rS;
+    ZmState zm;                             /* the cover meter */
+    unsigned int seal[ZA_NSEAL(202)];    /* header bits 30, 29 between blocks (zarena.h) */
     float bm[LO_NMIN], mn[LO_NAVG];
     float dl[LO_DELAY], dr[LO_DELAY];
-    ZmState zm;                             /* the cover meter */
 } LoState;
+ZA_CHECK(LoState);
+/* sealed words: all before zm.lv[]; the meter history is under 0x2000 (ZM_NOLV), so already safe */
+#define LO_HDR ((int)(offsetof(LoState, zm.lv) >> 2))
 
 typedef struct {
     float gain, ceil, thr;                  /* push, ceiling, limiter target (ceiling or a bit above) */
@@ -409,9 +414,10 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
 
     s = (LoState *)stateBase;
 
+    za_unseal(s, LO_HDR, s->seal);
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         if (s->magic == LO_MAGIC) s->was_off = 1u;
-        return;
+        goto done;
     }
     if (s->magic != LO_MAGIC) lo_init(s);
     if (s->was_off) {                            /* just switched on: no old audio from the delay */
@@ -432,6 +438,8 @@ void LOUDER_AUDIO_FUNC(unsigned int *ctx)
     on = zm_begin(&s->zm, params);
     lo_process(s, &P, fxBuf);
     if (on) lo_meter(s, u);
+done:
+    za_seal(s, LO_HDR, s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* LOUDER_HOST_TEST */

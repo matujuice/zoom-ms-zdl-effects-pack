@@ -111,6 +111,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SR_DO_PRAGMA(x) _Pragma(#x)
@@ -126,7 +127,7 @@
 
 #define RING_SIZE        65536               /* 256 KB, 1 s = 44100 used      */
 #define CLEAR_CHUNK      1024
-#define SR_MAGIC         0x53523131u         /* "SR11"                        */
+#define SR_MAGIC         0x53523132u         /* "SR12"                        */
 #define HZ_TO_INC        2.2675737e-5f       /* 1 / 44100                     */
 #define MS_TO_SAMPLES    44.1f
 #define ENV_ATTACK       0.012f              /* per sample: 0 -> 1 in ~2 ms   */
@@ -164,8 +165,10 @@ typedef struct {
     int   latch;           /* SHold: footswitch state taken at the last beat  */
     float beat_ph;         /* beat clock, 0..1 per beat; 0 at MIDI Start      */
     ZtSync zt;             /* MIDI transport (zmt.h)                          */
+    unsigned int seal[ZA_NSEAL(26)]; /* header bits 30, 29 between blocks (zarena.h) */
     float ring[RING_SIZE]; /* siren-only echo line                            */
 } SirenState;
+ZA_CHECK(SirenState);
 
 typedef struct {
     int   gate;            /* siren sounding                                  */
@@ -678,12 +681,14 @@ void DUBSIREN_AUDIO_FUNC(unsigned int *ctx)
     k[5] = sr_knob(params[DUBSIREN_VOL_SLOT],    (float)DUBSIREN_VOL_UI_DEFAULT,    0.01f);
     k[6] = sr_knob(params[DUBSIREN_TIME_SLOT],   (float)DUBSIREN_TIME_UI_DEFAULT,   0.01f);
     k[7] = sr_knob(params[DUBSIREN_FDBK_SLOT],   (float)DUBSIREN_FDBK_UI_DEFAULT,   0.008f);
+    za_unseal(s, ZA_HDR(SirenState), s->seal);
     if (s->magic != SR_MAGIC) sr_init(s);        /* prev_* must be valid       */
     k[8] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     sr_prepare(s, &P, k, foot, run, beats, start);
     k[0] = sr_knob(params[DUBSIREN_PAN_SLOT], (float)DUBSIREN_PAN_UI_DEFAULT, 0.01f);   /* equal power */
     P.panR = sine_of(0.25f * k[0]); P.panL = sine_of(0.25f - 0.25f * k[0]);
     sr_process(s, &P, fxBuf, 8);
+    za_seal(s, ZA_HDR(SirenState), s->seal);     /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* DUBSIREN_HOST_TEST */

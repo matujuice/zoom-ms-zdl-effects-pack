@@ -47,6 +47,7 @@
  */
 
 #include <stdint.h>
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define WF_DO_PRAGMA(x) _Pragma(#x)
@@ -60,7 +61,7 @@
 #define WF_BLOCK_LOOP()
 #endif
 
-#define WF_MAGIC        0x57463034u          /* "WF04" */
+#define WF_MAGIC        0x57463035u          /* "WF05" */
 #define WF_DC_R         0.9993f              /* DC blocker pole                  */
 #define WF_SMOOTH       0.003f               /* gain / offset smoothing per sample */
 #define WF_ENV          0.0003f              /* loudness meters (~70 ms)         */
@@ -83,7 +84,9 @@ typedef struct {
     float ein, elp;        /* input / un-levelled wet loudness meters (mean square) */
     float comp;            /* auto-level gain                         */
     float gate;            /* fades the wet signal out when the input is silent */
+    unsigned int seal[ZA_NSEAL(10)];  /* header bits 30, 29 between blocks (zarena.h) */
 } WfState;
+ZA_CHECK(WfState);
 
 typedef struct {
     float gain, bias, a, level, dryG, wetG;
@@ -292,8 +295,11 @@ void WAVEFOLD_AUDIO_FUNC(unsigned int *ctx)
     k[4] = wf_knob(params[WAVEFOLD_MIX_SLOT],   (float)WAVEFOLD_MIX_UI_DEFAULT,   0.01f);
 
     wf_prepare(&P, k);
+    za_unseal(s, ZA_HDR(WfState), s->seal);
     if (s->magic != WF_MAGIC) wf_init(s, &P);
     wf_process(s, &P, fxBuf, fxBuf + 8, 8);      /* reads (L + R) / 2, writes L and R in place */
+done:
+    za_seal(s, ZA_HDR(WfState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* WAVEFOLD_HOST_TEST */
