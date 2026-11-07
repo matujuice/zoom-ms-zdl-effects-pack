@@ -1,3 +1,5 @@
+/* this test checks the arena too: build with the real seal */
+#undef ZA_NO_SEAL
 /* Looper: the 12-bit format, record / play / stop / delete on the When lines, the loop
  * matching what was recorded (stereo kept apart), seams, stereo/mono/shorter picks, Roll,
  * tempo changes (locked to the grid, no seams at a steady tempo), MIDI Start, labels and a

@@ -493,6 +493,7 @@ static void ch_init(ChState *s)
     s->lfo_ph = 0.0f;
     s->was_off = 0;
     zt_init(&s->zt);
+    ZA_ZERO_SEAL(s);
     s->magic = CH_MAGIC;
 }
 
@@ -736,7 +737,14 @@ static inline void ch_process(ChState *s, const ChParams *P, float *buf)
     s->base += P->glide_c * (s->note - s->base);
     s->vibon += 0.0007f * (1.0f - s->vibon);           /* vibrato fades in over ~0.3 s */
     if (s->syl < 0x3FFFFFFF) s->syl++;
-    s->cwp = (s->cwp + 1) & CH_CMASK;                  /* CANON: what is sung, per block */
+    if (s->cfill < (CH_CRING >> 3)) {                  /* not written yet: may hold the last effect's */
+        int k;                                         /* leftovers, so clear 8 ahead (MIDISTOMP #60) */
+        for (k = 1; k <= 8; k++) {
+            n = (s->cwp + 7 * s->cfill + k) & CH_CMASK;
+            s->cnote[n] = 0.0f; s->clvl[n] = 0.0f;
+        }
+    }
+    s->cwp = (s->cwp + 1) & CH_CMASK;                 /* CANON: what is sung, per block */
     s->cnote[s->cwp] = s->base;
     s->clvl[s->cwp] = s->vamp;
     if (s->cfill < CH_CRING) s->cfill++;

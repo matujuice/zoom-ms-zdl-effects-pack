@@ -326,6 +326,7 @@ static inline void sc_init(ScState *s)
     s->D = 0.0f; s->p = 0.0f; s->aC = 1.0f; s->aO = 1.0f; s->fin = 1.0f;
     s->bC = 0; s->bO = 0;
     zt_init(&s->zt);
+    ZA_ZERO_SEAL(s);
     s->magic = SC_MAGIC;
 }
 

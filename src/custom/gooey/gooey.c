@@ -184,6 +184,7 @@ static inline void go_init(GoState *s)
     s->k_att = GO_KEY_NONE; s->k_rel = GO_KEY_NONE; s->k_hp = GO_KEY_NONE;
     s->cA = 0.0f; s->cR = 0.0f; s->hpa = 0.0f; s->gm = 1.0f; s->was_off = 0u;
     zm_init(&s->zm);
+    ZA_ZERO_TAIL(s, GoState);
     s->magic = GO_MAGIC;
 }
 

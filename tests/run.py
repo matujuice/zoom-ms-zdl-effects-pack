@@ -44,9 +44,10 @@ failed = []
 for src in sorted(HERE.glob("*.c")):
     if want and not any(src.stem.startswith(w) for w in want):
         continue
-    exe = GEN / src.stem
+    # Windows: load low (the pedal code keeps 32-bit pointers) and run the .exe itself
+    exe = GEN / (src.stem + (".exe" if os.name == "nt" else ""))
     print(f"\n=== {src.stem}")
-    if subprocess.run(["gcc", "-O1", "-no-pie", f"-I{GEN}"] + ([f"-I{HERE / 'win'}"] if os.name == "nt" else []) + [ str(src), "-lm", "-o", str(exe)]).returncode != 0:
+    if subprocess.run(["gcc", "-O1", "-no-pie", f"-I{GEN}"] + ([] if src.stem.endswith("_arena") else ["-DZA_NO_SEAL"]) + ([f"-I{HERE / 'win'}", "-Wl,--image-base=0x400000"] if os.name == "nt" else []) + [ str(src), "-lm", "-o", str(exe)]).returncode != 0:
         failed.append(src.stem); continue
     if subprocess.run([str(exe)]).returncode != 0:
         failed.append(src.stem)

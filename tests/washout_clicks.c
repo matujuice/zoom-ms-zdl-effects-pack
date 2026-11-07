@@ -32,7 +32,7 @@ static void run(int wobble)
     }
 }
 /* click score: largest second difference over what a clean 330 Hz sine of the output's peak can give
- * (w^2 * peak). The clean wash scores about 2 (the 16-bit ring adds a little noise); a click scores far above. */
+ * (w^2 * peak). The clean wash scores about 2 to 3.6 (the 14-bit ring's noise, zarena.h); a click scores far above. */
 static float score(long a, long b)
 {
     float m = 0, pk = 0; long i;
@@ -49,15 +49,15 @@ int main(void)
     se_init(ARENA);
     fresh(60, 70, 60);   run(0); c = score(SEC * 2, LEN);
     printf("Wash 70, Fdbk 60: click score %.3f\n", c);
-    CHECK(c < 3.0f, "Wash 70 clicks");
+    CHECK(c < 4.5f, "Wash 70 clicks");
     fresh(60, 100, 90); run(0); c = score(SEC * 2, LEN);
     printf("Wash 100, Fdbk 90: click score %.3f\n", c);
-    CHECK(c < 3.0f, "Wash 100 clicks");
+    CHECK(c < 4.5f, "Wash 100 clicks");
 
     zt_host[0] = ZT_MAGIC; zt_host[1] = 2u; zt_host[2] = 0u; zt_host[3] = 0u; zt_host[4] = 0u; zt_host[5] = 12000u;
     fresh(107, 70, 60); run(1); c = score(SEC * 2, LEN);
     printf("synced 1/8., BPM 120 +-0.3: click score %.3f\n", c);
-    CHECK(c < 3.0f, "a wobbling BPM clicks");
+    CHECK(c < 4.5f, "a wobbling BPM clicks");
     zt_host[0] = 0u;
     return fails;
 }

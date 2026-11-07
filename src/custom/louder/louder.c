@@ -163,6 +163,7 @@ static inline void lo_init(LoState *s)
     s->gainLin = 1.0f; s->ceilLin = 1.0f; s->cF = LO_CF_AUTO;
     s->gprev = 1.0f; s->rF = 0.0f; s->rS = 0.0f;
     zm_init(&s->zm);
+    ZA_ZERO_SEAL(s);
     s->magic = LO_MAGIC;
 }
 

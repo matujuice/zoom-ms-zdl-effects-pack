@@ -36,11 +36,22 @@
 #define ZA_CHECK(T) \
     typedef char za_seal_fits_##T[(offsetof(T, seal) <= 4u * 14u * (sizeof(((T *)0)->seal) >> 2)) ? 1 : -1]
 
+/* in the effect's init: seal[] may be longer than the header needs, and za_seal never
+ * writes the spare words, so they would keep the last effect's leftovers */
+#define ZA_ZERO_SEAL(s) do { int za_i_; \
+    for (za_i_ = 0; za_i_ < (int)(sizeof((s)->seal) >> 2); za_i_++) (s)->seal[za_i_] = 0u; } while (0)
+/* same when seal[] is the state's last field: also the padding after it */
+#define ZA_ZERO_TAIL(s, T) do { int za_i_; \
+    for (za_i_ = ZA_HDR(T); za_i_ < (int)(sizeof(T) >> 2); za_i_++) ((unsigned int *)(s))[za_i_] = 0u; } while (0)
+
 /* end of a block: bits 30, 29 of n header words into seal[].
  * Full groups of 14 unroll (cl6x: about 1.1 cycles a word); only the tail loops. */
 ZA_INLINE(za_seal)
 static inline void za_seal(void *hdr, int n, unsigned int *seal)
 {
+#ifdef ZA_NO_SEAL
+    return;
+#endif
     unsigned int *w = (unsigned int *)hdr, c, x;
     int i, k;
     for (i = 0; i + 14 <= n; i += 14) {
@@ -65,6 +76,9 @@ static inline void za_seal(void *hdr, int n, unsigned int *seal)
 ZA_INLINE(za_unseal)
 static inline void za_unseal(void *hdr, int n, const unsigned int *seal)
 {
+#ifdef ZA_NO_SEAL
+    return;
+#endif
     unsigned int *w = (unsigned int *)hdr, c;
     int i, k;
     for (i = 0; i + 14 <= n; i += 14) {

@@ -79,7 +79,7 @@
 #define SG_LOOP8
 #endif
 
-#define SG_MAGIC      0x53474E37u        /* "SGN7": change whenever SgState changes */
+#define SG_MAGIC      0x53474E38u        /* "SGN8": change whenever SgState changes */
 #define SG_PK_MAX     17640              /* samples: 400 ms (stereo: two sets of four buffers fit the arena) */
 #define SG_PKB_MAX    2205               /* SG_PK_MAX / 8 */
 #define SG_MS_PER_BLK 0.18140590f        /* 8 / 44.1: one block in ms */
@@ -148,6 +148,7 @@ typedef struct {
     float qL, qiL, qon;    /* quantiser: levels, 1/levels, on                  */
     float hold[2];         /* sample-rate hold                                 */
     int   hn, hc;          /* hold length, counter                             */
+    int   clr;             /* words of buf[] cleared since init (8 x SG_PK_MAX = done) */
     float uc[9];           /* knobs the cached parameters were made from       */
     SgParams pc;           /* cached parameters: prepare only when a knob moved */
     unsigned int seal[ZA_NSEAL(95)];  /* header bits 30, 29 between blocks (zarena.h) */
@@ -247,6 +248,8 @@ static inline void sg_init(SgState *s)
     s->alp = 1.0f;
     s->qL = 1.0f; s->qiL = 1.0f; s->qon = 0.0f;
     s->hn = 1; s->hc = 0;
+    s->clr = 0;
+    ZA_ZERO_SEAL(s);
     s->magic = SG_MAGIC;
 }
 
@@ -666,6 +669,12 @@ void SGNL_AUDIO_FUNC(unsigned int *ctx)
             sg_prepare(&s->pc, u);
             for (i = 0; i < 9; i++) s->uc[i] = u[i];
         }
+    }
+    if (s->clr < 8 * SG_PK_MAX) {                /* buf[] may hold the last effect's leftovers: */
+        float *f = &s->buf[0][0][0] + s->clr;    /* clear it first, dry meanwhile (64 blocks, 12 ms) */
+        for (i = 0; i < SG_PKB_MAX; i++) f[i] = 0.0f;
+        s->clr += SG_PKB_MAX;
+        goto done;
     }
     sg_process(s, &s->pc, fxBuf, 8);             /* stereo: L and R in place, one loss for both */
 done:
