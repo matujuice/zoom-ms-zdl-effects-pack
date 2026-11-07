@@ -67,6 +67,6 @@
   "audio_func_name": "Fx_DLY_DubSiren",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 25.0,
-  "dsp_cost_comment": "Unchanged by the stereo port (a few adds per block); re-measure on the pedal."
+  "dsp_cost": 27.0,
+  "dsp_cost_comment": "Unchanged by the stereo port (a few adds per block); re-measure on the pedal. Arena seal (MIDISTOMP #60, 26 words): about +100 cycles a block, +2 declared."
 }

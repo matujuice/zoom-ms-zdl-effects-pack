@@ -66,6 +66,6 @@
   ],
   "audio_func_name": "Fx_DLY_Formant",
   "audio_nop": false,
-  "dsp_cost": 135.0,
-  "dsp_cost_comment": "Stereo estimate (about +13 over the mono 122); re-measure on the pedal."
+  "dsp_cost": 143.0,
+  "dsp_cost_comment": "Stereo estimate (about +13 over the mono 122); re-measure on the pedal. Arena seal (MIDISTOMP #60, 181 words): about +456 cycles a block, +8 declared."
 }

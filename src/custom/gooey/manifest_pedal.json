@@ -28,6 +28,6 @@
   "audio_func_name": "Fx_DLY_Gooey",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 8.0,
-  "dsp_cost_comment": "Estimate (the spec says about 8): per sample a peak scan (plus 4 one-poles when SC HP is on) and 2 mults of gain; per block a sqrt, a log2 and an exp2. Bypassed it costs a compare. Re-measure on the pedal."
+  "dsp_cost": 12.0,
+  "dsp_cost_comment": "Estimate (the spec says about 8): per sample a peak scan (plus 4 one-poles when SC HP is on) and 2 mults of gain; per block a sqrt, a log2 and an exp2. Bypassed it costs a compare. Re-measure on the pedal. Arena seal (MIDISTOMP #60, 74 words): about +210 cycles a block, +4 declared."
 }

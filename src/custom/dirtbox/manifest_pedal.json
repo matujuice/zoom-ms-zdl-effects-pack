@@ -66,5 +66,6 @@
   "audio_func_name": "Fx_DLY_DirtBox",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 38.0
+  "dsp_cost": 43.0,
+  "dsp_cost_comment": "Arena seal (MIDISTOMP #60, 96 words): about +261 cycles a block, +5 declared."
 }

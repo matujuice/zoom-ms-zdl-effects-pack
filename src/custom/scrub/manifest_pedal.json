@@ -61,6 +61,6 @@
   "audio_func_name": "Fx_DLY_Scrub",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 25.0,
-  "dsp_cost_comment": "Stereo estimate (mono net 10.5 x 1.8 + 25 %, 2026-10-24); MONO costs less in real CPU but the firmware sums the declared cost. Re-measure on the pedal."
+  "dsp_cost": 27.0,
+  "dsp_cost_comment": "Stereo estimate (mono net 10.5 x 1.8 + 25 %, 2026-10-24); MONO costs less in real CPU but the firmware sums the declared cost. Re-measure on the pedal. Arena seal (MIDISTOMP #60, 32 words): about +114 cycles a block, +2 declared."
 }

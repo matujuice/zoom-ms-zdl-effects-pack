@@ -42,5 +42,6 @@
   "audio_func_name": "Fx_DLY_Wavefold",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 26.0
+  "dsp_cost": 28.0,
+  "dsp_cost_comment": "Arena seal (MIDISTOMP #60, 10 words): about +63 cycles a block, +2 declared."
 }

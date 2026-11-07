@@ -24,6 +24,6 @@
   "audio_func_name": "Fx_DLY_LOUDER",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 10.0,
-  "dsp_cost_comment": "Estimate (the spec says about 10): per sample two peak scans, 2 mults and a ramp, 4 ring accesses; per block a 9-value min, an 8-value mean and 1/x; re-measure on the pedal."
+  "dsp_cost": 14.0,
+  "dsp_cost_comment": "Estimate (the spec says about 10): per sample two peak scans, 2 mults and a ramp, 4 ring accesses; per block a 9-value min, an 8-value mean and 1/x; re-measure on the pedal. Arena seal (MIDISTOMP #60, 74 words): about +210 cycles a block, +4 declared."
 }
