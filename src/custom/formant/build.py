@@ -116,8 +116,8 @@ def main() -> None:
 
     kb = out_zdl.stat().st_size / 1024.0
     print(f"\n[formant] done -> {out_zdl}  ({kb:.1f} KB)")
-    if kb > 23.0:
-        print("[formant] WARNING: bigger than 23 KB, the pedal may not list it. Tell Claude the size.")
+    if out_zdl.stat().st_size > 32270:
+        print("[formant] WARNING: over 32,270 bytes. The limit is 32 KB, but only up to 32,270 bytes is tested on the pedal. Tell Claude the size.")
 
 
 if __name__ == "__main__":

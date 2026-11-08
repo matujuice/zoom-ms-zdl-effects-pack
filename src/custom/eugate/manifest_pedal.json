@@ -61,6 +61,6 @@
   "audio_func_name": "Fx_DLY_EuGate",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 6.0,
-  "dsp_cost_comment": "Stereo estimate (mono net 3.8 x 1.8 + 25 %, 2026-10-24); re-measure on the pedal."
+  "dsp_cost": 8.0,
+  "dsp_cost_comment": "Stereo estimate (mono net 3.8 x 1.8 + 25 %, 2026-10-24); re-measure on the pedal. Arena seal (MIDISTOMP #60, 17 words): about +79 cycles a block, +2 declared."
 }

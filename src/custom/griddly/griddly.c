@@ -107,6 +107,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define GD_DO_PRAGMA(x) _Pragma(#x)
@@ -120,14 +121,14 @@
 #define GD_CODE_SECTION(fn)
 #endif
 
-#define GD_MAGIC      0x47444C34u        /* "GDL4": change whenever GdState changes      */
+#define GD_MAGIC      0x47444C35u        /* "GDL5": change whenever GdState changes      */
 #define GD_N          348000             /* ring length: 7.9 s at 44.1 kHz              */
 #define GD_MAXD       346000.0f          /* longest delay (samples), room for modulation */
 #define GD_NS         174000             /* ST / PING: one ring, 3.9 s                   */
 #define GD_MAXDS      172000.0f          /* longest delay there (samples)                */
 #define GD_CLEAR_BLK  2048
-#define GD_TO16       16384.0f
-#define GD_FROM16     6.1035156e-5f      /* 1 / 16384 */
+#define GD_TO16       4096.0f            /* 14-bit codes in the ring (zarena.h) */
+#define GD_FROM16     2.4414062e-4f      /* 1 / 4096 */
 #define GD_MS         44.1f              /* samples per ms */
 #define GD_XF_STEP    9.765625e-4f       /* Time crossfade: 1024 samples = 23 ms */
 #define GD_W2C        2.0555e-4f         /* 2 pi / 44100 / ln 2: one-pole coef from Hz */
@@ -156,8 +157,10 @@ typedef struct {
     float wl;              /* wet level: ramps in on switch-on                */
     float hold[2], hacc[2];   /* LOFI sample-hold value and its clock (per ring) */
     ZtSync zt;             /* MIDI transport (zmt.h)                          */
-    short buf[GD_N];
+    unsigned int seal[ZA_NSEAL(32)]; /* header bits 30, 29 between blocks (zarena.h) */
+    short buf[GD_N];       /* 14-bit codes: za_s14 / za_u14 */
 } GdState;
+ZA_CHECK(GdState);
 
 typedef struct {
     int   rev, taps, lofi, tape, on;
@@ -267,8 +270,8 @@ static inline float gd_read(const short *b, int wp, float age, int nn)
     j = (j < 0) ? j + nn : j;
     j1 = j - 1;
     j1 = (j1 < 0) ? j1 + nn : j1;
-    x0 = (float)b[j];
-    x1 = (float)b[j1];
+    x0 = (float)za_u14(b[j]);
+    x1 = (float)za_u14(b[j1]);
     return (x0 + fr * (x1 - x0)) * GD_FROM16;
 }
 
@@ -524,9 +527,9 @@ static inline void gd_process(GdState *s, const GdParams *P, float *buf, int n)
             hn = (hn >= 1.0f) ? hn - 1.0f : hn;
             v = lofi ? hv : v;
             c = v * GD_TO16;
-            c = (c > 32767.0f) ? 32767.0f : c;
-            c = (c < -32767.0f) ? -32767.0f : c;
-            if (act) rb[wpk] = (short)(int)c;
+            c = (c > ZA_S14_MAX) ? ZA_S14_MAX : c;
+            c = (c < -ZA_S14_MAX) ? -ZA_S14_MAX : c;
+            if (act) rb[wpk] = za_s14((int)c);
             if (act) wo[ch][i] = gk[i] * yf[i];
             lp = act ? lpn : lp; hs = act ? hsn : hs;
             hacc = act ? hn : hacc; hold = act ? hv : hold;
@@ -685,6 +688,7 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
     u[8] = gd_ui(params[GRIDDLY_TAIL_SLOT],  (float)GRIDDLY_TAIL_UI_DEFAULT,  1.0f);
     u[9] = gd_ui(params[GRIDDLY_STEREO_SLOT], (float)GRIDDLY_STEREO_UI_DEFAULT, 2.0f);
 
+    za_unseal(s, ZA_HDR(GdState), s->seal);
     if (s->magic != GD_MAGIC) gd_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     gd_prepare(&P, u, params[0] >= 0.5f);
@@ -703,8 +707,10 @@ void GRIDDLY_AUDIO_FUNC(unsigned int *ctx)
         if (t < s->ph - 0.5f) { s->L = P.L; s->ao = 0.0f; }  /* wrapped: new chunk, latch its length */
         s->ph = t;
     }
-    if (gd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
+    if (gd_clearing(s)) goto done;               /* first ~31 ms after loading: dry */
     gd_process(s, &P, fxBuf, 8);                 /* L and R in place; off, the dry of both sides passes untouched */
+done:
+    za_seal(s, ZA_HDR(GdState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* GRIDDLY_HOST_TEST */

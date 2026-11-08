@@ -54,6 +54,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define WD_DO_PRAGMA(x) _Pragma(#x)
@@ -67,19 +68,19 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F36u        /* "WDO6": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F37u        /* "WDO7": change whenever WdState changes      */
 #define WD_N          170000             /* ring length per side                        */
 #define WD_MAXD       168000.0f          /* longest delay (samples)                     */
 #define WD_CLEAR_BLK  2048
-#define WD_TO16       16384.0f
-#define WD_FROM16     6.1035156e-5f
+#define WD_TO16       4096.0f            /* 14-bit codes in the ring (zarena.h) */
+#define WD_FROM16     2.4414062e-4f      /* 1 / 4096 */
 #define WD_MS         44.1f
 #define WD_XF_STEP    9.765625e-4f       /* Time crossfade: 1024 samples = 23 ms */
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* Send smoothing, about 7.5 ms */
 #define WD_APN        512                /* all-pass line length (power of 2)           */
 #define WD_APCOMP     853.0f             /* mean total all-pass delay (samples)         */
-#define WD_QUIET      2.0f               /* ring "silent" below this (16384 scale)      */
+#define WD_QUIET      0.5f               /* ring "silent" below this (4096 scale)       */
 
 typedef struct {
     int   hc, lc, ap;
@@ -102,9 +103,11 @@ typedef struct {
     WdParams P;
     float esg, ea, eb;     /* Send the steady wash and dry gains are for (-1: not yet) */
     ZtSync zt;
+    unsigned int seal[ZA_NSEAL(42)]; /* header bits 30, 29 between blocks (zarena.h) */
     float ap[2][4][WD_APN];
-    short buf[2 * WD_N];
+    short buf[2 * WD_N];   /* 14-bit codes: za_s14 / za_u14 */
 } WdState;
+ZA_CHECK(WdState);
 
 WD_ALWAYS_INLINE(wd_ui)
 static inline float wd_ui(float raw, float def_ui, float max_ui)
@@ -205,7 +208,7 @@ static inline float wd_read(const short *b, int wp, int age)
 {
     int j = wp - age;
     j = (j < 0) ? j + WD_N : j;
-    return (float)b[j] * WD_FROM16;
+    return (float)za_u14(b[j]) * WD_FROM16;
 }
 
 WD_ALWAYS_INLINE(wd_init)
@@ -382,8 +385,8 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     for (i = 0; i < 8; i++) {
         int wpk = wp0 + i;
         wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-        sb[wpk] = (short)(int)cv[i];
-        sb[WD_N + wpk] = (short)(int)cv[i + 8];
+        sb[wpk] = za_s14((int)cv[i]);
+        sb[WD_N + wpk] = za_s14((int)cv[i + 8]);
     }
     s->quiet = (bigm >= WD_QUIET || sg > 0.0f) ? 0 : ((s->quiet < 100000000) ? s->quiet + 8 : s->quiet);
 
@@ -496,6 +499,7 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
 
     s = (WdState *)stateBase;
 
+    za_unseal(s, ZA_HDR(WdState), s->seal);
     if (s->magic != WD_MAGIC) wd_init(s);
     r[0] = params[WASHOUT_TIME_SLOT];  r[1] = params[WASHOUT_WASH_SLOT];
     r[2] = params[WASHOUT_FDBK_SLOT];  r[3] = params[WASHOUT_HICUT_SLOT];
@@ -517,8 +521,10 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
         wd_prepare(&s->P, u, r[8] != 0.0f);
         for (k = 0; k < 10; k++) s->rk[k] = r[k];
     }
-    if (wd_clearing(s)) return;                  /* first ~31 ms after loading: dry */
+    if (wd_clearing(s)) goto done;               /* first ~31 ms after loading: dry */
     wd_process(s, &s->P, fxBuf);                 /* L and R in place */
+done:
+    za_seal(s, ZA_HDR(WdState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* WASHOUT_HOST_TEST */

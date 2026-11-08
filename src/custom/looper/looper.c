@@ -120,6 +120,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define LP_DO_PRAGMA(x) _Pragma(#x)
@@ -144,7 +145,7 @@
 #define LP_SPB     2646000.0f            /* samples per beat x BPM                         */
 #define LP_BS2     52                    /* bytes per stereo block (13 words)               */
 #define LP_BS1     28                    /* bytes per mono block (7 words)                  */
-#define LP_NSEAL   7                     /* seal words: 14 header words each               */
+#define LP_NSEAL   6                     /* seal words: 14 header words each, all used     */
 #define LP_NREG    4                     /* buffer regions: the big buffer's 3 + the arena */
 #ifndef LP_ON_JUMP
 #define LP_ON_JUMP()                     /* host tests count the seams */
@@ -587,18 +588,22 @@ LP_ALWAYS_INLINE(lp_record)
 static inline void lp_record(LpState *s, const LpParams *P, float bpm, int u, float f)
 {
     float beat = LP_SPB * lp_recip(bpm), need;
-    int len = P->cyc, cs, cm;
+    int len = P->cyc, cs = 0, cm, t;
     lp_regions(s);
-    cs = lp_count(s, LP_BS2); cm = lp_count(s, LP_BS1);
     s->want = len;
-    for (;;) {
-        need = 4.02f * (float)len * beat + (float)(LP_X + 32);   /* 0.5 % for a tempo drift */
-        if (need <= (float)cs) { s->stereo = 1; break; }
-        if (need <= (float)cm || len == 1) { s->stereo = 0; break; }
-        len >>= 1;
+    /* one lp_count for all three counts: inlined three times GRDLOOP goes over 32 KB */
+    for (t = 0; t < 3; t++) {
+        cm = lp_count(s, t == 0 ? LP_BS2 : t == 1 ? LP_BS1 : s->bs);
+        if (t == 0) { cs = cm; continue; }
+        if (t == 2) { s->capf = cm; break; }
+        for (;;) {
+            need = 4.02f * (float)len * beat + (float)(LP_X + 32);   /* 0.5 % for a tempo drift */
+            if (need <= (float)cs) { s->stereo = 1; break; }
+            if (need <= (float)cm || len == 1) { s->stereo = 0; break; }
+            len >>= 1;
+        }
+        s->bs = s->stereo ? LP_BS2 : LP_BS1;
     }
-    s->bs = s->stereo ? LP_BS2 : LP_BS1;
-    s->capf = lp_count(s, s->bs);
     s->U = len << 5;
     s->lu0 = u; s->lu0f = f;
     s->eu = u + s->U; s->ef = f;
@@ -953,34 +958,14 @@ static inline void lp_out(LpState *s, const LpParams *P)
 /* ---- arena safety (#41) --------------------------------------------------- */
 
 /* end of a block: move bits 30, 29 of each header word into the seal words, so every word
- * left in the arena reads as a tiny float */
+ * left in the arena reads as a tiny float. n is volatile so cl6x keeps the 14-word groups a
+ * loop: a known length unrolls all six and GRDLOOP goes over 32 KB */
 LP_ALWAYS_INLINE(lp_seal)
-static inline void lp_seal(LpState *s)
-{
-    unsigned int *w = (unsigned int *)s, c;
-    int i = 0, j, k;
-    for (k = 0; k < LP_NSEAL; k++) {
-        c = 0u;
-        for (j = 0; j < 28 && i < LP_NHDR; j += 2, i++) {
-            c |= ((w[i] >> 29) & 3u) << j;
-            w[i] &= 0x9FFFFFFFu;
-        }
-        s->seal[k] = c;
-    }
-}
+static inline void lp_seal(LpState *s) { volatile int n = LP_NHDR; za_seal(s, n, s->seal); }
 
 /* start of a block: put them back (a stale arena decodes to garbage and fails the magic) */
 LP_ALWAYS_INLINE(lp_unseal)
-static inline void lp_unseal(LpState *s)
-{
-    unsigned int *w = (unsigned int *)s, c;
-    int i = 0, j, k;
-    for (k = 0; k < LP_NSEAL; k++) {
-        c = s->seal[k];
-        for (j = 0; j < 28 && i < LP_NHDR; j += 2, i++)
-            w[i] = (w[i] & 0x9FFFFFFFu) | (((c >> j) & 3u) << 29);
-    }
-}
+static inline void lp_unseal(LpState *s) { volatile int n = LP_NHDR; za_unseal(s, n, s->seal); }
 
 /* ---- on-screen text ------------------------------------------------------ */
 LP_ALWAYS_INLINE(lp_put5)

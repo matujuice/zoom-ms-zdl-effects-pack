@@ -60,6 +60,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define SW_DO_PRAGMA(x) _Pragma(#x)
@@ -75,7 +76,7 @@
 #define SW_STAGE_LOOP()
 #endif
 
-#define SW_MAGIC        0x53573035u          /* "SW05" */
+#define SW_MAGIC        0x53573036u          /* "SW06" */
 #define SW_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define SW_HZ_TO_INC    2.2675737e-5f        /* 1 / 44100                       */
 #define SW_RING         1024u                /* flanger ring, a power of two    */
@@ -98,8 +99,10 @@ typedef struct {
     float ap[16];          /* all-pass memory, L then R                               */
     unsigned int cr, cL, cclk;   /* clock phase cache: (cclk - 1) mod cL = cr, cL = 0: none */
     ZtSync zt;             /* MIDI transport (zmt.h)                                  */
+    unsigned int seal[ZA_NSEAL(39)];  /* header bits 30, 29 between blocks (zarena.h) */
     float ring[2 * SW_RING];   /* L then R, same delay */
 } SwState;
+ZA_CHECK(SwState);
 
 typedef struct {
     float inc;             /* LFO phase per sample                                    */
@@ -582,6 +585,7 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     u[6] = sw_ui(params[SWEEP_TONE_SLOT],  (float)SWEEP_TONE_UI_DEFAULT,  100.0f);
     u[8] = sw_ui(params[SWEEP_MIX_SLOT],   (float)SWEEP_MIX_UI_DEFAULT,   100.0f);
 
+    za_unseal(s, ZA_HDR(SwState), s->seal);
     if (s->magic != SW_MAGIC) sw_init(s);
     bpm = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     if (start) { s->ph = 0.0f; s->rp = 0.0f; }   /* MIDI Start: the sweep back to its start */
@@ -589,13 +593,15 @@ void SWEEP_AUDIO_FUNC(unsigned int *ctx)
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
         sw_advance(s, &P);                       /* the sweep keeps running, on the clock */
-        return;
+        goto done;
     }
     if (s->was_off) sw_wake(s);
     if (P.type < 2u)      sw_phaser(s, &P, fxBuf, 8);
     else if (P.type < 4u) sw_flanger(s, &P, fxBuf, 8);
     else                  sw_filter(s, &P, fxBuf, 8);
     sw_advance(s, &P);
+done:
+    za_seal(s, ZA_HDR(SwState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* SWEEP_HOST_TEST */

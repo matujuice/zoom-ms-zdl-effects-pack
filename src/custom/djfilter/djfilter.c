@@ -39,6 +39,7 @@
  */
 
 #include <stdint.h>
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define DF_DO_PRAGMA(x) _Pragma(#x)
@@ -54,7 +55,7 @@
 #define DF_ONE_COPY(fn)
 #endif
 
-#define DF_MAGIC   0x44463033u              /* "DF03": change when DfState changes */
+#define DF_MAGIC   0x44463034u              /* "DF04": change when DfState changes */
 #define DF_K0      1.4142136f               /* 1/Q for Q = 0.7071 (Butterworth)    */
 #define DF_LP_TOP  19000.0f
 #define DF_LP_OCT  8.89f                    /* octaves from 19 kHz down to 40 Hz   */
@@ -87,7 +88,9 @@ typedef struct {
     float gl;              /* Glide's per-block step                              */
     float pa;              /* the amount P was worked out for                     */
     DfParams P;
+    unsigned int seal[ZA_NSEAL(64)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
 } DfState;
+ZA_CHECK(DfState);
 
 /* knobs arrive as (screen value) / 100; convert back like the rest of the pack */
 DF_ALWAYS_INLINE(df_ui)
@@ -367,6 +370,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     if (stateBase + sizeof(DfState) > end) return;
 
     s = (DfState *)stateBase;
+    za_unseal(s, ZA_HDR(DfState), s->seal);
     if (s->magic != DF_MAGIC) df_init(s);
 
     r[0] = params[DJFILTER_DJ_SLOT];    r[1] = params[DJFILTER_RESO_SLOT];
@@ -392,7 +396,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     df_smooth(s);
     if (!on && s->e <= 0.0f) {                   /* fully off: input untouched */
         s->act = 0u;
-        return;
+        goto done;
     }
     e0 = s->e;                                   /* footswitch ramp: this block's start and step */
     if (on) { s->e += DF_FADE; if (s->e > 1.0f) s->e = 1.0f; }
@@ -401,8 +405,10 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     if (chg || s->a != s->pa) { df_prepare(&s->P, s->u, s->a); s->pa = s->a; }
     if (s->P.on == 0u && s->act == 0u && e0 >= 1.0f && de == 0.0f &&
         s->P.dg + s->P.wg > 0.9999f && s->P.dg + s->P.wg < 1.0001f)
-        return;                                  /* nothing to do: skipped entirely */
+        goto done;                               /* nothing to do: skipped entirely */
     df_process(s, &s->P, fxBuf, e0, de);
+done:
+    za_seal(s, ZA_HDR(DfState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* DJFILTER_HOST_TEST */

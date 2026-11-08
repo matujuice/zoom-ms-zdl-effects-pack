@@ -162,7 +162,7 @@ int main(void)
         long up = 0, down = 0; float prev = 0;
         fresh();
         for (t = 0; t < 44100 * 2; t += 8) {
-            for (i = 0; i < 8; i++) b[i] = (float)((t + i) % 22050) / 22050.0f - 0.5f;
+            for (i = 0; i < 8; i++) b[i] = (float)((t + i) % 2205) / 2205.0f - 0.5f;   /* steep: more than one 14-bit step a sample */
             block(u, 1, b);
         }
         u[2] = 1;

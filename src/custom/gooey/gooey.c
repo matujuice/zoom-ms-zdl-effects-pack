@@ -55,7 +55,7 @@
 #define GO_BLOCK_LOOP()
 #endif
 
-#define GO_MAGIC     0x474F4F34u            /* "GOO4": change when GoState changes */
+#define GO_MAGIC     0x474F4F35u            /* "GOO5": change when GoState changes */
 #define GO_KEY_NONE  0xFFFFFFFFu
 #define GO_DPK       0.99638f               /* peak follower fall per block: 50 ms         */
 #define GO_CMS       0.03563f               /* mean-square follower per block: 5 ms        */
@@ -77,6 +77,7 @@ extern unsigned char GO_PIC_(GOOEY_AUDIO_FUNC)[];       /* the cover data; the l
 #endif
 #include "gooey_layout.h"                  /* ZM_TOP / ZM_CAP, from build.py */
 #include "../common/zdl_meter.h"
+#include "../common/zarena.h"
 
 typedef struct {
     unsigned int magic;
@@ -86,7 +87,11 @@ typedef struct {
     float pkenv, ms, rS, rF, avg, gm;
     float a1l, a2l, a1r, a2r;               /* sidechain high-pass: the two low-pass states per side */
     ZmState zm;                             /* the cover meter */
+    unsigned int seal[ZA_NSEAL(204)]; /* every word's bits 30, 29 between blocks (zarena.h) */
 } GoState;
+ZA_CHECK(GoState);
+/* sealed words: all before zm.lv[]; the meter history is under 0x2000 (ZM_NOLV), so already safe */
+#define GO_HDR ((int)(offsetof(GoState, zm.lv) >> 2))
 
 typedef struct {
     float t2, slope, mk, dryG, wetG, hpa, cA, cR;
@@ -179,6 +184,7 @@ static inline void go_init(GoState *s)
     s->k_att = GO_KEY_NONE; s->k_rel = GO_KEY_NONE; s->k_hp = GO_KEY_NONE;
     s->cA = 0.0f; s->cR = 0.0f; s->hpa = 0.0f; s->gm = 1.0f; s->was_off = 0u;
     zm_init(&s->zm);
+    ZA_ZERO_TAIL(s, GoState);
     s->magic = GO_MAGIC;
 }
 
@@ -478,9 +484,10 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
 
     s = (GoState *)stateBase;
 
+    za_unseal(s, GO_HDR, s->seal);
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         if (s->magic == GO_MAGIC) s->was_off = 1u;
-        return;
+        goto done;
     }
     if (s->magic != GO_MAGIC) go_init(s);
     if (s->was_off) { go_reset(s); s->gm = 1.0f; s->was_off = 0u; }
@@ -498,6 +505,8 @@ void GOOEY_AUDIO_FUNC(unsigned int *ctx)
     on = zm_begin(&s->zm, params);
     go_process(s, &P, fxBuf);
     if (on) go_meter(s, u);
+done:
+    za_seal(s, GO_HDR, s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* GOOEY_HOST_TEST */

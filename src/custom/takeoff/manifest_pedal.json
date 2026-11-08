@@ -30,6 +30,6 @@
   "audio_func_name": "Fx_DLY_Takeoff",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 59.0,
-  "dsp_cost_comment": "Previous build measured 14% (7,600 cycles). This build drops the key listener and the Space reverb, runs the riser mono (one noise, one filter, copied to both sides) and the filter maths every 4th block: estimated about 5% (2,700 cycles); the declared value is kept from the previous build until measured. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost": 63.0,
+  "dsp_cost_comment": "Previous build measured 14% (7,600 cycles). This build drops the key listener and the Space reverb, runs the riser mono (one noise, one filter, copied to both sides) and the filter maths every 4th block: estimated about 5% (2,700 cycles); the declared value is kept from the previous build until measured. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD). Arena seal (MIDISTOMP #60, 71 words): about +203 cycles a block, +4 declared."
 }

@@ -71,6 +71,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define CH_DO_PRAGMA(x) _Pragma(#x)
@@ -84,7 +85,7 @@
 #define CH_BLOCK_LOOP()
 #endif
 
-#define CH_MAGIC        0x43483039u          /* "CH09" */
+#define CH_MAGIC        0x43483041u          /* "CH0A" */
 #define CH_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define CH_QUIET_LEN    2000                 /* samples of silence before a new note counts */
 #define CH_QUIET_LVL    0.002f               /* below this the input counts as silent */
@@ -103,7 +104,9 @@ typedef struct {
     unsigned int pk_steps, pk_hits;   /* the pattern in lo / hi was built for these (0 = none) */
     unsigned int lo, hi;   /* the Euclid pattern: bit j (lo = steps 0..31, hi = 32..63) is a note */
     ZtSync zt;             /* MIDI transport (zmt.h)          */
+    unsigned int seal[ZA_NSEAL(17)]; /* header bits 30, 29 between blocks (zarena.h) */
 } ChState;
+ZA_CHECK(ChState);
 
 typedef struct {
     float inc;             /* phase increment per sample (steps per sample)  */
@@ -389,6 +392,7 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     u[6] = ch_ui(params[EUGATE_SOFT_SLOT],  (float)EUGATE_SOFT_UI_DEFAULT,  100.0f);
     u[8] = ch_ui(params[EUGATE_MIX_SLOT],   (float)EUGATE_MIX_UI_DEFAULT,   100.0f);
 
+    za_unseal(s, ZA_HDR(ChState), s->seal);
     if (s->magic != CH_MAGIC) ch_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);  /* the pedal's tempo, MIDI transport */
     ch_prepare_core(&P, u);
@@ -400,13 +404,15 @@ void EUGATE_AUDIO_FUNC(unsigned int *ctx)
     if (params[0] < 0.5f) {                      /* effect switched off: input untouched */
         s->was_off = 1u;
         ch_idle(s, &P, 8);                       /* and the pattern clock keeps running */
-        return;
+        goto done;
     }
     if (s->was_off) {                            /* the pedal was just turned on */
         if (P.sync == 2u) { s->pp = 0.0f; s->pos = 0u; }
         s->was_off = 0u;
     }
     ch_process(s, &P, fxBuf, 8);                 /* stereo: L and R in place, one shared gate */
+done:
+    za_seal(s, ZA_HDR(ChState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* EUGATE_HOST_TEST */

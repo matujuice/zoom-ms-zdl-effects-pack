@@ -76,6 +76,7 @@
 
 #include <stdint.h>
 #include "../common/zmt.h"
+#include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
 #define PU_DO_PRAGMA(x) _Pragma(#x)
@@ -91,7 +92,7 @@
 #define PU_CODE_SECTION(fn)
 #endif
 
-#define PU_MAGIC        0x50553036u          /* "PU06" */
+#define PU_MAGIC        0x50553037u          /* "PU07" */
 #define PU_INC_PER_BPM  3.7793e-7f           /* 1 / (44100 * 60)                */
 #define PU_BAR          4.0f                 /* beats per bar                    */
 #define PU_SLEW         0.0113f              /* gain slew per sample, ~2 ms      */
@@ -127,8 +128,10 @@ typedef struct {
     int   clear_pos;       /* lazy clear progress, PU_REV_TOT when done      */
     unsigned int was_off;  /* set while the footswitch is off                */
     ZtSync zt;             /* MIDI transport (zmt.h)                         */
+    unsigned int seal[ZA_NSEAL(32)]; /* header bits 30, 29 between blocks (zarena.h) */
     float rev[PU_REV_TOT]; /* reverb delay lines                             */
 } PuState;
+ZA_CHECK(PuState);
 
 typedef struct {
     float inc;             /* beats per sample                               */
@@ -451,6 +454,7 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     u[6] = pu_ui(params[BREATHER_VERB_SLOT],  (float)BREATHER_VERB_UI_DEFAULT,  100.0f);
     u[8] = pu_ui(params[BREATHER_SIZE_SLOT],  (float)BREATHER_SIZE_UI_DEFAULT,  100.0f);
 
+    za_unseal(s, ZA_HDR(PuState), s->seal);
     if (s->magic != PU_MAGIC) pu_init(s);
     u[7] = zt_update(&s->zt, &run, &beats, &start);   /* the pedal's BPM, MIDI transport */
     pu_prepare(&P, u);
@@ -468,7 +472,7 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
             s->bp += P.inc * 8.0f;
             if (s->bp >= PU_BAR) s->bp -= PU_BAR;
         }
-        return;
+        goto done;
     }
     if (s->was_off) {                            /* the pedal was just turned on */
         if (!run) s->bp = 0.0f;                  /* no clock: stomp on the one */
@@ -476,6 +480,8 @@ void BREATHER_AUDIO_FUNC(unsigned int *ctx)
     }
     pu_clear_step(s);
     pu_process(s, &P, fxBuf, 8);                 /* stereo: L and R in place, own reverb each */
+done:
+    za_seal(s, ZA_HDR(PuState), s->seal);        /* leave the arena safe (MIDISTOMP #60) */
 }
 
 #endif /* BREATHER_HOST_TEST */
