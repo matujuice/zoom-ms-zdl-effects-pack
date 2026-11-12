@@ -6,5 +6,5 @@
 int main(void)
 {
     se_init(ARENA);
-    return as_run(Fx_DLY_Washout, sizeof(WdState), 11, 120000, "washout");
+    return as_run(Fx_DLY_Washout, sizeof(WdState), 7, 120000, "washout");
 }

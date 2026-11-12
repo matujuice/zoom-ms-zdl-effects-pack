@@ -253,24 +253,20 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 | Level | -12.0..+6.0 dB | Output trim. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
-### Washout: a delay that melts into a cloud
+### Washout: one knob that washes the track away
 
 <img src="../graphics/washout.png" width="320" alt="Washout on the pedal screen">
 Stereo in and out.
 
-A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. There is no Mix knob: Send is a crossfade-send (like the macro knob of Baby Audio Transit). Turning it up sends more input into the wash and fades the dry down in one equal-power move, so the level stays even. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. When the tail has died and nothing goes in, it costs next to nothing.
+A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. At Wash 0, once the tail has died, it costs nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GRDELAY, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
-| Wash | 0..100 | Diffusion: how much each pass smears. 0 skips the diffusers. Default 70. |
-| Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
-| HiCut | 0..100 | Low-pass on the repeats: the first repeat is darker, each pass darker still. 0 = off. |
-| LoCut | 0..100 | High-pass on the repeats: the first repeat is thinner, each pass thinner still. 0 = off. |
-| Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
-| Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
+| Wash | 0..100 | The macro. 0 = dry only; 100 = wash only, dry silent, tail almost endless. In between it moves the send, the decay, the diffusion, the HiCut (12 kHz down to about 3 kHz) and the LoCut (25 up to 300 Hz) together. Default 50. |
+| Tone | 0..100 | How dark the wash gets: lower is darker, higher brighter. Default 50. |
+| Size | 0..100 | Length of the loop, 27..136 ms: small is tighter and grainier, big is a wider cloud. Default 50. |
 
-Try: Send 50 to sit the cloud under the dry; Fdbk 100, then Send 0 to freeze the cloud under the dry; Send 100 and Fdbk 110 with HiCut 40 for a dark swell that swallows the track.
+Try: ride Wash from 0 to 100 over the last bar before a drop, then snap it back; park it at 30 for a short smear under the dry; Wash 100 and footswitch off to let the cloud ring out on its own.
 
 ### Takeoff: risers and downlifters
 

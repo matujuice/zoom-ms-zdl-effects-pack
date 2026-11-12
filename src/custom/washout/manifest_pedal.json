@@ -1,6 +1,6 @@
 {
   "effect_name": "Washout",
-  "comment": "Washout - a tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Time is free 12 ms..1 s or a note value 1/32..2bar at the pedal's tempo; Wash = diffusion, Fdbk 0-120 (100 = 1:1, soft-clipped above), HiCut and LoCut in the loop (0 = off), Width, Send (a crossfade-send, no Mix knob: up sends more input into the wash and fades the dry down, equal power; 0 = dry only, 100 = wash only). The footswitch is plain on/off with trails: off stops new input, the dry comes back to full level and the tail rings out. Fdbk 100 + Send 0 + both cuts off holds the cloud.",
+  "comment": "Washout - one Wash knob turns the sound into a cloud (a Transit-style macro). Wash 0..100 moves everything at once: the dry fades down and the wash up (equal power, 100 = wash only), the decay grows from about 1 s to almost endless, the diffusion thickens, the loop darkens (HiCut 12 kHz..3 kHz) and thins (LoCut 25..300 Hz). Tone shifts the HiCut range darker or brighter, Size sets the loop length (27..136 ms). A short loop diffused on every pass: no discrete repeats. Wash 0 lets the tail ring out and then costs nothing. The footswitch is plain on/off with trails.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
@@ -11,21 +11,25 @@
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
   "params": [
-    {"name": "Time", "max": 113, "default": 109, "flags": 40,
-     "comment": "0..100 free: ms = 12 + 0.0988 x screen^2 (12 ms..1.00 s), as GRDELAY. 101..113 = note values at the pedal's tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/4., 1/2, 1bar, 2bar. Too long for the 3.8 s ring = halved until it fits. Default 109 = 1/4."},
-    {"name": "Wash", "max": 100, "default": 70,
-     "comment": "Diffusion: the all-pass coefficient of the 4 diffusers in the loop, 0..0.7. 0 = diffusers skipped. Default 70."},
-    {"name": "Fdbk", "max": 120, "default": 60,
-     "comment": "Feedback: gain into the loop = screen / 100, 100 = 1:1 (holds forever with Send 0 and both cuts off), above 100 it grows into a cloud the soft clip holds. Switched off it is capped at 95 so the tail fades. Default 60."},
-    {"name": "HiCut", "max": 100, "default": 0,
-     "comment": "Low-pass in the loop, on the wet out too (the first repeat is cut): 0 = off (skipped), 1 = 11.6 kHz, 100 = 375 Hz. Default 0."},
-    {"name": "LoCut", "max": 100, "default": 0,
-     "comment": "High-pass in the loop, on the wet out too (the first repeat is cut): 0 = off (skipped), 1 = 25 Hz, 100 = 800 Hz. Default 0."},
-    {"name": "Width", "max": 100, "default": 100,
-     "comment": "Stereo width of the wet signal: 0 = mono, 100 = as is. Default 100."},
-    {"name": "Send", "max": 100, "default": 100,
-     "comment": "Crossfade-send, smoothed over about 7 ms: up sends more input into the wash and fades the dry down (equal power). 0 = dry only at full level, the tail keeps ringing; 100 = wash only, dry silent. Default 100."}
+    {
+      "name": "Wash",
+      "max": 100,
+      "default": 50,
+      "comment": "The macro: 0 = dry only (the tail rings out, then no work), 100 = wash only, long decay, dark and thin. Glides over about 10 ms. Default 50."
+    },
+    {
+      "name": "Tone",
+      "max": 100,
+      "default": 50,
+      "comment": "The HiCut range x 0.5 (0, dark) .. x 2 (100, bright); 50 = 12 kHz at Wash 0 down to 3 kHz at Wash 100. Default 50."
+    },
+    {
+      "name": "Size",
+      "max": 100,
+      "default": 50,
+      "comment": "Loop length: 27 ms (0) .. 136 ms (100), R 13 % longer. Crossfaded over 23 ms when it moves. Default 50."
+    }
   ],
-  "dsp_cost": 72.0,
-  "dsp_cost_comment": "Previous build measured 9.4% (5,100 cycles). This build drops the Mod knob: the 8 diffusers are plain whole-sample all-passes (no LFO, no interpolation): estimated about 7.5% (4,100 cycles). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD). Arena seal (MIDISTOMP #60, 42 words): about +137 cycles a block, +3 declared."
+  "dsp_cost": 60.0,
+  "dsp_cost_comment": "Estimate, not measured: the previous Washout (tempo-synced ring, 8 diffusers) estimated 4,100 cycles; this one keeps the 8 diffusers and drops the Time sync, Width and the 680 KB ring (now 28 KB): about 3,400 cycles. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Arena seal (28 words) included. Re-measure on the pedal (SYSTEM > LOAD)."
 }
