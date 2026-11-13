@@ -231,22 +231,19 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 | Level | -12.0..+6.0 dB | Output trim. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
-### Washout: a delay that melts into a cloud
+### Washout: one knob that washes the track away
+
 Stereo in and out.
 
-A tempo-synced stereo feedback delay with a chain of 4 all-pass diffusers inside the loop: every pass through the loop smears the sound more, so the repeats melt into a reverb-like cloud (the Octatrack-style washout for transitions). Left and right have their own delay and their own diffusers, so a mono input still comes out wide. The diffusers lose no level, so Fdbk 100 with Send 0 and both cuts off holds the cloud for as long as you like; above 100 it grows, held by a soft clip. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. There is no Mix knob: Send is a crossfade-send. When the tail has died and nothing goes in, it costs next to nothing.
+A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. At Wash 0, once the tail has died, it costs nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
-| Time | 12 ms..1.00 s, then 1/32 .. 1bar, 2bar | As GRDELAY, locked to the pedal's tempo. The ring holds 3.8 s: longer synced times are halved until they fit. Default 1/4. |
-| Wash | 0..100 | Diffusion: how much each pass smears. 0 skips the diffusers. Default 70. |
-| Fdbk | 0..120 | Repeats. 100 = 1:1; above 100 it grows and is soft-clipped. Switched off it is capped at 95 so the tail fades. Default 60. |
-| HiCut | 0..100 | Low-pass on the repeats: the first repeat is darker, each pass darker still. 0 = off. |
-| LoCut | 0..100 | High-pass on the repeats: the first repeat is thinner, each pass thinner still. 0 = off. |
-| Width | 0..100 | Stereo width of the wet signal; 0 = mono. Default 100. |
-| Send | 0..100 | Crossfade-send, smoothed: 0 = dry only at full level (the tail keeps ringing), 50 = both, 100 = wash only, dry silent. Turn it up and back down for a throw. Default 100. |
+| Wash | 0..100 | The macro. 0 = dry only; 100 = wash only, dry silent, tail almost endless. In between it moves the send, the decay, the diffusion, the HiCut (12 kHz down to about 3 kHz) and the LoCut (25 up to 300 Hz) together. Default 50. |
+| Tone | 0..100 | How dark the wash gets: lower is darker, higher brighter. Default 50. |
+| Size | 0..100 | Length of the loop, 27..136 ms: small is tighter and grainier, big is a wider cloud. Default 50. |
 
-Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark swell that never ends.
+Try: ride Wash from 0 to 100 over the last bar before a drop, then snap it back; park it at 30 for a short smear under the dry; Wash 100 and footswitch off to let the cloud ring out on its own.
 
 ### Takeoff: risers and downlifters
 Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
@@ -283,7 +280,7 @@ An SSL G-bus style VCA compressor to glue a mix: one character, done well. One g
 | Mix | 0..100 | Linear dry/wet blend like the Digitakt compressor (parallel compression), so Mix 50 is not louder. Default 100. |
 | SC HP | OFF, 20 .. 300 Hz | High-pass on the detector only (12 dB/oct). Default OFF. |
 
-Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level, with the threshold as a centered line tagged THRSH. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
+Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level, with the threshold as a centered line tagged THRSH. It works on any MS-70CDR on firmware 2.10 and on the MS-50G firmware 3.10, stock included; on other firmware the cover stays static.
 
 ### GRDLOOP: a bar-synced looper on the song grid
 Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 9 s mono or 4.9 s stereo.
