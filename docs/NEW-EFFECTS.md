@@ -143,6 +143,13 @@ turns the input into a smeared, reverb-like cloud of repeats, the Octatrack-styl
 
 - **Cost:** about 25-30.
 - Built 2026-10-29: fxid 492, cost 28 (estimate), ZDL size 21430 bytes.
+- **Rebuilt 2026-11-12 (Luca):** it played like a delay, and it clicked and slowed the pedal in a busy
+  chain. Now one Wash macro (0..100) moves the equal-power send, the decay (short to almost endless),
+  diffusion 0.5..0.7, HiCut 12 kHz to 3 kHz and LoCut 25 to 300 Hz together; Tone shifts the HiCut,
+  Size sets the loop (27..136 ms). A short diffused loop replaces the synced delay; Time, sync, Fdbk,
+  Width and Send are gone. The memory is cleared over the first blocks, never in one go; at Wash 0
+  with the tail gone it does no work. Footswitch stays plain on/off with trails (no hold-to-wash).
+  Cost 60 (estimate, about 3,400 cycles), ZDL size 10630 bytes.
 
 ## RISER: risers and downlifters (Luca, 2026-10-24)
 
