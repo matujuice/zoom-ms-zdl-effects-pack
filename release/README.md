@@ -251,7 +251,7 @@ Try: Fdbk 100, then Send 0 to freeze the cloud; HiCut 40 and Fdbk 110 for a dark
 ### Takeoff: risers and downlifters
 Stereo in and out. Hold needs MIDISTOMP's HOLD FOR = MOMENTARY.
 
-Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Length, at once (no wait for the bar). A flip during the sweep or the tail drops it. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Length. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0.1 (play mode, cursor on Takeoff) the footswitch LED is off at rest and follows the sound: it fades up with the riser and out with the tail; on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
+Adds a riser or a downlifter on top of what you play, like DubSiren: the input is never touched, Vol sets the added sound. Any on/off flip fires one sweep over Length, at once (no wait for the bar). A flip during the sweep or the tail drops it. Hold the footswitch (MIDISTOMP with HOLD FOR set to MOMENTARY) and it rises while you hold and drops when you let go (letting go only drops, it never fires a new sweep); it sits at the top if you hold past the end of Length. The sound is noise through a resonant sweeping filter; the volume swells with the sweep. It is mono, the same on both sides, starting from a root of 50 Hz. On MIDISTOMP v2.0 (play mode, cursor on Takeoff) the footswitch LED is off at rest and follows the sound: it fades up with the riser and out with the tail; on stock it stays as the firmware shows it. When nothing is sounding it costs next to nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -286,11 +286,11 @@ An SSL G-bus style VCA compressor to glue a mix: one character, done well. One g
 Try: Thrsh -12, Ratio 2, Attck 30 ms, Rels AUTO, MkUp AUTO, SC HP 100 Hz on a full mix for glue; Ratio 10, Attck 1 ms, Mix 50 on drums for parallel punch. The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the output level, with the threshold as a centered line tagged THRSH. It works on any MS-70CDR on firmware 2.10, stock included; on other firmware the cover stays static.
 
 ### GRDLOOP: a bar-synced looper on the song grid
-Stereo in and out. Made for MIDISTOMP v2.0.1; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 9 s mono or 4.9 s stereo.
+Stereo in and out. Made for MIDISTOMP v2.0; on stock firmware it works in a reduced form: every on/off flip is a press, the press that records is bar 1, it follows the tap tempo, and it holds about 9 s mono or 4.9 s stereo.
 
 The song grid: with a MIDI clock running, bar 1 is MIDI Start. Without one it runs at the pedal's tempo, and the press that records an empty looper is bar 1, so the first recording starts at once.
 
-**Footswitch.** On MIDISTOMP v2.0.1, with GRDLOOP under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, the patch is not marked edited and the LED shows the state. GRDLOOP's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On stock firmware, and for a second GRDLOOP in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
+**Footswitch.** On MIDISTOMP v2.0, with GRDLOOP under the cursor, the footswitch is a press: the effect never flips, a hold does nothing, the patch is not marked edited and the LED shows the state. GRDLOOP's on/off CC (14, 24 ... 64 by position) is a press for values 64-127, whatever is on screen. On stock firmware, and for a second GRDLOOP in the same patch, every on/off flip is a press, the LED means nothing, and each flip marks the patch as edited.
 
 | State | Press | Double press (two within 300 ms) |
 |---|---|---|
@@ -312,7 +312,7 @@ Record, stop and play wait for the Next line; delete is always at once. MIDI Sta
 
 Old Looper patches load: Length 2 bars reads as SLAVE (others OWN), When maps to Next (IMMED = NOW) and Amount to Cycle.
 
-**Memory.** 12-bit block floating point. On MIDISTOMP v2.0.1 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 23.3 s stereo or 43.2 s mono, so 8 bars stereo from 83 BPM and mono from 45 BPM. On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 9 s mono or 4.9 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change. Everything GRDLOOP leaves in the slot's memory reads as silence, so a stock delay or reverb loaded into that slot afterwards starts clean.
+**Memory.** 12-bit block floating point. On MIDISTOMP v2.0 one GRDLOOP per patch gets the firmware's big buffer, 3.3 MB: 23.3 s stereo or 43.2 s mono, so 8 bars stereo from 83 BPM and mono from 45 BPM. On stock firmware, or for a second GRDLOOP, only the effect's own 705 KB: about 9 s mono or 4.9 s stereo. Stereo whenever a cycle fits, else mono ((L+R)/2), else shorter (the screen shows REC n/m). The loop is lost on a patch change. Everything GRDLOOP leaves in the slot's memory reads as silence, so a stock delay or reverb loaded into that slot afterwards starts clean.
 
 ## Credits
 

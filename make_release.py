@@ -1,4 +1,4 @@
-"""Pack the seventeen released effects (release v2.0.1, no probes) for sharing: py make_release.py
+"""Pack the seventeen released effects (no probes) for sharing: py make_release.py
 Needs the .ZDL files in dist\\ (run py build_all.py first).
 Writes release\\Matujuice_ZoomMS_pack.zip with the ZDLs, README.md, LICENSE (from the repo root) and the cover sheet."""
 import sys, zipfile
