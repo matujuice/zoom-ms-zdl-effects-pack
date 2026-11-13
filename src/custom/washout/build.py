@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Washout.ZDL from washout.c + manifest_pedal.json (9-knob pedal build).
+"""Build Washout.ZDL from washout.c + manifest_pedal.json (3-knob pedal build).
 
 Adapted from the Hydra build script: same compiler flags, same linker options,
 same 3-knob cover layout (the pedal screen shows the first three knobs).
