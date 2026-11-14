@@ -1,6 +1,6 @@
 {
   "effect_name": "Washout",
-  "comment": "Washout - one Wash knob turns the sound into a cloud (a Transit-style macro). Wash 0..100 moves everything at once: the dry fades down and the wash up (equal power, 100 = wash only), the decay grows from about 1 s to almost endless, the diffusion thickens, the loop darkens (HiCut 12 kHz..3 kHz) and thins (LoCut 25..300 Hz). Tone shifts the HiCut range darker or brighter, Size sets the loop length (27..136 ms). A short loop diffused on every pass: no discrete repeats. Wash 0 lets the tail ring out and then costs nothing. The footswitch is plain on/off with trails.",
+  "comment": "Washout - one Wash knob turns the sound into a cloud (a Transit-style macro). Wash 0..100 moves everything at once: the dry fades down and the wash up (equal power, 100 = wash only), the decay grows from about 1 s to almost endless, the diffusion thickens, the loop darkens (HiCut 12 kHz..3 kHz) and thins (LoCut 25..300 Hz). Tone shifts the HiCut range darker or brighter, Size sets the loop length (27..136 ms). A short loop diffused on every pass: no discrete repeats. Tail sets how long the cloud rings out after Wash goes down (0.1..20 s); Wash 0 lets the tail ring out and then costs nothing. The footswitch is plain on/off with trails.",
   "gid": 8,
   "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
   "fxid": 492,
@@ -28,6 +28,12 @@
       "max": 100,
       "default": 50,
       "comment": "Loop length: 27 ms (0) .. 136 ms (100), R 13 % longer. Crossfaded over 23 ms when it moves. Default 50."
+    },
+    {
+      "name": "Tail",
+      "max": 100,
+      "default": 60,
+      "comment": "How long the cloud rings out after Wash goes down or the effect goes off: 0.1 s (0) .. 20 s (100), 60 = 2.4 s. The screen shows the time. Default 60."
     }
   ],
   "dsp_cost": 60.0,

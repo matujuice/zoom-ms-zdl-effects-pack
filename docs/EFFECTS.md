@@ -258,15 +258,16 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 <img src="../graphics/washout.png" width="320" alt="Washout on the pedal screen">
 Stereo in and out.
 
-A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. At Wash 0, once the tail has died, it costs nothing.
+A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back at once, while the cloud rings out for the Tail time instead of stopping. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out for the Tail time. At Wash 0, once the tail has died, it costs nothing.
 
 | Knob | Range | What it does |
 |---|---|---|
 | Wash | 0..100 | The macro. 0 = dry only; 100 = wash only, dry silent, tail almost endless. In between it moves the send, the decay, the diffusion, the HiCut (12 kHz down to about 3 kHz) and the LoCut (25 up to 300 Hz) together. Default 50. |
 | Tone | 0..100 | How dark the wash gets: lower is darker, higher brighter. Default 50. |
 | Size | 0..100 | Length of the loop, 27..136 ms: small is tighter and grainier, big is a wider cloud. Default 50. |
+| Tail | 0..100 | (page 2) How long the cloud rings out after Wash goes down or the footswitch goes off: 0.1 s (0) up to 20 s (100); the screen shows the time. Default 60 (2.4 s). |
 
-Try: ride Wash from 0 to 100 over the last bar before a drop, then snap it back; park it at 30 for a short smear under the dry; Wash 100 and footswitch off to let the cloud ring out on its own.
+Try: ride Wash from 0 to 100 over the last bar before a drop, then snap it back (Tail 0 for a hard cut, Tail 100 for a long fade); park it at 30 for a short smear under the dry; Wash 100 and footswitch off to let the cloud ring out on its own.
 
 ### Takeoff: risers and downlifters
 
