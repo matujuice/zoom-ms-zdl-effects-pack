@@ -258,7 +258,7 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 <img src="../graphics/washout.png" width="320" alt="Washout on the pedal screen">
 Stereo in and out.
 
-A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. At Wash 0, once the tail has died, it costs nothing.
+A washout for transitions, played with one knob (like the macro knob of Baby Audio Transit). Turn Wash up and, in one move, more of the track goes into a short diffused loop and the dry fades down (equal power, so the level stays even), the tail gets longer until it hangs almost forever, it smears more, and it gets darker and thinner. Turn Wash back down and the track comes back at once, while the cloud rings out over a couple of seconds instead of stopping. Left and right have their own loop and diffusers, so a mono input comes out wide. Wash glides, so a fast turn or a CC jump doesn't click. The footswitch is a plain on/off with trails: off stops new sound going in, the dry comes back to full level and the tail rings out. At Wash 0, once the tail has died, it costs nothing.
 
 | Knob | Range | What it does |
 |---|---|---|

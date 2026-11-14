@@ -1,5 +1,5 @@
 /* Washout (one Wash macro, Tone, Size) through the real pedal entry: riding Wash and Size never clicks, Wash 100
- * stays bounded and rings far longer than a low Wash, Wash 0 with an empty loop is the bit-exact dry and does no
+ * stays bounded and rings far longer than a low Wash, dropping Wash lets the cloud ring out, Wash 0 with an empty loop is the bit-exact dry and does no
  * work, the tail dies and goes idle, the footswitch keeps the tail and gives back the full dry, L stays on L. */
 #include <stdio.h>
 #include <math.h>
@@ -121,5 +121,15 @@ int main(void)
       CHECK(fabs(xc) < 0.5, "sides not decorrelated"); }
 
     printf("state %u bytes\n", (unsigned)sizeof(WdState));
+    /* 6. Wash 100 on noise, then Wash snapped to 0: the cloud keeps ringing for a while, then dies */
+    { double t1, t5;
+      for (i = 0; i < LEN; i++) { inL[i] = (i < SEC * 3) ? 0.3f * noise() : 0; inR[i] = inL[i]; }
+      fresh(100, 50, 50);
+      for (b = 0; b < LEN / 8; b++) { t = b * 8; if (t >= SEC * 3 && t < SEC * 3 + 8) SET(WASH, 0); blk(t, 1); }
+      t1 = rms(oL, SEC * 4, SEC * 4 + 4410); t5 = rms(oL, SEC * 9, LEN);
+      printf("Wash 100 -> 0: tail rms 1 s after %.4f, 6 s after %.2e\n", t1, t5);
+      CHECK(t1 > 0.02, "Wash 100 -> 0 cuts the tail");
+      CHECK(t5 < 1e-4, "the tail does not die after Wash 0"); }
+
     return fails;
 }

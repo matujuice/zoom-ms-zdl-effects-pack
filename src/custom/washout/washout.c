@@ -13,7 +13,9 @@
  *   decay fb = 0.40 .. 0.98 (about 1 s .. almost endless)
  *   diffusion g = 0.50 .. 0.70
  *   HiCut 12 kHz .. 3 kHz (x Tone), LoCut 25 Hz .. 300 Hz
- *   Wash 0: nothing goes in and the tail rings out with a short decay; once it has died the effect
+ *   Turning Wash down closes the send as fast as above, but the decay, diffusion and filters follow
+ *   down slowly (Wash 100 -> 0 in about 3 s), so the cloud rings out instead of stopping.
+ *   Wash 0: nothing goes in and the tail rings out; once it has died the effect
  *   does no work (the dry passes as is). Nothing is ever cleared in one block.
  * TONE 0..100: the HiCut range x 0.5 (dark) .. x 2 (bright), 50 = as above.
  * SIZE 0..100: the loop length, 27 ms .. 136 ms (L), crossfaded over 23 ms when it changes.
@@ -45,7 +47,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F38u        /* "WDO8": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F39u        /* "WDO9": change whenever WdState changes      */
 #define WD_N          7000               /* ring length per side (a multiple of 8)      */
 #define WD_APN        512                /* all-pass line length (power of 2)           */
 #define WD_CLEAR_N    (2 * WD_N + 2 * 4 * WD_APN)
@@ -56,6 +58,7 @@
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* send smoothing, about 7.5 ms */
 #define WD_W_RATE     0.1f               /* Wash smoothing per block, about 10 ms */
+#define WD_REL        6.0e-5f            /* tail Wash falls this much per block: 1 -> 0 in about 3 s */
 #define WD_QUIET      0.5f               /* ring "silent" below this (4096 scale)       */
 
 typedef struct {
@@ -74,6 +77,7 @@ typedef struct {
     float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part      */
     float sg;              /* send, smoothed                                     */
     float ws;              /* Wash, smoothed (0..1)                              */
+    float wd;              /* tail Wash: follows ws up at once, down slowly      */
     float rk[4];           /* raw knobs and on that P comes from                 */
     WdParams P;
     float esg, ea, eb;     /* send the steady wash and dry gains are for (-1: not yet) */
@@ -159,7 +163,7 @@ static inline void wd_init(WdState *s)
     s->clr = 0; s->wp = 0; s->apw = 0; s->quiet = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f;
-    s->sg = 0.0f; s->ws = -1.0f;
+    s->sg = 0.0f; s->ws = -1.0f; s->wd = 0.0f;
     for (k = 0; k < 4; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
     s->esg = -1.0f;
     ZA_ZERO_SEAL(s);
@@ -181,14 +185,15 @@ static inline int wd_clearing(WdState *s)
     return 1;
 }
 
-/* w = smoothed Wash 0..1, t = Tone, z = Size (screen values) -> per-block numbers */
+/* w = smoothed Wash 0..1 (send), d = tail Wash 0..1 (decay, diffusion, filters), t = Tone, z = Size
+ * (screen values) -> per-block numbers */
 WD_ALWAYS_INLINE(wd_prepare)
-static inline void wd_prepare(WdParams *P, float w, float t, float z, int on)
+static inline void wd_prepare(WdParams *P, float w, float d, float t, float z, int on)
 {
-    float fb = 0.40f + 0.65f * w;   /* above 1 near 100: the loop filters lose about 9 % a pass */
-    P->g = 0.50f + 0.20f * w;
-    P->cl = wd_coef(12000.0f * wd_exp2(-2.0f * w + 0.02f * (t - 50.0f)));
-    P->ch = wd_coef(25.0f * wd_exp2(3.585f * w));
+    float fb = 0.40f + 0.65f * d;   /* above 1 near 100: the loop filters lose about 9 % a pass */
+    P->g = 0.50f + 0.20f * d;
+    P->cl = wd_coef(12000.0f * wd_exp2(-2.0f * d + 0.02f * (t - 50.0f)));
+    P->ch = wd_coef(25.0f * wd_exp2(3.585f * d));
     P->dT = (float)(int)(1200.0f + 48.0f * z + 0.5f);   /* whole samples: no interpolation loss in the loop */
     if (!on && fb > 0.9f) fb = 0.9f;                       /* switched off: the tail dies */
     P->fb = fb;
@@ -377,7 +382,12 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
         if (s->ws - wt < 1e-4f && wt - s->ws < 1e-4f) s->ws = wt;
         chg = 1;
     }
-    if (chg) wd_prepare(&s->P, s->ws, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
+    if (s->wd < s->ws) { s->wd = s->ws; chg = 1; }          /* the tail follows Wash up at once */
+    else if (s->wd > s->ws) {                    /* and down slowly: the cloud rings out */
+        s->wd = (s->wd - WD_REL > s->ws) ? s->wd - WD_REL : s->ws;
+        chg = 1;
+    }
+    if (chg) wd_prepare(&s->P, s->ws, s->wd, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
                         wd_ui(r[2], (float)WASHOUT_SIZE_UI_DEFAULT, 100.0f), r[3] != 0.0f);
     if (wd_clearing(s)) goto done;               /* first ~7 ms after loading: dry */
     wd_process(s, &s->P, fxBuf);                 /* L and R in place */
