@@ -17,7 +17,7 @@
     {"name": "Slope", "max": 1, "default": 1,
      "comment": "Slope of the DJ filter: 0 = 12 dB/oct (gentle, warm), 1 = 24 dB/oct (hard DJ-mixer cut). Default 24. Kill is always 24."},
     {"name": "Glide", "max": 100, "default": 44,
-     "comment": "How fast DJ follows the knob. 0 = instant, 1..100 = 1 to 1000 ms on a log scale. Default 44 = about 20 ms."},
+     "comment": "How fast DJ follows the knob. 0 = 3 ms (as fast as it goes without clicking), 1..100 = 1 to 1000 ms on a log scale. Default 44 = about 20 ms."},
     {"name": "Level", "max": 36, "default": 24,
      "comment": "Output trim in 0.5 dB steps: 0 = -12 dB, 24 = 0 dB, 36 = +6 dB. Default 0 dB."},
     {"name": "Mix", "max": 100, "default": 100,

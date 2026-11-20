@@ -241,7 +241,7 @@ At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 
 <img src="../graphics/djfilter.png" width="320" alt="DJFilter on the pedal screen">
 Stereo in and out.
 
-The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
+The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing; the filter fades in over the next few steps, so crossing the middle (even in one jump) never clicks. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
 
 | Knob | Range | What it does |
 |---|---|---|
@@ -249,7 +249,7 @@ The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, w
 | Reso | 0..100 | Resonance at the far end of the sweep. About none when the filter is open, rising as it closes, never self-oscillating. Default 30. |
 | Kill | OFF, 20..300 Hz | An independent 24 dB/oct low cut that removes kick and bass. Use it alone or on top of the filter. Default OFF. |
 | Slope | 12 / 24 | dB per octave of the filter (not Kill). 12 is gentle and warm, 24 is the hard DJ-mixer cut. Default 24. |
-| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. Default about 20 ms. |
+| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. 0 is the fastest (3 ms). With Perform keep it at the default or above: Perform sends a new value every 16 ms, and Glide turns those steps into a smooth sweep. Default about 20 ms. |
 | Level | -12.0..+6.0 dB | Output trim. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 

@@ -45,6 +45,34 @@ static void check(const char *name, double hz, double amp, int blocks, int at, c
 
 static void kill_dj(void)   { SET(KILL, 100); SET(DJ, 150); }
 
+/* DJ moved like a hand turn (1 step / 4 blocks) or like Perform (a value every 16 ms, a 500 ms
+ * ramp) on a 110 Hz sine. Returns the largest output 2nd difference against the input's own:
+ * a click is a corner or a step, which the 2nd difference shows even when the step is small. */
+static double sweep_2nd(int from, int to, int perf, int glide)
+{
+    long blk, k = 0; int j, cur = from; double p1 = 0, p2 = 0, q1 = 0, q2 = 0, worst = 0, iw = 0;
+    setup(); SET(GLIDE, glide); SET(DJ, from);
+    for (blk = 0; blk < 6000; blk++) {
+        float l[8];
+        long t = blk - 1000;
+        if (t >= 0) {
+            int v = cur;
+            if (!perf) { if (t % 4 == 0 && cur != to) v = cur + (to > from ? 1 : -1); }
+            else if (t % 88 == 0) { double pos = (double)t * 8 / 44.1 / 500.0; if (pos > 1) pos = 1;
+                                    v = (int)(from + (to - from) * pos + (to > from ? 0.5 : -0.5)); }
+            if (v != cur) { cur = v; SET(DJ, cur); }
+        }
+        for (j = 0; j < 8; j++, k++) l[j] = (float)(0.5 * sin(6.283185307179586 * 110.0 * (double)k / 44100.0));
+        block(l, l);
+        for (j = 0; j < 8; j++) {
+            double d2 = fabs(fx[j] - 2 * p1 + p2), i2 = fabs(l[j] - 2 * q1 + q2);
+            if (blk > 200) { if (d2 > worst) worst = d2; if (i2 > iw) iw = i2; }
+            p2 = p1; p1 = fx[j]; q2 = q1; q1 = l[j];
+        }
+    }
+    return worst / iw;
+}
+
 int main(void)
 {
     double istep, w, c;
@@ -103,5 +131,14 @@ int main(void)
         printf("on/off/on: largest step %.4f (input %.4f)\n", worst, c);
         CHECK(worst < c * 1.5 + 0.01, "on/off/on clicks (%.4f)", worst);
     }
+    /* sweeps through DJ 0 (LP <-> HP) by hand and by Perform: before the fade-in at the flat
+     * zone's edge these stepped 25x the input (default Glide) and 140x (Perform, Glide 0) */
+    { static const int pf[] = {0, 1, 1}, gl[] = {44, 44, 0}; static const char *nm[] = {"hand", "Perform", "Perform, Glide 0"};
+      double lim[] = {12.0, 8.0, 15.0}, x; int q;
+      for (q = 0; q < 3; q++) {
+          x = sweep_2nd(0, 200, pf[q], gl[q]);
+          printf("DJ -100 -> +100 (%s): largest 2nd difference x%.1f the input's\n", nm[q], x);
+          CHECK(x < lim[q], "DJ sweep through 0 (%s) clicks: x%.1f", nm[q], x);
+      } }
     return fails;
 }
