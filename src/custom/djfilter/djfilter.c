@@ -13,7 +13,7 @@
  *   5 Level 0..36    -12 .. +6 dB in 0.5 dB steps (default 24 = 0 dB)
  *   6 Mix   0..100   DJ crossfade (dry min(1,2-2m), wet min(1,2m)), default 100
  *
- * HOW IT WORKS (all coefficient maths once per 8-sample block, then plain sample loops)
+ * HOW IT WORKS (coefficient maths per 8-sample block, every 4th while DJ glides, then plain sample loops)
  *   Amount: DJ counts from the edge of its flat zone, (|DJ| - 3) / 97, signed (below 0 low-pass,
  *   above 0 high-pass), smoothed once per block by Glide (a one-pole, so a jump sweeps; a jump
  *   from left to right sweeps through open).
@@ -60,7 +60,7 @@
 #define DF_ONE_COPY(fn)
 #endif
 
-#define DF_MAGIC   0x44463035u              /* "DF05": change when DfState changes */
+#define DF_MAGIC   0x44463036u              /* "DF06": change when DfState changes */
 #define DF_K0      1.4142136f               /* 1/Q for Q = 0.7071 (Butterworth)    */
 #define DF_LP_TOP  19000.0f
 #define DF_LP_OCT  8.89f                    /* octaves from 19 kHz down to 40 Hz   */
@@ -96,8 +96,11 @@ typedef struct {
     float gl;              /* Glide's per-block step                              */
     float pa;              /* the amount P was worked out for                     */
     float pf;              /* last block's P.f: this block's fade ramps from it  */
+    unsigned int pc;       /* block count: while DJ glides the maths runs every 4th block */
+    unsigned int nst;      /* blocks left stepping P.c[0..1] by dc                */
+    float dc[14];          /* per-block step of P.c[0..1] towards the last worked-out values */
     DfParams P;
-    unsigned int seal[ZA_NSEAL(65)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
+    unsigned int seal[ZA_NSEAL(78)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
 } DfState;
 ZA_CHECK(DfState);
 
@@ -205,7 +208,7 @@ static inline void df_init(DfState *s)
     for (i = 0u; i < 16u; i++) s->ic[i] = 0.0f;
     for (i = 0u; i < 7u; i++) s->rk[i] = -1.0f;   /* no knob is -1: the first block works everything out */
     s->pa = 2.0f;
-    s->pf = 0.0f;
+    s->pf = 0.0f; s->pc = 0u; s->nst = 0u;
     s->magic = DF_MAGIC;
 }
 
@@ -380,7 +383,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     DfState *s;
     float r[7], e0, de;
-    int on, k, chg = 0;
+    int on, k, chg = 0, chgo = 0;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -406,6 +409,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     r[4] = params[DJFILTER_GLIDE_SLOT]; r[5] = params[DJFILTER_LEVEL_SLOT];
     r[6] = params[DJFILTER_MIX_SLOT];
     for (k = 0; k < 7; k++) if (r[k] != s->rk[k]) chg = 1;
+    for (k = 1; k < 7; k++) if (r[k] != s->rk[k]) chgo = 1;   /* DJ itself only moves the glided amount */
     if (chg) {
         float *u = s->u;
         u[0] = df_ui(r[0], (float)DJFILTER_DJ_UI_DEFAULT,    200.0f);
@@ -423,14 +427,34 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     on = (params[0] >= 0.5f);
     df_smooth(s);
     if (!on && s->e <= 0.0f) {                   /* fully off: input untouched */
-        s->act = 0u; s->pf = 0.0f;
+        s->act = 0u; s->pf = 0.0f; s->pa = 2.0f;   /* back on: coefficients worked out afresh */
         goto done;
     }
     e0 = s->e;                                   /* footswitch ramp: this block's start and step */
     if (on) { s->e += DF_FADE; if (s->e > 1.0f) s->e = 1.0f; }
     else    { s->e -= DF_FADE; if (s->e < 0.0f) s->e = 0.0f; }
     de = (s->e - e0) * 0.125f;
-    if (chg || s->a != s->pa) { df_prepare(&s->P, s->u, s->a); s->pa = s->a; }
+    /* gliding: the knob maths every 4th block (0.7 ms), the DJ stages' coefficients stepped
+     * linearly towards it in between, keeps a moving DJ cheap. Every block near DJ 0, where the
+     * fade and LP <-> HP need it, and when another knob changed. */
+    {
+        const int full = chgo || s->pa > 1.5f || (s->a != s->pa &&
+                         (s->a * s->a < 1.0f / (DF_EDGE * DF_EDGE) || s->pa * s->pa < 1.0f / (DF_EDGE * DF_EDGE)));
+        float *pc = &s->P.c[0].a1;               /* c[0], c[1]: 14 floats in a row */
+        if (full || (s->a != s->pa && (++s->pc & 3u) == 0u)) {
+            DfParams T;
+            df_prepare(&T, s->u, s->a); s->pa = s->a;
+            if (full) s->nst = 0u;
+            else {
+                const float *tc = &T.c[0].a1;
+                for (k = 0; k < 14; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
+                s->nst = 4u;
+            }
+            s->P = T;
+            if (s->nst) for (k = 0; k < 14; k++) pc[k] -= 4.0f * s->dc[k];   /* back to the old values */
+        }
+        if (s->nst) { for (k = 0; k < 14; k++) pc[k] += s->dc[k]; s->nst--; }
+    }
     if (s->P.on == 0u && s->act == 0u && e0 >= 1.0f && de == 0.0f &&
         s->P.dg + s->P.wg > 0.9999f && s->P.dg + s->P.wg < 1.0001f)
         goto done;                               /* nothing to do: skipped entirely */
