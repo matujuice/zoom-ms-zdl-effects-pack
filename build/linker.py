@@ -1444,9 +1444,9 @@ def link(cfg: LinkerConfig) -> None:
         if ext_name in undefined and blob_key in handler_va:
             sym_addr[undefined[ext_name]] = handler_va[blob_key]
 
-    for name, idx in undefined.items():
-        if idx not in sym_addr:
-            print(f"  WARNING: unresolved external: {name}")
+    missing = [name for name, idx in undefined.items() if idx not in sym_addr]
+    if missing:   # a call to it jumps into nothing on the pedal (it froze on DJFilter's struct copy)
+        raise SystemExit(f"  ERROR: unresolved external(s): {', '.join(sorted(missing))}")
 
     # =====================================================================
     # Apply .text/.audio relocations

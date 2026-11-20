@@ -8,11 +8,12 @@
  *   1 Reso  0..100   resonance at the far end of the sweep (default 30)
  *   2 Kill  0..281   OFF, then 20 .. 300 Hz: an independent 24 dB/oct low cut (default OFF)
  *   3 Slope 0..1     12 / 24 dB per octave for the DJ filter (default 24)
- *   4 Glide 0..100   0 = instant, 1..100 = 1 .. 1000 ms (log), smooths DJ (default 44 = 20 ms)
+ *   4 Glide 0..100   0 = 3 ms (just enough not to click), 1..100 = 1 .. 1000 ms (log), smooths DJ
+ *                    (default 44 = 20 ms)
  *   5 Level 0..36    -12 .. +6 dB in 0.5 dB steps (default 24 = 0 dB)
  *   6 Mix   0..100   DJ crossfade (dry min(1,2-2m), wet min(1,2m)), default 100
  *
- * HOW IT WORKS (all coefficient maths once per 8-sample block, then plain sample loops)
+ * HOW IT WORKS (coefficient maths per 8-sample block, every 4th while DJ glides, then plain sample loops)
  *   Amount: DJ counts from the edge of its flat zone, (|DJ| - 3) / 97, signed (below 0 low-pass,
  *   above 0 high-pass), smoothed once per block by Glide (a one-pole, so a jump sweeps; a jump
  *   from left to right sweeps through open).
@@ -26,7 +27,11 @@
  *   Linkwitz-Riley (-6 dB at the cutoff). Kill: two Q 0.71 high-pass stages at its own frequency.
  *   CPU: each pair of stages runs both sides in one loop (four chains side by side keep the DSP's
  *   pipeline full). The DJ filter at 0 and Kill OFF are skipped (zero cost); a restarted stage
- *   (or LP <-> HP) has its memory fitted to the signal first, so it never clicks.
+ *   (or LP <-> HP) has its memory fitted to the signal first. Neither end of the sweep is
+ *   transparent (19 kHz LP, 20 Hz HP), so over the first 3 units out of the flat zone the DJ
+ *   filter fades in from its own input (|a| < 1/32, ramped over each block): DJ 0, where it stops
+ *   or flips LP <-> HP, is exactly its input and never clicks, even when a CC or Perform jumps
+ *   across it.
  *   Footswitch: the switch-over is a gain ramp over 128 samples (2.9 ms). While it runs the
  *   effect keeps processing, so both on and off fade. Fully off, the input passes untouched.
  *   Output = Level * (dry * input + wet * filtered), then the footswitch ramp. Nothing active,
@@ -55,13 +60,15 @@
 #define DF_ONE_COPY(fn)
 #endif
 
-#define DF_MAGIC   0x44463034u              /* "DF04": change when DfState changes */
+#define DF_MAGIC   0x44463036u              /* "DF06": change when DfState changes */
 #define DF_K0      1.4142136f               /* 1/Q for Q = 0.7071 (Butterworth)    */
 #define DF_LP_TOP  19000.0f
 #define DF_LP_OCT  8.89f                    /* octaves from 19 kHz down to 40 Hz   */
 #define DF_HP_LOW  20.0f
 #define DF_HP_OCT  8.9658f                  /* log2(500): 20 Hz up to 10 kHz       */
 #define DF_FADE    0.0625f                  /* footswitch ramp per block: 128 samples */
+#define DF_EDGE    32.0f                    /* DJ filter fades in over |a| 0 .. 1/32 (3 DJ units) */
+#define DF_GL0     0.0586f                  /* Glide 0: a 3 ms smoothing a block, not a snap */
 
 typedef struct {
     float a1, a2, a3;      /* state-variable stage update                         */
@@ -73,6 +80,7 @@ typedef struct {
     DfC c[3];              /* DJ filter stage 1, stage 2 (passes through at 12 dB), Kill */
     unsigned int on;       /* bit 0 DJ filter, 1 its second stage, 2 Kill, 4 the DJ filter is a high-pass */
     float dg, wg;          /* dry and wet gain (with Level)                       */
+    float f;               /* DJ filter fade-in 0 (its input) .. 1 (filtered)     */
 } DfParams;
 
 /* The knob maths runs only when a knob or the glided amount moved: on the pedal every byte of code a
@@ -87,8 +95,12 @@ typedef struct {
     float u[7];            /* screen values: DJ, Reso, Kill, Slope, Glide, Level, Mix */
     float gl;              /* Glide's per-block step                              */
     float pa;              /* the amount P was worked out for                     */
+    float pf;              /* last block's P.f: this block's fade ramps from it  */
+    unsigned int pc;       /* block count: while DJ glides the maths runs every 4th block */
+    unsigned int nst;      /* blocks left stepping P.c[0..1] by dc                */
+    float dc[14];          /* per-block step of P.c[0..1] towards the last worked-out values */
     DfParams P;
-    unsigned int seal[ZA_NSEAL(64)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
+    unsigned int seal[ZA_NSEAL(78)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
 } DfState;
 ZA_CHECK(DfState);
 
@@ -196,6 +208,7 @@ static inline void df_init(DfState *s)
     for (i = 0u; i < 16u; i++) s->ic[i] = 0.0f;
     for (i = 0u; i < 7u; i++) s->rk[i] = -1.0f;   /* no knob is -1: the first block works everything out */
     s->pa = 2.0f;
+    s->pf = 0.0f; s->pc = 0u; s->nst = 0u;
     s->magic = DF_MAGIC;
 }
 
@@ -207,14 +220,17 @@ static inline void df_smooth(DfState *s)
     float dj = s->u[0] - 100.0f, t = 0.0f;
     if (dj < -3.0f) t = (dj + 3.0f) * 0.010309278f;
     else if (dj > 3.0f) t = (dj - 3.0f) * 0.010309278f;
-    s->a += s->gl * (t - s->a);
+    dj = s->a + s->gl * (t - s->a);
+    if (dj * s->a < 0.0f && (s->a > 1e-6f || s->a < -1e-6f))
+        dj = (s->a < 0.0f) ? -1e-7f : 1e-7f;     /* crossing LP <-> HP: one block at the edge fades the old side out */
+    s->a = dj;
     if (s->a - t < 0.0001f && t - s->a < 0.0001f) s->a = t;   /* land: a still amount skips the filter maths */
 }
 
 DF_ALWAYS_INLINE(df_prepare)
 static inline void df_prepare(DfParams *P, const float *u, float a)
 {
-    float reso = u[1] * 0.01f, m = u[6] * 0.01f, lvl, dryG, wetG, g;
+    float reso = u[1] * 0.01f, m = u[6] * 0.01f, lvl, dryG, wetG, g, f = DF_EDGE * a;
     int s24 = (u[3] > 0.5f), hp = (a > 0.0f);
     unsigned int mask = 0u;
 
@@ -234,6 +250,9 @@ static inline void df_prepare(DfParams *P, const float *u, float a)
         mask |= 4u;
     }
     P->on = mask;
+    if (f < 0.0f) f = -f;
+    if (f > 1.0f) f = 1.0f;
+    P->f = f * f * (3.0f - 2.0f * f);            /* S-curve: no corner where the fade starts or ends */
 
     lvl = df_exp2((u[5] - 24.0f) * 0.5f * 0.16609640f);
     dryG = 2.0f - 2.0f * m; if (dryG > 1.0f) dryG = 1.0f;
@@ -251,7 +270,19 @@ static inline void df_process(DfState *s, const DfParams *P, float *buf, float e
     const int plain = (dg == 0.0f && wg == 1.0f && e >= 1.0f && de == 0.0f);   /* Mix 100, 0 dB, on: no dry pass */
     if ((P->on ^ s->act) & 16u) fresh |= P->on & 3u;      /* LP <-> HP: the filter restarts */
     if (!plain) for (i = 0; i < 16; i++) d[i] = buf[i];
-    if (P->on & 1u) df_pair(buf, s->ic, &P->c[0], &P->c[1], fresh & 1u, fresh & 2u);
+    if (P->on & 1u) {
+        float f = s->pf, df = (P->f - f) * 0.125f, x[16];
+        if (f < 1.0f || df != 0.0f) for (i = 0; i < 16; i++) x[i] = buf[i];
+        df_pair(buf, s->ic, &P->c[0], &P->c[1], fresh & 1u, fresh & 2u);
+        if (f < 1.0f || df != 0.0f) {            /* near DJ 0: fade in from the DJ filter's input */
+            DF_BLOCK_LOOP()
+            for (i = 0; i < 8; i++) {
+                f += df;
+                buf[i] = x[i] + f * (buf[i] - x[i]); buf[i + 8] = x[i + 8] + f * (buf[i + 8] - x[i + 8]);
+            }
+        }
+    }
+    s->pf = P->f;
     if (P->on & 4u) df_pair(buf, s->ic + 8, &P->c[2], &P->c[2], fresh & 4u, fresh & 4u);
     s->act = P->on;
     if (plain) return;
@@ -352,7 +383,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     unsigned int span;
     DfState *s;
     float r[7], e0, de;
-    int on, k, chg = 0;
+    int on, k, chg = 0, chgo = 0;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -378,6 +409,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     r[4] = params[DJFILTER_GLIDE_SLOT]; r[5] = params[DJFILTER_LEVEL_SLOT];
     r[6] = params[DJFILTER_MIX_SLOT];
     for (k = 0; k < 7; k++) if (r[k] != s->rk[k]) chg = 1;
+    for (k = 1; k < 7; k++) if (r[k] != s->rk[k]) chgo = 1;   /* DJ itself only moves the glided amount */
     if (chg) {
         float *u = s->u;
         u[0] = df_ui(r[0], (float)DJFILTER_DJ_UI_DEFAULT,    200.0f);
@@ -387,7 +419,7 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
         u[4] = df_ui(r[4], (float)DJFILTER_GLIDE_UI_DEFAULT, 100.0f);
         u[5] = df_ui(r[5], (float)DJFILTER_LEVEL_UI_DEFAULT, 36.0f);
         u[6] = df_ui(r[6], (float)DJFILTER_MIX_UI_DEFAULT,   100.0f);
-        s->gl = (u[4] < 0.5f) ? 1.0f
+        s->gl = (u[4] < 0.5f) ? DF_GL0
               : 1.0f - df_exp2(-0.2617f * df_recip(df_exp2((u[4] - 1.0f) * 0.1006693f)));
         for (k = 0; k < 7; k++) s->rk[k] = r[k];
     }
@@ -395,14 +427,38 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     on = (params[0] >= 0.5f);
     df_smooth(s);
     if (!on && s->e <= 0.0f) {                   /* fully off: input untouched */
-        s->act = 0u;
+        s->act = 0u; s->pf = 0.0f; s->pa = 2.0f;   /* back on: coefficients worked out afresh */
         goto done;
     }
     e0 = s->e;                                   /* footswitch ramp: this block's start and step */
     if (on) { s->e += DF_FADE; if (s->e > 1.0f) s->e = 1.0f; }
     else    { s->e -= DF_FADE; if (s->e < 0.0f) s->e = 0.0f; }
     de = (s->e - e0) * 0.125f;
-    if (chg || s->a != s->pa) { df_prepare(&s->P, s->u, s->a); s->pa = s->a; }
+    /* gliding: the knob maths every 4th block (0.7 ms), the DJ stages' coefficients stepped
+     * linearly towards it in between, keeps a moving DJ cheap. Every block near DJ 0, where the
+     * fade and LP <-> HP need it, and when another knob changed. */
+    {
+        const int full = chgo || s->pa > 1.5f || (s->a != s->pa &&
+                         (s->a * s->a < 1.0f / (DF_EDGE * DF_EDGE) || s->pa * s->pa < 1.0f / (DF_EDGE * DF_EDGE)));
+        float *pc = &s->P.c[0].a1;               /* c[0], c[1]: 14 floats in a row */
+        if (full || (s->a != s->pa && (++s->pc & 3u) == 0u)) {
+            DfParams T;
+            df_prepare(&T, s->u, s->a); s->pa = s->a;
+            if (full) s->nst = 0u;
+            else {
+                const float *tc = &T.c[0].a1;
+                for (k = 0; k < 14; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
+                s->nst = 4u;
+            }
+            {   /* word copy: a struct assignment calls the TI runtime (__c6xabi_strasgi), which a ZDL lacks */
+                const unsigned int *src = (const unsigned int *)&T;
+                unsigned int *dst = (unsigned int *)&s->P;
+                for (k = 0; k < (int)(sizeof(DfParams) >> 2); k++) dst[k] = src[k];
+            }
+            if (s->nst) for (k = 0; k < 14; k++) pc[k] -= 4.0f * s->dc[k];   /* back to the old values */
+        }
+        if (s->nst) { for (k = 0; k < 14; k++) pc[k] += s->dc[k]; s->nst--; }
+    }
     if (s->P.on == 0u && s->act == 0u && e0 >= 1.0f && de == 0.0f &&
         s->P.dg + s->P.wg > 0.9999f && s->P.dg + s->P.wg < 1.0001f)
         goto done;                               /* nothing to do: skipped entirely */
