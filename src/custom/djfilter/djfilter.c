@@ -450,7 +450,11 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
                 for (k = 0; k < 14; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
                 s->nst = 4u;
             }
-            s->P = T;
+            {   /* word copy: a struct assignment calls the TI runtime (__c6xabi_strasgi), which a ZDL lacks */
+                const unsigned int *src = (const unsigned int *)&T;
+                unsigned int *dst = (unsigned int *)&s->P;
+                for (k = 0; k < (int)(sizeof(DfParams) >> 2); k++) dst[k] = src[k];
+            }
             if (s->nst) for (k = 0; k < 14; k++) pc[k] -= 4.0f * s->dc[k];   /* back to the old values */
         }
         if (s->nst) { for (k = 0; k < 14; k++) pc[k] += s->dc[k]; s->nst--; }
