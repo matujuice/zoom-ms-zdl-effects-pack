@@ -56,6 +56,9 @@ static inline void za_seal(void *hdr, int n, unsigned int *seal)
     int i, k;
     for (i = 0; i + 14 <= n; i += 14) {
         c = 0u;
+#ifdef __TI_COMPILER_VERSION__
+#pragma UNROLL(14)
+#endif
         for (k = 0; k < 14; k++) {
             x = w[i + k];
             c |= (x & 0x60000000u) >> (29 - k - k);
