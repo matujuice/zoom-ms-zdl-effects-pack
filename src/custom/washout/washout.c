@@ -244,8 +244,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         float a0, b0, da, db;
         if (sg != s->esg) { s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); }
         a0 = s->ea; b0 = s->eb;
-        WD_EIGHT
-        for (i = 0; i < 8; i++) sg += (inT - sg) * WD_SG_RATE;
+        sg = inT + (sg - inT) * 0.97625049f;   /* 8 samples of the WD_SG_RATE smoothing: (1 - 0.003)^8 */
         sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Wash 100 = dry silent */
         s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); s->esg = sg;
         da = (s->ea - a0) * 0.125f; db = (s->eb - b0) * 0.125f;
@@ -426,17 +425,22 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     ro = (s->wd > wd);
     /* a knob: maths now. Gliding / ringing out: maths every 4th block and on landing, fb..g in straight lines */
     if (knob || (chg && ((s->ws == wt && s->wd == wd) || (++s->pc & 3u) == 0u))) {
-        WdParams T;
-        float *pc = &s->P.fb;
-        const float *tc = &T.fb;
-        wd_prepare(&T, s->ws, s->wd, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
+        const float o0 = s->P.fb, o1 = s->P.cl, o2 = s->P.ch, o3 = s->P.g;
+        wd_prepare(&s->P, s->ws, s->wd, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
                    wd_ui(r[2], (float)WASHOUT_SIZE_UI_DEFAULT, 100.0f),
                    wd_ui(r[4], (float)WASHOUT_TAIL_UI_DEFAULT, 100.0f), r[3] != 0.0f, ro);
-        if (knob) { for (k = 0; k < 4; k++) pc[k] = tc[k]; s->nst = 0u; }
-        else      { for (k = 0; k < 4; k++) s->dd[k] = (tc[k] - pc[k]) * 0.25f; s->nst = 4u; }
-        s->P.dT = T.dT; s->P.inT = T.inT; s->P.rel = T.rel;
+        if (knob) s->nst = 0u;
+        else {                                   /* back to the old fb..g, 4 steps to the new */
+            s->dd[0] = (s->P.fb - o0) * 0.25f; s->dd[1] = (s->P.cl - o1) * 0.25f;
+            s->dd[2] = (s->P.ch - o2) * 0.25f; s->dd[3] = (s->P.g - o3) * 0.25f;
+            s->P.fb = o0; s->P.cl = o1; s->P.ch = o2; s->P.g = o3;
+            s->nst = 4u;
+        }
     } else if (chg) s->P.inT = (r[3] != 0.0f) ? s->ws : 0.0f;   /* the send target stays exact */
-    if (s->nst) { float *pc = &s->P.fb; for (k = 0; k < 4; k++) pc[k] += s->dd[k]; s->nst--; }
+    if (s->nst) {
+        s->P.fb += s->dd[0]; s->P.cl += s->dd[1]; s->P.ch += s->dd[2]; s->P.g += s->dd[3];
+        s->nst--;
+    }
     if (wd_clearing(s)) goto done;               /* first ~7 ms after loading: dry */
     wd_process(s, &s->P, fxBuf);                 /* L and R in place */
 done:
