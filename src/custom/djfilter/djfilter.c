@@ -60,7 +60,7 @@
 #define DF_ONE_COPY(fn)
 #endif
 
-#define DF_MAGIC   0x44463036u              /* "DF06": change when DfState changes */
+#define DF_MAGIC   0x44463037u              /* "DF07": change when DfState changes */
 #define DF_K0      1.4142136f               /* 1/Q for Q = 0.7071 (Butterworth)    */
 #define DF_LP_TOP  19000.0f
 #define DF_LP_OCT  8.89f                    /* octaves from 19 kHz down to 40 Hz   */
@@ -96,11 +96,12 @@ typedef struct {
     float gl;              /* Glide's per-block step                              */
     float pa;              /* the amount P was worked out for                     */
     float pf;              /* last block's P.f: this block's fade ramps from it  */
-    unsigned int pc;       /* block count: while DJ glides the maths runs every 4th block */
-    unsigned int nst;      /* blocks left stepping P.c[0..1] by dc                */
+    unsigned int pc;       /* block count: while DJ glides one piece of the maths a block */
+    unsigned int nst[2];   /* blocks left stepping P.c[0] / P.c[1] by dc          */
     float dc[14];          /* per-block step of P.c[0..1] towards the last worked-out values */
+    float ga, gg;          /* gliding: the amount g was worked out for, and g     */
     DfParams P;
-    unsigned int seal[ZA_NSEAL(78)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
+    unsigned int seal[ZA_NSEAL(81)]; /* every word above, bits 30, 29 between blocks (zarena.h) */
 } DfState;
 ZA_CHECK(DfState);
 
@@ -208,7 +209,7 @@ static inline void df_init(DfState *s)
     for (i = 0u; i < 16u; i++) s->ic[i] = 0.0f;
     for (i = 0u; i < 7u; i++) s->rk[i] = -1.0f;   /* no knob is -1: the first block works everything out */
     s->pa = 2.0f;
-    s->pf = 0.0f; s->pc = 0u; s->nst = 0u;
+    s->pf = 0.0f; s->pc = 0u; s->nst[0] = 0u; s->nst[1] = 0u;
     s->magic = DF_MAGIC;
 }
 
@@ -434,30 +435,50 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
     if (on) { s->e += DF_FADE; if (s->e > 1.0f) s->e = 1.0f; }
     else    { s->e -= DF_FADE; if (s->e < 0.0f) s->e = 0.0f; }
     de = (s->e - e0) * 0.125f;
-    /* gliding: the knob maths every 4th block (0.7 ms), the DJ stages' coefficients stepped
-     * linearly towards it in between, keeps a moving DJ cheap. Every block near DJ 0, where the
-     * fade and LP <-> HP need it, and when another knob changed. */
+    /* gliding: one piece of the knob maths a block (g, stage 1, stage 2), each DJ stage stepped
+     * linearly to its new values over the next 4 blocks: keeps the busiest block of a moving DJ cheap.
+     * All of it at once near DJ 0, where the fade and LP <-> HP need it, and when another knob changed. */
     {
         const int full = chgo || s->pa > 1.5f || (s->a != s->pa &&
                          (s->a * s->a < 1.0f / (DF_EDGE * DF_EDGE) || s->pa * s->pa < 1.0f / (DF_EDGE * DF_EDGE)));
         float *pc = &s->P.c[0].a1;               /* c[0], c[1]: 14 floats in a row */
-        if (full || (s->a != s->pa && (++s->pc & 3u) == 0u)) {
+        if (full) {
             DfParams T;
             df_prepare(&T, s->u, s->a); s->pa = s->a;
-            if (full) s->nst = 0u;
-            else {
-                const float *tc = &T.c[0].a1;
-                for (k = 0; k < 14; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
-                s->nst = 4u;
-            }
+            s->nst[0] = 0u; s->nst[1] = 0u; s->pc = 0u;
             {   /* word copy: a struct assignment calls the TI runtime (__c6xabi_strasgi), which a ZDL lacks */
                 const unsigned int *src = (const unsigned int *)&T;
                 unsigned int *dst = (unsigned int *)&s->P;
                 for (k = 0; k < (int)(sizeof(DfParams) >> 2); k++) dst[k] = src[k];
             }
-            if (s->nst) for (k = 0; k < 14; k++) pc[k] -= 4.0f * s->dc[k];   /* back to the old values */
+        } else if (s->a != s->pa) {              /* same side as P (crossing goes through the full maths) */
+            const int hp = (s->ga > 0.0f);
+            const float aa = hp ? s->ga : -s->ga;
+            DfC c;
+            const float *tc = &c.a1;
+            switch (s->pc++ & 3u) {
+            case 0u:
+                s->ga = s->a;
+                {   const int h = (s->a > 0.0f);   /* one df_g, one df_exp2 copy */
+                    s->gg = df_g((h ? DF_HP_LOW : DF_LP_TOP) * df_exp2((h ? DF_HP_OCT : DF_LP_OCT) * s->a)); }
+                break;
+            case 1u:
+                df_coef(&c, s->gg, DF_K0 * df_exp2(-2.82f * 0.01f * s->u[1] * aa), hp);
+                for (k = 0; k < 7; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
+                s->nst[0] = 4u;
+                break;
+            case 2u:
+                if (s->u[3] > 0.5f) {            /* 24 dB; at 12 dB stage 2 passes through and stays */
+                    df_coef(&c, s->gg, DF_K0, hp);
+                    for (k = 0; k < 7; k++) s->dc[k + 7] = (tc[k] - pc[k + 7]) * 0.25f;
+                    s->nst[1] = 4u;
+                }
+                break;
+            default: s->pa = s->ga;              /* stops once a full set used the landed amount */
+            }
         }
-        if (s->nst) { for (k = 0; k < 14; k++) pc[k] += s->dc[k]; s->nst--; }
+        if (s->nst[0]) { for (k = 0; k < 7; k++) pc[k] += s->dc[k]; s->nst[0]--; }
+        if (s->nst[1]) { for (k = 7; k < 14; k++) pc[k] += s->dc[k]; s->nst[1]--; }
     }
     if (s->P.on == 0u && s->act == 0u && e0 >= 1.0f && de == 0.0f &&
         s->P.dg + s->P.wg > 0.9999f && s->P.dg + s->P.wg < 1.0001f)
