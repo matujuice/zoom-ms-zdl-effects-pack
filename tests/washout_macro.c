@@ -1,5 +1,5 @@
 /* Washout (one Wash macro, Tone, Size) through the real pedal entry: riding Wash and Size never clicks, Wash 100
- * stays bounded and rings far longer than a low Wash, Wash 0 with an empty loop is the bit-exact dry and does no
+ * stays bounded and rings far longer than a low Wash, dropping Wash lets the cloud ring out for the Tail time, Wash 0 with an empty loop is the bit-exact dry and does no
  * work, the tail dies and goes idle, the footswitch keeps the tail and gives back the full dry, L stays on L. */
 #include <stdio.h>
 #include <math.h>
@@ -19,7 +19,7 @@ static double rms(const float *p, long a, long b) { double s = 0; long i; for (i
 static void fresh(int wash, int tone, int size)
 {
     memset(se_m + 4096, 0, ARENA);
-    params[0] = 1.0f; SET(WASH, wash); SET(TONE, tone); SET(SIZE, size);
+    params[0] = 1.0f; SET(WASH, wash); SET(TONE, tone); SET(SIZE, size); SET(TAIL, 60);
 }
 static void blk(long t, int on)
 {
@@ -121,5 +121,26 @@ int main(void)
       CHECK(fabs(xc) < 0.5, "sides not decorrelated"); }
 
     printf("state %u bytes\n", (unsigned)sizeof(WdState));
+    /* 6. Wash 100 on noise, then Wash snapped to 0: Tail sets how long the cloud rings out; it dies */
+    { double r0, r60, r60e, r100; char lb[8];
+      for (i = 0; i < LEN; i++) { inL[i] = (i < SEC * 3) ? 0.3f * noise() : 0; inR[i] = inL[i]; }
+#define TAILRUN(tv) do { fresh(100, 50, 50); SET(TAIL, tv); \
+      for (b = 0; b < LEN / 8; b++) { t = b * 8; if (t >= SEC * 3 && t < SEC * 3 + 8) SET(WASH, 0); blk(t, 1); } } while (0)
+      TAILRUN(0);   r0 = rms(oL, SEC * 3 + 22050, SEC * 3 + 26460);
+      TAILRUN(60);  r60 = rms(oL, SEC * 4, SEC * 4 + 4410); r60e = rms(oL, SEC * 9, LEN);
+      TAILRUN(100); r100 = rms(oL, SEC * 9, LEN);
+#undef TAILRUN
+      printf("Wash 100 -> 0: Tail 0 rms 0.5 s after %.2e; Tail 60 1 s after %.4f, 6 s after %.2e; Tail 100 6 s after %.4f\n",
+             r0, r60, r60e, r100);
+      CHECK(r0 < 2e-3, "Tail 0 still rings");
+      CHECK(r60 > 0.01, "Tail 60 cuts the cloud");
+      CHECK(r60e < 1e-4, "Tail 60 does not die");
+      CHECK(r100 > 0.005, "Tail 100 does not ring long");
+      ZDL_GetLabel_3(0u, lb);   CHECK(lb[0] == '0' && lb[2] == '1' && lb[3] == 's', "Tail 0 label %s", lb);
+      ZDL_GetLabel_3(60u, lb);  CHECK(lb[0] == '2' && lb[2] == '4', "Tail 60 label %s", lb);
+      ZDL_GetLabel_3(100u, lb); CHECK(lb[0] == '2' && lb[1] == '0' && lb[2] == 's', "Tail 100 label %s", lb);
+      printf("Tail labels 0/60/100: "); ZDL_GetLabel_3(0u, lb); printf("%s ", lb); ZDL_GetLabel_3(60u, lb); printf("%s ", lb);
+      ZDL_GetLabel_3(100u, lb); printf("%s\n", lb); }
+
     return fails;
 }

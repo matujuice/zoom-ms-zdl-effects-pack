@@ -13,17 +13,24 @@
  *   decay fb = 0.40 .. 0.98 (about 1 s .. almost endless)
  *   diffusion g = 0.50 .. 0.70
  *   HiCut 12 kHz .. 3 kHz (x Tone), LoCut 25 Hz .. 300 Hz
- *   Wash 0: nothing goes in and the tail rings out with a short decay; once it has died the effect
+ *   Turning Wash down closes the send as fast as above, but the decay, diffusion and filters follow
+ *   down slowly (Tail sets how slowly), so the cloud rings out instead of stopping.
+ *   Wash 0: nothing goes in and the tail rings out; once it has died the effect
  *   does no work (the dry passes as is). Nothing is ever cleared in one block.
  * TONE 0..100: the HiCut range x 0.5 (dark) .. x 2 (bright), 50 = as above.
  * SIZE 0..100: the loop length, 27 ms .. 136 ms (L), crossfaded over 23 ms when it changes.
+ * TAIL 0..100: how long the cloud rings out after Wash goes down or the effect goes off,
+ *   T = 0.1 s x 2^(Tail / 13.1), 0.1 s .. 20 s (60 = 2.4 s; the screen shows T). While it rings out
+ *   the loop decays by 60 dB in about T (never faster than Wash alone would), and the diffusion and
+ *   filters glide down to the new Wash over T. Once they arrive the normal Wash decay is back.
  * FOOTSWITCH: plain on/off with trails. OFF: send ramps to 0, the dry comes back to full level and
- *   the tail rings out (decay capped at 0.9 so it dies).
+ *   the tail rings out over the Tail time (decay capped at 0.9 so it dies).
  *
  * MEMORY: 2 x 7000 16-bit samples (14-bit codes, zarena.h) + 16 KB of diffuser lines + state.
  *   Cleared 512 values per block after loading (dry meanwhile, about 7 ms).
  *
- * KNOBS (screen values; 3, one page): 0 Wash 0..100 (50)   1 Tone 0..100 (50)   2 Size 0..100 (50).
+ * KNOBS (screen values; 4, two pages): 0 Wash 0..100 (50)   1 Tone 0..100 (50)   2 Size 0..100 (50)
+ *   3 Tail 0..100 (60).
  *
  * Pedal-safe rules (docs/SAFE-DSP-RULES.md): no static/const arrays, no float or integer
  * division, no libm, no switch, no double / long long, no float-to-unsigned casts, every
@@ -45,7 +52,7 @@
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F38u        /* "WDO8": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F43u        /* "WDOC": change whenever WdState changes      */
 #define WD_N          7000               /* ring length per side (a multiple of 8)      */
 #define WD_APN        512                /* all-pass line length (power of 2)           */
 #define WD_CLEAR_N    (2 * WD_N + 2 * 4 * WD_APN)
@@ -59,7 +66,7 @@
 #define WD_QUIET      0.5f               /* ring "silent" below this (4096 scale)       */
 
 typedef struct {
-    float dT, fb, cl, ch, g, inT;
+    float dT, fb, cl, ch, g, inT, rel;   /* rel: tail Wash fall per block (Tail) */
 } WdParams;
 
 /* Knob maths and gains are worked out only when they change: on the pedal every
@@ -74,10 +81,14 @@ typedef struct {
     float lp[2], hs[2];    /* loop low-pass state, loop high-pass's low part      */
     float sg;              /* send, smoothed                                     */
     float ws;              /* Wash, smoothed (0..1)                              */
-    float rk[4];           /* raw knobs and on that P comes from                 */
+    float wd;              /* tail Wash: follows ws up at once, down slowly      */
+    float rk[5];           /* raw knobs and on that P comes from                 */
     WdParams P;
     float esg, ea, eb;     /* send the steady wash and dry gains are for (-1: not yet) */
-    unsigned int seal[ZA_NSEAL(28)]; /* header bits 30, 29 between blocks (zarena.h) */
+    unsigned int pc, nst, pend; /* glide: phase count, steps left to the new fb..g, blocks of maths left */
+    float dd[4], tg[4];    /* step per block and target for fb, cl, ch, g          */
+    float tt, ftb;         /* Tone term and ring-out base (set when a knob moves)   */
+    unsigned int seal[ZA_NSEAL(45)]; /* header words 45 (zarena.h)               */
     float ap[2][4][WD_APN];
     short buf[2 * WD_N];   /* 14-bit codes: za_s14 / za_u14 */
 } WdState;
@@ -159,9 +170,9 @@ static inline void wd_init(WdState *s)
     s->clr = 0; s->wp = 0; s->apw = 0; s->quiet = 0;
     s->dCur = 0.0f; s->dOld = 0.0f; s->xf = 1.0f;
     s->lp[0] = s->lp[1] = 0.0f; s->hs[0] = s->hs[1] = 0.0f;
-    s->sg = 0.0f; s->ws = -1.0f;
-    for (k = 0; k < 4; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
-    s->esg = -1.0f;
+    s->sg = 0.0f; s->ws = -1.0f; s->wd = 0.0f;
+    for (k = 0; k < 5; k++) s->rk[k] = -1.0f;  /* no knob is -1: the first block works everything out */
+    s->esg = -1.0f; s->pc = 0u; s->nst = 0u; s->pend = 0u;
     ZA_ZERO_SEAL(s);
     s->magic = WD_MAGIC;
 }
@@ -181,18 +192,38 @@ static inline int wd_clearing(WdState *s)
     return 1;
 }
 
-/* w = smoothed Wash 0..1, t = Tone, z = Size (screen values) -> per-block numbers */
-WD_ALWAYS_INLINE(wd_prepare)
-static inline void wd_prepare(WdParams *P, float w, float t, float z, int on)
+/* tail Wash d -> loop low-pass, loop high-pass, feedback. Split so a glide works out one per block */
+WD_ALWAYS_INLINE(wd_cl)
+static inline float wd_cl(float tt, float d) { return wd_coef(12000.0f * wd_exp2(-2.0f * d + tt)); }
+WD_ALWAYS_INLINE(wd_ch)
+static inline float wd_ch(float d) { return wd_coef(25.0f * wd_exp2(3.585f * d)); }
+WD_ALWAYS_INLINE(wd_fb)
+static inline float wd_fb(float ftb, float tt, float d, int on, int ro)
 {
-    float fb = 0.40f + 0.65f * w;   /* above 1 near 100: the loop filters lose about 9 % a pass */
-    P->g = 0.50f + 0.20f * w;
-    P->cl = wd_coef(12000.0f * wd_exp2(-2.0f * w + 0.02f * (t - 50.0f)));
-    P->ch = wd_coef(25.0f * wd_exp2(3.585f * w));
-    P->dT = (float)(int)(1200.0f + 48.0f * z + 0.5f);   /* whole samples: no interpolation loss in the loop */
-    if (!on && fb > 0.9f) fb = 0.9f;                       /* switched off: the tail dies */
-    P->fb = fb;
-    P->inT = on ? w : 0.0f;
+    float ft, fb = 0.40f + 0.65f * d;   /* above 1 near 100: the loop filters lose about 9 % a pass */
+    if (!on && fb > 0.9f) fb = 0.9f;    /* switched off: the tail dies */
+    if (ro) {                           /* ringing out: -60 dB a pass x T / loop, x 1 / the cuts' loss a pass */
+        ft = ftb * (1.0f + 2.6e-3f * wd_exp2(5.585f * d - tt));
+        ft = (ft > 1.1f) ? 1.1f : ft;
+        fb = (ft > fb) ? ft : fb;
+    }
+    return fb;
+}
+
+/* w = smoothed Wash 0..1 (send), d = tail Wash 0..1, t = Tone, z = Size, tl = Tail (screen values) */
+WD_ALWAYS_INLINE(wd_prepare)
+static inline void wd_prepare(WdState *s, float w, float d, float t, float z, float tl, int on, int ro)
+{
+    float e = wd_exp2(-0.076336f * tl);
+    s->P.rel = 1.8141e-3f * e;                              /* 1 / (T x 5512.5 blocks/s) */
+    s->P.dT = (float)(int)(1200.0f + 48.0f * z + 0.5f);   /* whole samples: no interpolation loss in the loop */
+    s->tt = 0.02f * (t - 50.0f);
+    s->ftb = wd_exp2(-2.2599e-3f * s->P.dT * e);           /* 2^(-9.966 x loop s / T) */
+    s->P.fb = s->tg[0] = wd_fb(s->ftb, s->tt, d, on, ro);
+    s->P.cl = s->tg[1] = wd_cl(s->tt, d);
+    s->P.ch = s->tg[2] = wd_ch(d);
+    s->P.g  = s->tg[3] = 0.50f + 0.20f * d;
+    s->P.inT = on ? w : 0.0f;
 }
 
 WD_ALWAYS_INLINE(wd_process)
@@ -221,13 +252,16 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
         if (sg != s->esg) { s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); s->esg = sg; }
         a = s->ea; b = s->eb;
         for (i = 0; i < 8; i++) { sgv[i] = a; dgv[i] = b; }
-    } else {
+    } else {   /* gliding: equal-power gains worked out at the block ends only, straight lines between */
+        float a0, b0, da, db;
+        if (sg != s->esg) { s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); }
+        a0 = s->ea; b0 = s->eb;
+        sg = inT + (sg - inT) * 0.97625049f;   /* 8 samples of the WD_SG_RATE smoothing: (1 - 0.003)^8 */
+        sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Wash 100 = dry silent */
+        s->ea = wd_eqp(sg); s->eb = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg); s->esg = sg;
+        da = (s->ea - a0) * 0.125f; db = (s->eb - b0) * 0.125f;
         WD_EIGHT
-        for (i = 0; i < 8; i++) {
-            sg += (inT - sg) * WD_SG_RATE;
-            sg = (sg - inT < 1e-5f && inT - sg < 1e-5f) ? inT : sg;   /* land exactly: Wash 100 = dry silent */
-            sgv[i] = wd_eqp(sg); dgv[i] = (sg == 0.0f) ? 1.0f : wd_eqp(1.0f - sg);
-        }
+        for (i = 0; i < 8; i++) { a0 += da; b0 += db; sgv[i] = a0; dgv[i] = b0; }
     }
     WD_EIGHT
     for (i = 0; i < 8; i++) { xs[0][i] = buf[i]; xs[1][i] = buf[i + 8]; }
@@ -323,6 +357,21 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     s->sg = sg; s->dCur = dCur; s->xf = xf;
 }
 
+/* Tail (knob 3) on screen: the ring-out time, 0.1s .. 9.9s, then 10s .. 20s */
+int ZDL_GetLabel_3(unsigned int value, char *out)
+{
+    int v, a = 0, n = 0;
+    if (value > 100u) value = 100u;
+    v = (int)(wd_exp2(0.076336f * (float)(int)value) + 0.5f);   /* tenths of a second */
+    if (v >= 100) { v = (v + 5); while (v >= 100) { v -= 100; a++; } out[n] = (char)('0' + a); n++; a = 0;
+                    while (v >= 10) { v -= 10; a++; } out[n] = (char)('0' + a); n++; }
+    else { while (v >= 10) { v -= 10; a++; } out[n] = (char)('0' + a); n++; out[n] = '.'; n++;
+           out[n] = (char)('0' + v); n++; }
+    out[n] = 's'; n++;
+    out[n] = 0;
+    return n;
+}
+
 #ifndef WASHOUT_HOST_TEST
 
 #include "washout_params.h"
@@ -345,8 +394,9 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     WdState *s;
-    float r[4], wt;
-    int k, chg = 0;
+    float r[5], wt, wd;
+    int ro;
+    int k, chg = 0, knob = 0;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -369,7 +419,8 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     if (s->magic != WD_MAGIC) wd_init(s);
     r[0] = params[WASHOUT_WASH_SLOT]; r[1] = params[WASHOUT_TONE_SLOT]; r[2] = params[WASHOUT_SIZE_SLOT];
     r[3] = (params[0] >= 0.5f) ? 1.0f : 0.0f;
-    for (k = 0; k < 4; k++) if (r[k] != s->rk[k]) { chg = 1; s->rk[k] = r[k]; }
+    r[4] = params[WASHOUT_TAIL_SLOT];
+    for (k = 0; k < 5; k++) if (r[k] != s->rk[k]) { chg = 1; knob |= k; s->rk[k] = r[k]; }   /* Wash (k 0) only glides */
     wt = wd_ui(r[0], (float)WASHOUT_WASH_UI_DEFAULT, 100.0f) * 0.01f;
     if (s->ws < 0.0f) s->ws = wt;
     if (s->ws != wt) {                           /* the macro glides: no zipper, no jumps in the loop */
@@ -377,8 +428,42 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
         if (s->ws - wt < 1e-4f && wt - s->ws < 1e-4f) s->ws = wt;
         chg = 1;
     }
-    if (chg) wd_prepare(&s->P, s->ws, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
-                        wd_ui(r[2], (float)WASHOUT_SIZE_UI_DEFAULT, 100.0f), r[3] != 0.0f);
+    wd = (r[3] != 0.0f) ? s->ws : 0.0f;          /* off: the tail rings out as if Wash went to 0 */
+    if (s->wd < wd) { s->wd = wd; chg = 1; }     /* the tail follows Wash up at once */
+    else if (s->wd > wd) {                       /* and down at the Tail rate: the cloud rings out */
+        s->wd = (s->wd - s->P.rel > wd) ? s->wd - s->P.rel : wd;
+        chg = 1;
+    }
+    ro = (s->wd > wd);
+    if (s->nst) {                                /* fb..g in straight lines to the targets */
+        if (--s->nst || s->pend) { s->P.fb += s->dd[0]; s->P.cl += s->dd[1]; s->P.ch += s->dd[2]; s->P.g += s->dd[3]; }
+        else {                                   /* glide over: land exactly (tg no longer moves) */ s->P.fb = s->tg[0]; s->P.cl = s->tg[1]; s->P.ch = s->tg[2]; s->P.g = s->tg[3]; }
+    }
+    if (knob) {                                  /* Tone / Size / Tail / on: all the maths now */
+        const float o0 = s->P.fb, o1 = s->P.cl, o2 = s->P.ch, o3 = s->P.g;
+        wd_prepare(s, s->ws, s->wd, wd_ui(r[1], (float)WASHOUT_TONE_UI_DEFAULT, 100.0f),
+                   wd_ui(r[2], (float)WASHOUT_SIZE_UI_DEFAULT, 100.0f),
+                   wd_ui(r[4], (float)WASHOUT_TAIL_UI_DEFAULT, 100.0f), r[3] != 0.0f, ro);
+        s->nst = 0u; s->pc = 0u;
+        if (s->pend) {                           /* mid-glide: 4 steps from where fb..g are, no jump */
+            s->dd[0] = (s->P.fb - o0) * 0.25f; s->dd[1] = (s->P.cl - o1) * 0.25f;
+            s->dd[2] = (s->P.ch - o2) * 0.25f; s->dd[3] = (s->P.g - o3) * 0.25f;
+            s->P.fb = o0; s->P.cl = o1; s->P.ch = o2; s->P.g = o3;
+            s->nst = 4u; s->pend = chg ? 8u : s->pend - 1u;
+        }
+    } else if (chg || s->pend) {                 /* gliding / ringing out: one target a block, a full set every 4 */
+        switch (s->pc++ & 3u) {
+        case 0u: s->tg[1] = wd_cl(s->tt, s->wd); break;
+        case 1u: s->tg[2] = wd_ch(s->wd); break;
+        case 2u: s->tg[0] = wd_fb(s->ftb, s->tt, s->wd, r[3] != 0.0f, ro); s->tg[3] = 0.50f + 0.20f * s->wd; break;
+        default:
+            s->dd[0] = (s->tg[0] - s->P.fb) * 0.25f; s->dd[1] = (s->tg[1] - s->P.cl) * 0.25f;
+            s->dd[2] = (s->tg[2] - s->P.ch) * 0.25f; s->dd[3] = (s->tg[3] - s->P.g) * 0.25f;
+            s->nst = 4u;
+        }
+        s->pend = chg ? 8u : s->pend - 1u;       /* after landing: a full set with the final values */
+        if (chg) s->P.inT = (r[3] != 0.0f) ? s->ws : 0.0f;   /* the send target stays exact */
+    }
     if (wd_clearing(s)) goto done;               /* first ~7 ms after loading: dry */
     wd_process(s, &s->P, fxBuf);                 /* L and R in place */
 done:
