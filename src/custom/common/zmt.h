@@ -100,6 +100,7 @@ static inline float zt_update(ZtSync *z, int *run, float *beats, int *start)
     if (bpm > 300.0f) bpm = 300.0f;
     d = bpm - z->bpm;
     if (d >= 0.3f || d <= -0.3f) z->bpm = bpm;   /* hold small clock wobble */
+    if (!beats) return z->bpm;                   /* tempo only (a constant 0 drops the rest when inlined) */
     *start = (ok && starts != z->starts) ? 1 : 0;
     if (ok) z->starts = starts;
     *beats = 0.0f;

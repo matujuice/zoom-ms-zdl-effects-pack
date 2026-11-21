@@ -178,9 +178,10 @@ static inline float exp2_oct(float oct)
 {
     int   n = (int)oct;
     float f = oct - (float)n;
-    float r = semis_to_ratio(f * 12.0f - 6.0f) * 1.41421356f;
-    for (; n > 0; n--) r += r;
-    return r;
+    union { float f; unsigned int u; } c;
+    c.f = semis_to_ratio(f * 12.0f - 6.0f) * 1.41421356f;
+    c.u += (unsigned int)n << 23;                /* times 2^n: add n to the exponent */
+    return c.f;
 }
 
 TK_ALWAYS_INLINE(tri_bi)
@@ -467,8 +468,9 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     uintptr_t base, end, stateBase;
     unsigned int span;
     TkState *s;
-    int k, foot, hold = 0, run, start, chg = 0;
-    float beats, bpm;
+    int k, foot, hold = 0;
+    unsigned int chg = 0u;
+    float bpm;
 
     *magicDst = *magicSrc;                       /* preserve the magic shuttle */
 
@@ -491,9 +493,14 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
     za_unseal(s, ZA_HDR(TkState), s->seal);
     if (s->magic != TK_MAGIC) tk_init(s);
 
-    bpm = zt_update(&s->zt, &run, &beats, &start);
-    for (k = 0; k < 9; k++) if (params[TAKEOFF_DIR_SLOT + k] != s->rk[k]) chg = 1;
-    if (bpm != s->rk[9]) chg = 1;
+    bpm = zt_update(&s->zt, 0, 0, 0);            /* tempo only: no grid */
+    {                                            /* any knob or the BPM changed: compare the words, no branches */
+        const unsigned int *pw = (const unsigned int *)&params[TAKEOFF_DIR_SLOT], *rw = (const unsigned int *)s->rk;
+        union { float f; unsigned int u; } bw;
+        bw.f = bpm;
+        chg = bw.u ^ rw[9];
+        for (k = 0; k < 9; k++) chg |= pw[k] ^ rw[k];
+    }
     if (chg) {
         int *u = s->u;
         u[0] = tk_ui(params[TAKEOFF_DIR_SLOT],   TAKEOFF_DIR_UI_DEFAULT);
@@ -519,7 +526,6 @@ void TAKEOFF_AUDIO_FUNC(unsigned int *ctx)
         zw[7] = ctx[1];
     }
 
-    (void)run; (void)start; (void)beats;               /* no grid: a press fires at once */
     tk_prepare(s, &s->P, s->u, foot, hold, bpm);
     tk_led(s, ctx[1]);
     tk_process(s, &s->P, fxBuf);
