@@ -1,7 +1,7 @@
 """Generate src/airwindows/common/covers/KickKill.json (128x64 cover override).
 
 KICK KILL in Washout's style (the pack's square block font, edges lightly worn): KICK is cut
-out (negative) of a splat of blood with spikes, drips and droplets; KILL solid with worn
+out (negative) of several overlapping splats of blood with spikes, drips and droplets; KILL solid with worn
 edges. Seeded, so every run draws the same picture. Knob row: custom_covers._draw_knob_row.
 
 Run from anywhere:  py src/custom/kickkill/make_cover.py
@@ -56,35 +56,43 @@ def build():
     rnd = random.Random(503)
     c = Canvas()
     ink = set()
-    # the splat: a boxy blob with a ragged rim around KICK
-    cx, cy, rx, ry = 33.0, 17.5, 34.0, 16.5
-    ph = [rnd.uniform(0, 6.3) for _ in range(3)]
-    for y in range(ART_H):
-        for x in range(0, 70):
-            dx, dy = (x - cx) / rx, (y - cy) / ry
-            a = math.atan2(dy, dx)
-            rim = 1.0 + 0.10 * math.sin(5 * a + ph[0]) + 0.07 * math.sin(9 * a + ph[1]) + 0.05 * math.sin(14 * a + ph[2])
-            if abs(dx) ** 3 + abs(dy) ** 3 <= rim ** 3 * (1.0 - rnd.uniform(0, 0.06)):
-                ink.add((x, y))
-    # spikes thrown out of the rim, a droplet at each end
-    for _ in range(11):
-        a = rnd.uniform(0, 2 * math.pi)
-        r0, r1 = 0.9, rnd.uniform(1.15, 1.45)
-        for t in range(40):
-            r = r0 + (r1 - r0) * t / 39
-            ink.add((round(cx + math.cos(a) * rx * r), round(cy + math.sin(a) * ry * r)))
-        ex, ey = round(cx + math.cos(a) * rx * (r1 + 0.12)), round(cy + math.sin(a) * ry * (r1 + 0.12))
-        ink.update((ex + i, ey + j) for i in (0, 1) for j in (0, 1))
-    # drips running down from the bottom rim
-    for x in (9, 17, 30, 44, 55):
+    def splat(cx, cy, r, sx=1.0, spikes=0):
+        """One blob: wobbly rim, a few spikes thrown out with a droplet at each end."""
+        ph = [rnd.uniform(0, 6.3) for _ in range(3)]
+        sp = [(rnd.uniform(-math.pi, math.pi), rnd.uniform(0.35, 0.8)) for _ in range(spikes)]
+        for y in range(ART_H):
+            for x in range(0, 71):
+                dx, dy = (x - cx) / sx, y - cy
+                a, d = math.atan2(dy, dx), math.hypot(dx, dy)
+                rim = r * (1 + 0.12 * math.sin(3 * a + ph[0]) + 0.07 * math.sin(7 * a + ph[1]) + 0.04 * math.sin(13 * a + ph[2]))
+                for sa, sl in sp:                 # a spike: a narrow lobe 35..80 % past the rim
+                    da = abs((a - sa + math.pi) % (2 * math.pi) - math.pi)
+                    rim += r * sl * max(0.0, 1 - da / 0.10)
+                if d <= rim:
+                    ink.add((x, y))
+        for sa, sl in sp:
+            d = r * (1 + sl + 0.25)
+            ex, ey = round(cx + math.cos(sa) * d * sx), round(cy + math.sin(sa) * d)
+            ink.update((ex + i, ey + j) for i in (0, 1) for j in (0, 1))
+    # several splats of blood thrown on top of each other behind KICK, small ones flung around
+    splat(14, 18, 14.5, 0.85, 3)                  # one splat behind each letter
+    splat(25, 16, 13.5, 0.55, 2)
+    splat(36, 19, 14.5, 0.75, 3)
+    splat(53, 17, 14.5, 0.80, 3)
+    splat(66, 5, 3.0, 1.0, 1)                     # small ones flung around
+    splat(3, 31, 2.8, 1.0, 1)
+    splat(44, 33, 2.2, 1.0, 0)
+    splat(2, 3, 1.8, 1.0, 0)
+    splat(29, 2, 1.6, 1.0, 0)
+    # drips running down from the lowest rim
+    for x in (10, 26, 37, 55):
         y = max(yy for (xx, yy) in ink if xx == x and yy < 33)
-        end = min(ART_H - 2, y + rnd.randint(2, 5))
+        end = min(ART_H - 2, y + rnd.randint(2, 4))
         ink.update((x, yy) for yy in range(y, end + 1))
         ink.update(((x - 1, end), (x + 1, end), (x, end + 1)))
     # loose droplets
-    for _ in range(14):
-        x, y = rnd.randint(0, 70), rnd.randint(0, ART_H - 1)
-        ink.add((x, y))
+    for _ in range(16):
+        ink.add((rnd.randint(0, 70), rnd.randint(0, ART_H - 1)))
     ink = {(x, y) for (x, y) in ink if x <= 70}  # keep the blood clear of KILL
     # KICK cut out of the blood (negative), KILL solid with worn edges
     kick, _ = word("KICK", 7)
