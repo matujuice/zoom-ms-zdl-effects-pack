@@ -26,6 +26,6 @@
   "audio_func_name": "Fx_DLY_DJFilter",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 49.0,
-  "dsp_cost_comment": "Previous build measured 5% (2,700 cycles). This build skips the dry/level pass at Mix 100, 0 dB: estimated about 4.3% (2,350 cycles); Mix < 100 or Level not 0 still runs the dry pass (the measured 2,700), so that is declared: 2,700 / 75 + 25 % = 45, +4 seal = 49. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD). Arena seal (MIDISTOMP #60, 64 words): about +187 cycles a block, +4 declared."
+  "dsp_cost": 46.0,
+  "dsp_cost_comment": "Previous build measured 5% (2,700 cycles). This build skips the dry/level pass at Mix 100, 0 dB: estimated about 4.3% (2,350 cycles); Mix < 100 or Level not 0 still runs the dry pass (the measured 2,700), so that is the base. The regrouped filter maths and the one-pass dry mix take about 215 off it: about 2,485 cycles (Kill on saves another ~145): 2,485 / 75 + 25 % = 42, +4 seal = 46. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Estimate: re-measure on the pedal (SYSTEM > LOAD). Arena seal (MIDISTOMP #60, 64 words): about +187 cycles a block, +4 declared."
 }

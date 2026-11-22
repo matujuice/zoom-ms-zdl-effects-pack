@@ -367,14 +367,15 @@ static inline void tk_process(TkState *s, TkParams *P, float *restrict buf)
         float g = s->g, gs = P->gT > g ? 0.0078125f : -0.015625f;   /* up 3 ms, down 1.5 ms */
         float f = P->f, d = P->dmp, a1 = P->ng * P->a * P->lvl, a = s->pa, da = (a1 - a) * 0.125f;
         float lo = s->sv[0], b = s->sv[1], nh = s->nh, q = s->nq;
+        const float c2 = 1.0f - f * (f + d);  /* b + f (q - (lo + f b) - d b), regrouped: three parallel multiplies, not a chain of six */
         unsigned int r = s->rng, gth = P->gth;
         TK_ITER8
         for (i = 0; i < 8; i++) {
             float h, o;
             r = r * 1664525u + 1013904223u;
             nh = (((r >> 8) & 0xFFFFu) < gth) ? (float)(int)r * 4.656613e-10f : nh;
-            q += 0.5f * (nh - q);                /* about 5 kHz: a darker hiss */
-            lo += f * b; h = q - lo - d * b; b += f * h;
+            q = 0.5f * (q + nh);                 /* about 5 kHz: a darker hiss */
+            h = (c2 * b - f * lo) + f * q; lo += f * b; b = h;
             g += gs; g = (g > 1.0f) ? 1.0f : g; g = (g < 0.0f) ? 0.0f : g;
             a += da;                             /* the block's level change, spread over its 8 samples */
             o = g * a * b;
