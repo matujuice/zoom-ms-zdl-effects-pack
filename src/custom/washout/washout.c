@@ -337,8 +337,11 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     for (i = 0; i < 8; i++) {
         int wpk = wp0 + i;
         wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-        sb[wpk] = za_s14((int)cv[i]);
-        sb[WD_N + wpk] = za_s14((int)cv[i + 8]);
+        float cl = cv[i], cr = cv[i + 8];   /* wet can pass 2.0: clamp or the 14-bit code wraps (crackle) */
+        cl = (cl > ZA_S14_MAX) ? ZA_S14_MAX : cl; cl = (cl < -ZA_S14_MAX) ? -ZA_S14_MAX : cl;
+        cr = (cr > ZA_S14_MAX) ? ZA_S14_MAX : cr; cr = (cr < -ZA_S14_MAX) ? -ZA_S14_MAX : cr;
+        sb[wpk] = za_s14((int)cl);
+        sb[WD_N + wpk] = za_s14((int)cr);
     }
     bigm *= WD_TO16;
     s->quiet = (bigm >= WD_QUIET || sg > 0.0f) ? 0 : ((s->quiet < 100000000) ? s->quiet + 8 : s->quiet);
