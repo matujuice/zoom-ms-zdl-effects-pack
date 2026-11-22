@@ -236,21 +236,30 @@ A transparent look-ahead limiter in the Pro-L / Ozone Maximizer family: it pushe
 
 At Gain 0 and Mix 100, a signal under the ceiling comes out unchanged (just 1.5 ms later). The cover is a live meter drawn by the effect itself: a scrolling history of the last 4 beats of the level after Gain (one column = 1/32 beat), with the ceiling as a centered line tagged CEIL and GAIN. What pokes out of the box above the line is what the limiter takes off. It scrolls with the MIDI clock when it runs, else with tap or patch tempo. It works on any MS-70CDR on firmware 2.10, stock included, and on the MS-50G firmware 3.10 (the meter code Gooey was tested with there; see `src/custom/common/zdl_meter.h`); on other firmware the cover stays static.
 
-### DJFilter: a DJ filter and kick kill
+### DJFilter: a DJ filter
 
 <img src="../graphics/djfilter.png" width="320" alt="DJFilter on the pedal screen">
 Stereo in and out.
 
-The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing; the filter fades in over the next few steps, so crossing the middle (even in one jump) never clicks. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
+The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing; the filter fades in over the next few steps, so crossing the middle (even in one jump) never clicks. Turning away from the middle is always more filtering, exponential in frequency. Always 24 dB/oct, the hard DJ-mixer cut. The filter follows DJ through a fixed 3 ms smoothing, so knob steps and Perform sweeps never click (a full -100 to +100 jump, like a preset recall, gives a small tick). The footswitch is a plain on/off, ramped over a few ms so it never clicks. The kick kill is its own effect now: KickKill, so it can sit on another signal path.
 
 | Knob | Range | What it does |
 |---|---|---|
 | DJ | -100..+100 | Left low-pass (-100 closes down to about 40 Hz), right high-pass (+100 closes up to about 10 kHz), -3..+3 is flat. |
 | Reso | 0..100 | Resonance at the far end of the sweep. About none when the filter is open, rising as it closes, never self-oscillating. Default 30. |
-| Kill | OFF, 20..300 Hz | An independent 24 dB/oct low cut that removes kick and bass. Use it alone or on top of the filter. Default OFF. |
-| Slope | 12 / 24 | dB per octave of the filter (not Kill). 12 is gentle and warm, 24 is the hard DJ-mixer cut. Default 24. |
-| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. 0 is the fastest (3 ms). With Perform keep it at the default or above: Perform sends a new value every 16 ms, and Glide turns those steps into a smooth sweep. Default about 20 ms. |
 | Level | -12.0..+6.0 dB | Output trim. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
+
+### KickKill: a kick kill
+
+<img src="../graphics/kickkill.png" width="320" alt="KickKill on the pedal screen">
+Stereo in and out.
+
+A steep 24 dB/oct low cut that removes kick and bass, the classic "kill the low end before the drop". It was DJFilter's Kill knob; as its own effect it can sit on a different signal path from the DJ filter. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it to kill the kick. Kill OFF or the footswitch off costs nothing.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Kill | OFF, 20..300 Hz | Where the cut sits: about half level there, then 24 dB less per octave below. Default 100 Hz. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
 ### Washout: one knob that washes the track away

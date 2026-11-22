@@ -1,0 +1,29 @@
+{
+  "effect_name": "KickKill",
+  "comment": "KickKill - a DJ-style kick kill: a 24 dB/oct low cut (two Q 0.71 stages), linked stereo. Kill 0 = OFF (fades out like the footswitch, then zero cost), 1..281 = 20..300 Hz. Mix = DJ crossfade. No glide: the cutoff follows the knob.",
+  "gid": 8,
+  "gid_comment": "0x08 = Delay category -> Fx_DLY_. Grouped under DLY with the rest of the pack.",
+  "fxid": 503,
+  "fxid_comment": "480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 Looper, 501 Gooey, 502 DJFilter, 503 KickKill (this pack); probes 498-500. Check against the stock list (tools/effects_db.json) when it is available.",
+  "fxid_version": "1.00",
+  "flags_byte": 1,
+  "params": [
+    {
+      "name": "Kill",
+      "max": 281,
+      "default": 81,
+      "comment": "Low cut, 24 dB/oct. 0 = OFF (ramps out like the footswitch), 1..281 = 20..300 Hz in 1 Hz steps. Default 81 = 100 Hz."
+    },
+    {
+      "name": "Mix",
+      "max": 100,
+      "default": 100,
+      "comment": "Dry/wet crossfade, DJ style: dry full up to 50, wet full from 50, both full at 50. Default 100."
+    }
+  ],
+  "audio_func_name": "Fx_DLY_KickKill",
+  "audio_nop": false,
+  "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
+  "dsp_cost": 18.0,
+  "dsp_cost_comment": "Estimate from the compiled code, not measured: the two 24 dB stages run both sides in one 8-step loop (42 cycles a step, 336), the Mix pass below 100 another 8 x 37 (296), plus the knob, arena and ramp work: about 830 cycles at Mix < 100 (about 530 at Mix 100). 830 / 75 + 25 % = 14, +4 seal = 18. Kill OFF or footswitch off: no filter work. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
+}

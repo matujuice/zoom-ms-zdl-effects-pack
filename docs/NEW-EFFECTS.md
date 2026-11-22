@@ -100,6 +100,11 @@ filter. This one is the static filter you ride by hand, CC or Perform: the v2.0 
 
 - **Cost:** about 6 with one filter on, about 9 with LP, HP and Kill all on.
 - Built 2026-10-29: fxid 484, moved to 502 on 2026-10-30 (484 clashes with the community effect Gyre), cost 9 (estimate, all on), ZDL size 15978 bytes.
+- **Split 2026-11-22** (Luca): to put the filter and the kick kill on different signal paths.
+  DJFilter keeps DJ, Reso, Level, Mix, always 24 dB/oct, no Glide (a fixed 3 ms smoothing).
+  Kill became its own effect, **KickKill** (fxid 503): Kill (OFF, 20-300 Hz) and Mix, no glide.
+  Both sound bit-exact like the old DJFilter (Slope 24, Glide 0; Kill alone). Saved patches with the
+  old DJFilter need re-setting: its knobs moved.
 
 ## WASH: dedicated washout
 

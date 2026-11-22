@@ -31,7 +31,7 @@ from lcd_render import save_png, sheet  # noqa: E402
 
 # the README gallery (release/covers.png), in its order, two per row
 README_COVERS = ["WaveFold", "DualShft", "Choral", "EuGate", "DubSiren", "SGNL", "Scrub", "DirtBox", "Breather",
-                 "GRDELAY", "Sweep", "LOUDER", "Gooey", "DJFilter", "Washout", "Takeoff", "GRDLOOP"]
+                 "GRDELAY", "Sweep", "LOUDER", "Gooey", "DJFilter", "KickKill", "Washout", "Takeoff", "GRDLOOP"]
 # effects whose gallery picture is a live still, not the stored cover: src/custom/<folder>/live_still.png
 # (128x64, 1 bit, black = ink). LOUDER / Gooey: the meter with a drum loop going in (custom_covers.meter_frame);
 # GRDLOOP: the loop bar drawn on the cover by the MIDISTOMP firmware (zoom-ms-modding asm/looper/lbox.c).
