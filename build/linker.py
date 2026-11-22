@@ -1010,6 +1010,11 @@ def link(cfg: LinkerConfig) -> None:
         pic_data.append(0)
     pic_end = len(pic_data)
 
+    # A jump table needs relocations a ZDL lacks: the DSP freezes (docs/SAFE-DSP-RULES.md)
+    jt = [s['name'] for s in obj.sections if s['name'].startswith('.switch')]
+    if jt:
+        raise SystemExit(f"jump table {jt} in the object: replace the switch / dense if-else")
+
     # ----- Collect .far BSS sections -----
     far_sections: list[dict] = []
     far_total = 0

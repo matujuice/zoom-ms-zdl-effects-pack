@@ -456,26 +456,22 @@ void DJFILTER_AUDIO_FUNC(unsigned int *ctx)
             const float aa = hp ? s->ga : -s->ga;
             DfC c;
             const float *tc = &c.a1;
-            switch (s->pc++ & 3u) {
-            case 0u:
+            const unsigned int ph = s->pc++ & 3u;   /* no switch: it can become a jump table (SAFE-DSP-RULES) */
+            if (ph == 0u) {
+                const int h = (s->a > 0.0f);     /* one df_g, one df_exp2 copy */
                 s->ga = s->a;
-                {   const int h = (s->a > 0.0f);   /* one df_g, one df_exp2 copy */
-                    s->gg = df_g((h ? DF_HP_LOW : DF_LP_TOP) * df_exp2((h ? DF_HP_OCT : DF_LP_OCT) * s->a)); }
-                break;
-            case 1u:
+                s->gg = df_g((h ? DF_HP_LOW : DF_LP_TOP) * df_exp2((h ? DF_HP_OCT : DF_LP_OCT) * s->a));
+            } else if (ph == 1u) {
                 df_coef(&c, s->gg, DF_K0 * df_exp2(-2.82f * 0.01f * s->u[1] * aa), hp);
                 for (k = 0; k < 7; k++) s->dc[k] = (tc[k] - pc[k]) * 0.25f;
                 s->nst[0] = 4u;
-                break;
-            case 2u:
+            } else if (ph == 2u) {
                 if (s->u[3] > 0.5f) {            /* 24 dB; at 12 dB stage 2 passes through and stays */
                     df_coef(&c, s->gg, DF_K0, hp);
                     for (k = 0; k < 7; k++) s->dc[k + 7] = (tc[k] - pc[k + 7]) * 0.25f;
                     s->nst[1] = 4u;
                 }
-                break;
-            default: s->pa = s->ga;              /* stops once a full set used the landed amount */
-            }
+            } else s->pa = s->ga;                /* stops once a full set used the landed amount */
         }
         if (s->nst[0]) { for (k = 0; k < 7; k++) pc[k] += s->dc[k]; s->nst[0]--; }
         if (s->nst[1]) { for (k = 7; k < 14; k++) pc[k] += s->dc[k]; s->nst[1]--; }
