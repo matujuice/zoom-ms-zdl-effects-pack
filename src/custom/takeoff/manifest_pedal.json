@@ -30,6 +30,6 @@
   "audio_func_name": "Fx_DLY_Takeoff",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 40.0,
-  "dsp_cost_comment": "Estimated 2026-11-21 from the compiled code (worst block, arena seal included, seal unrolled): about 2,350 cycles (heaviest riser block). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost": 63.0,
+  "dsp_cost_comment": "Kept at 63 (the last declared value) until SYSTEM > LOAD measures this build; the 2,350-cycle estimate is unmeasured. Estimated 2026-11-21 from the compiled code (worst block, arena seal included, seal unrolled): about 2,350 cycles (heaviest riser block). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
 }
