@@ -36,6 +36,6 @@
   "audio_func_name": "Fx_DLY_DJFilter",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 44.0,
+  "dsp_cost": 31.0,
   "dsp_cost_comment": "Estimate, not measured. The DJFilter with Kill, Slope and Glide was estimated at about 2,485 cycles (46). This one drops the Kill path and its tests, the Slope branch and the Glide maths, inlines the one filter pair (no call) and has a smaller state seal: about 2,400 cycles (the compiled code is 13 % smaller). 2,400 / 75 + 25 % = 40, +4 seal = 44. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
 }
