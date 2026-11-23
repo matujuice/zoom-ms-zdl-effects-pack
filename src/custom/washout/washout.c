@@ -8,7 +8,7 @@
  *   No discrete repeats: the loop is short and every pass is diffused again, so it builds a cloud.
  *   The filters sit at the loop's input, so the first sound is already shaped and each pass again.
  *
- * WASH 0..100 moves everything at once (w = Wash / 100, no glide: the send is smoothed, the filters step in 4):
+ * WASH 0..100 moves everything at once (w = Wash / 100, smoothed per block, about 10 ms):
  *   send = sin(w x 90 deg) into the loop, dry = cos(w x 90 deg): equal power, 100 = wash only
  *   decay fb = 0.40 .. 0.98 (about 1 s .. almost endless)
  *   diffusion g = 0.50 .. 0.70
@@ -62,6 +62,7 @@
 #define WD_XF_STEP    9.765625e-4f       /* Size crossfade: 1024 samples = 23 ms */
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* send smoothing, about 7.5 ms */
+#define WD_W_RATE     0.1f               /* Wash smoothing per block, about 10 ms */
 #define WD_QUIET      1.2207031e-4f      /* ring "silent" below this (-78 dB)           */
 
 typedef struct {
@@ -434,7 +435,11 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
     for (k = 0; k < 5; k++) if (r[k] != s->rk[k]) { chg = 1; knob |= k; s->rk[k] = r[k]; }   /* Wash (k 0) only glides */
     wt = wd_ui(r[0], (float)WASHOUT_WASH_UI_DEFAULT, 100.0f) * 0.01f;
     if (s->ws < 0.0f) s->ws = wt;
-    if (s->ws != wt) { s->ws = wt; chg = 1; }    /* Wash lands at once (no glide): the maths runs only for a change */
+    if (s->ws != wt) {                           /* the macro glides: no zipper, no jumps in the loop */
+        s->ws += (wt - s->ws) * WD_W_RATE;
+        if (s->ws - wt < 1e-4f && wt - s->ws < 1e-4f) s->ws = wt;
+        chg = 1;
+    }
     wd = (r[3] != 0.0f) ? s->ws : 0.0f;          /* off: the tail rings out as if Wash went to 0 */
     if (s->wd < wd) { s->wd = wd; chg = 1; }     /* the tail follows Wash up at once */
     else if (s->wd > wd) {                       /* and down at the Tail rate: the cloud rings out */
