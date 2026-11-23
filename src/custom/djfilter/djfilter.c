@@ -174,8 +174,12 @@ static inline void df_coef(DfC *c, float g, float k, int hp)
 /* Two stages in series (A then B) over both sides' 8 samples, in place, in one loop. fa / fb: that
  * stage was not running, so fit its memory to the signal first (a low-pass settled on the input, a
  * high-pass with nothing in its low-pass). ic: A L, A R, B L, B R, two memories each. */
-#define DF_SVF(c, m1, m2, in, out) { float xx = in, v3 = xx - m2, v1 = c##1 * m1 + c##2 * v3, \
-    v2 = m2 + c##2 * m1 + c##3 * v3; m1 = 2.0f * v1 - m1; m2 = 2.0f * v2 - m2; out = c##o * xx + c##b * v1 + c##l * v2; }
+/* v1 = a1 m1 + a2 (x - m2), v2 = m2 + a2 m1 + a3 (x - m2), out = co x + cb v1 + cl v2, split into the part
+ * the memories give (k1, k2: ready before the input arrives) and the input times a constant (cG): the input
+ * reaches the output in one multiply-add, so stage B does not wait on stage A's whole sum */
+#define DF_SVF(c, m1, m2, in, out) { float xx = in, k1 = c##1 * m1 - c##2 * m2, k2 = m2 + c##2 * m1 - c##3 * m2, \
+    v1 = k1 + c##2 * xx, v2 = k2 + c##3 * xx; out = (c##b * k1 + c##l * k2) + c##G * xx; \
+    m1 = (v1 + v1) - m1; m2 = (v2 + v2) - m2; }
 #define DF_FLUSH(v) if (v < 1e-15f && v > -1e-15f) v = 0.0f;
 /* One copy for both filters (not inlined twice): code a block runs costs ~1 cycle per byte on the pedal. */
 DF_ONE_COPY(df_pair)
@@ -185,6 +189,7 @@ static void df_pair(float *restrict bf, float *restrict ic, const DfC *A, const 
     int i;
     const float a1 = A->a1, a2 = A->a2, a3 = A->a3, ao = A->co, ab = A->cb, al = A->cl;
     const float b1 = B->a1, b2 = B->a2, b3 = B->a3, bo = B->co, bb = B->cb, bl = B->cl;
+    const float aG = ao + ab * a2 + al * a3, bG = bo + bb * b2 + bl * b3;
     float p1 = ic[0], p2 = ic[1], q1 = ic[2], q2 = ic[3], r1 = ic[4], r2 = ic[5], s1 = ic[6], s2 = ic[7];
     if (fa) { p1 = 0.0f; p2 = A->fresh0 * bf[0]; q1 = 0.0f; q2 = A->fresh0 * bf[8]; }
     if (fb) { r1 = 0.0f; r2 = B->fresh0 * bf[0]; s1 = 0.0f; s2 = B->fresh0 * bf[8]; }
@@ -287,12 +292,16 @@ static inline void df_process(DfState *s, const DfParams *P, float *buf, float e
     if (P->on & 4u) df_pair(buf, s->ic + 8, &P->c[2], &P->c[2], fresh & 4u, fresh & 4u);
     s->act = P->on;
     if (plain) return;
-    DF_BLOCK_LOOP()
-    for (i = 0; i < 8; i++) {
-        float ol = dg * d[i] + wg * buf[i], orr = dg * d[i + 8] + wg * buf[i + 8];
-        buf[i] = d[i] + e * (ol - d[i]);
-        buf[i + 8] = d[i + 8] + e * (orr - d[i + 8]);
-        e += de;
+    {   /* d + e (dg d + wg wet - d) as two gains that ramp with e: two multiplies side by side, not a chain of four.
+         * Kept as d + (...) so a wet equal to the dry gives back the dry bit-exact (DJ flat zone during a fade) */
+        float ga = e * (dg - 1.0f), gb = e * wg;
+        const float dga = de * (dg - 1.0f), dgb = de * wg;
+        DF_BLOCK_LOOP()
+        for (i = 0; i < 8; i++) {
+            buf[i] = d[i] + (ga * d[i] + gb * buf[i]);
+            buf[i + 8] = d[i + 8] + (ga * d[i + 8] + gb * buf[i + 8]);
+            ga += dga; gb += dgb;
+        }
     }
 }
 
