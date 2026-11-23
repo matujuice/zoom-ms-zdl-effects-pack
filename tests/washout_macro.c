@@ -59,7 +59,22 @@ int main(void)
       }
       ride = d2(oL, 4096, LEN);
       printf("Wash ride + Size moves: largest 2nd difference %.5f (steady Wash 60: %.5f)\n", ride, steady);
-      CHECK(ride < 2.0f * steady, "riding Wash or Size clicks"); }
+      CHECK(ride < 2.0f * steady, "riding Wash or Size clicks");
+      /* a PERFORM lag: Wash jumps 8 every 48 ms (the effect screen moves 1). A click is broadband:
+       * the largest 4th difference just after a step must stay below the one elsewhere. */
+      { float at = 0, off = 0;
+        fresh(0, 50, 50);
+        for (b = 0; b < LEN / 8; b++) {
+            t = b * 8;
+            if (t % 2117 == 0) { long k = (t / 2117) * 8 % 200; SET(WASH, k < 100 ? k : 200 - k); }
+            blk(t, 1);
+        }
+        for (i = SEC; i < LEN; i++) {
+            float d = fabsf(oL[i] - 4 * oL[i - 1] + 6 * oL[i - 2] - 4 * oL[i - 3] + oL[i - 4]);
+            if (i % 2117 < 96) at = d > at ? d : at; else off = d > off ? d : off;
+        }
+        printf("Wash in PERFORM lag steps of 8: 4th difference just after a step %.5f, elsewhere %.5f\n", at, off);
+        CHECK(at < off, "PERFORM lag steps on Wash click"); } }
 
     /* 2. Wash 100, loud noise: bounded; Wash 100 rings far longer than Wash 20 */
     { double t100, t20; float pk;

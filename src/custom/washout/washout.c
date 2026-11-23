@@ -8,7 +8,7 @@
  *   No discrete repeats: the loop is short and every pass is diffused again, so it builds a cloud.
  *   The filters sit at the loop's input, so the first sound is already shaped and each pass again.
  *
- * WASH 0..100 moves everything at once (w = Wash / 100, smoothed per block, about 10 ms):
+ * WASH 0..100 moves everything at once (w = Wash / 100, smoothed per block, about 50 ms):
  *   send = sin(w x 90 deg) into the loop, dry = cos(w x 90 deg): equal power, 100 = wash only
  *   decay fb = 0.40 .. 0.98 (about 1 s .. almost endless)
  *   diffusion g = 0.50 .. 0.70
@@ -62,7 +62,7 @@
 #define WD_XF_STEP    9.765625e-4f       /* Size crossfade: 1024 samples = 23 ms */
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* send smoothing, about 7.5 ms */
-#define WD_W_RATE     0.1f               /* Wash smoothing per block, about 10 ms */
+#define WD_W_RATE     0.03f              /* Wash smoothing per block, about 50 ms: smooths a PERFORM lag step (up to ~10 every 48 ms) */
 #define WD_QUIET      1.2207031e-4f      /* ring "silent" below this (-78 dB)           */
 
 typedef struct {
