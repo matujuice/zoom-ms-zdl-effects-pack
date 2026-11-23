@@ -464,11 +464,11 @@ void WASHOUT_AUDIO_FUNC(unsigned int *ctx)
             s->nst = 4u; s->pend = chg ? 8u : s->pend - 1u;
         }
     } else if (chg || s->pend) {                 /* gliding / ringing out: one target a block, a full set every 4 */
-        switch (s->pc++ & 3u) {
-        case 0u: s->tg[1] = wd_cl(s->tt, s->wd); break;
-        case 1u: s->tg[2] = wd_ch(s->wd); break;
-        case 2u: s->tg[0] = wd_fb(s->ftb, s->tt, s->wd, r[3] != 0.0f, ro); s->tg[3] = 0.50f + 0.20f * s->wd; break;
-        default:
+        const unsigned int ph = s->pc++ & 3u;   /* no switch: it can become a jump table (SAFE-DSP-RULES) */
+        if (ph == 0u) s->tg[1] = wd_cl(s->tt, s->wd);
+        else if (ph == 1u) s->tg[2] = wd_ch(s->wd);
+        else if (ph == 2u) { s->tg[0] = wd_fb(s->ftb, s->tt, s->wd, r[3] != 0.0f, ro); s->tg[3] = 0.50f + 0.20f * s->wd; }
+        else {
             s->dd[0] = (s->tg[0] - s->P.fb) * 0.25f; s->dd[1] = (s->tg[1] - s->P.cl) * 0.25f;
             s->dd[2] = (s->tg[2] - s->P.ch) * 0.25f; s->dd[3] = (s->tg[3] - s->P.g) * 0.25f;
             s->nst = 4u;
