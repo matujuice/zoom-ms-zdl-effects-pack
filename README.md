@@ -40,7 +40,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 1. Download the latest pack from the [Releases](../../releases) page and unzip it.
 2. Load the `.ZDL` files with Zoom Effect Manager ("Read Effects from folder"). Step by step: [docs/INSTALLING-ZDLS.md](docs/INSTALLING-ZDLS.md).
 
-The latest release has all seventeen effects, made for MIDISTOMP v2.0 and working on stock firmware too. To try newer changes on `main`, build them from source (below).
+The latest release has all eighteen effects, made for MIDISTOMP v2.0 and working on stock firmware too. To try newer changes on `main`, build them from source (below).
 
 Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 GRDLOOP, 501 Gooey, 502 DJFilter, 503 KickKill). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
@@ -78,7 +78,8 @@ To change a cover, edit that effect's `make_cover.py` and run it; it rewrites th
 ## Credits
 
 - Built on the toolchain from [themanro/ZoomMultistompZDL](https://github.com/themanro/ZoomMultistompZDL) (MIT, Copyright (c) 2026 Roman Rusinov). The `build/` folder and the install and DSP-rule docs come from there; the upstream repo has much more documentation.
-- Alexander Lim. The live screens and the zvis kit, the pedal's file-size cap and DSP limit, and linker pitfalls.
+- [Berbasoft](https://github.com/berbasoft): Ziddle, the DSP emulator used in `build/` to test effect init and materialize behavior before flashing a real pedal.
+- Alexander Lim (leemuzkho). The pedal's file-size cap and linker pitfalls.
 - WaveFold's fold curve is from "Virtual Analog Buchla 259 Wavefolder" (Esqueda, Pontynen, Valimaki, Parker; DAFx-2017).
 - DIRTBOX's circuit models follow published analyses and open models (guitarix, ElectroSmash, DS1.lv2, Proco-Rat, MetalTone); links are in [EFFECTS.md](docs/EFFECTS.md).
 - The effects themselves are original work.
