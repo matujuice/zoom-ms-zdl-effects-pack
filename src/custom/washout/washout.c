@@ -8,7 +8,7 @@
  *   No discrete repeats: the loop is short and every pass is diffused again, so it builds a cloud.
  *   The filters sit at the loop's input, so the first sound is already shaped and each pass again.
  *
- * WASH 0..100 moves everything at once (w = Wash / 100, smoothed per block, about 10 ms):
+ * WASH 0..100 moves everything at once (w = Wash / 100, smoothed per block, about 50 ms):
  *   send = sin(w x 90 deg) into the loop, dry = cos(w x 90 deg): equal power, 100 = wash only
  *   decay fb = 0.40 .. 0.98 (about 1 s .. almost endless)
  *   diffusion g = 0.50 .. 0.70
@@ -26,7 +26,7 @@
  * FOOTSWITCH: plain on/off with trails. OFF: send ramps to 0, the dry comes back to full level and
  *   the tail rings out over the Tail time (decay capped at 0.9 so it dies).
  *
- * MEMORY: 2 x 7000 16-bit samples (14-bit codes, zarena.h) + 16 KB of diffuser lines + state.
+ * MEMORY: 2 x 7000 float samples (56 KB) + 16 KB of diffuser lines + state.
  *   Cleared 512 values per block after loading (dry meanwhile, about 7 ms).
  *
  * KNOBS (screen values; 4, two pages): 0 Wash 0..100 (50)   1 Tone 0..100 (50)   2 Size 0..100 (50)
@@ -45,25 +45,25 @@
 #define WD_EXPAND_PRAGMA(x) WD_DO_PRAGMA(x)
 #define WD_ALWAYS_INLINE(fn) WD_EXPAND_PRAGMA(FUNC_ALWAYS_INLINE(fn))
 #define WD_EIGHT WD_DO_PRAGMA(MUST_ITERATE(8, 8, 8)) WD_DO_PRAGMA(UNROLL(1))
+#define WD_EIGHT2 WD_DO_PRAGMA(MUST_ITERATE(8, 8, 8)) WD_DO_PRAGMA(UNROLL(2))
 #define WD_CODE_SECTION(fn) WD_EXPAND_PRAGMA(CODE_SECTION(fn, ".audio"))
 #else
 #define WD_ALWAYS_INLINE(fn)
 #define WD_EIGHT
+#define WD_EIGHT2
 #define WD_CODE_SECTION(fn)
 #endif
 
-#define WD_MAGIC      0x57444F43u        /* "WDOC": change whenever WdState changes      */
+#define WD_MAGIC      0x57444F44u        /* "WDOC": change whenever WdState changes      */
 #define WD_N          7000               /* ring length per side (a multiple of 8)      */
 #define WD_APN        512                /* all-pass line length (power of 2)           */
 #define WD_CLEAR_N    (2 * WD_N + 2 * 4 * WD_APN)
 #define WD_CLEAR_BLK  512
-#define WD_TO16       4096.0f            /* 14-bit codes in the ring (zarena.h) */
-#define WD_FROM16     2.4414062e-4f      /* 1 / 4096 */
 #define WD_XF_STEP    9.765625e-4f       /* Size crossfade: 1024 samples = 23 ms */
 #define WD_W2C        2.0555e-4f
 #define WD_SG_RATE    0.003f             /* send smoothing, about 7.5 ms */
-#define WD_W_RATE     0.1f               /* Wash smoothing per block, about 10 ms */
-#define WD_QUIET      0.5f               /* ring "silent" below this (4096 scale)       */
+#define WD_W_RATE     0.03f              /* Wash smoothing per block, about 50 ms: smooths a PERFORM lag step (up to ~10 every 48 ms) */
+#define WD_QUIET      1.2207031e-4f      /* ring "silent" below this (-78 dB)           */
 
 typedef struct {
     float dT, fb, cl, ch, g, inT, rel;   /* rel: tail Wash fall per block (Tail) */
@@ -90,7 +90,7 @@ typedef struct {
     float tt, ftb;         /* Tone term and ring-out base (set when a knob moves)   */
     unsigned int seal[ZA_NSEAL(45)]; /* header words 45 (zarena.h)               */
     float ap[2][4][WD_APN];
-    short buf[2 * WD_N];   /* 14-bit codes: za_s14 / za_u14 */
+    float buf[2 * WD_N];   /* floats: 14-bit codes fed back every pass crackled (truncation grain) */
 } WdState;
 ZA_CHECK(WdState);
 
@@ -156,11 +156,11 @@ static inline int wd_len(int c, int k)
 }
 
 WD_ALWAYS_INLINE(wd_read)
-static inline float wd_read(const short *b, int wp, int age)
+static inline float wd_read(const float *b, int wp, int age)
 {
     int j = wp - age;
     j = (j < 0) ? j + WD_N : j;
-    return (float)za_u14(b[j]) * WD_FROM16;
+    return b[j];
 }
 
 WD_ALWAYS_INLINE(wd_init)
@@ -233,7 +233,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     float dCur = s->dCur, dOld, xf = s->xf, sg = s->sg, bigm = 0.0f, inT = P->inT;
     float xs[2][8], xe[8], sgv[8], dgv[8], yl[8], yr[8], cv[16];
     const float fb = P->fb, cl = P->cl, ch_ = P->ch, g = P->g;
-    short * restrict sb = s->buf;
+    float * restrict sb = s->buf;
 
     /* nothing goes in and the ring has been silent for longer than the loop: the dry passes as is */
     if (inT == 0.0f && sg == 0.0f && xf >= 1.0f && s->quiet > (int)(P->dT * 1.13f + 4096.0f)) {
@@ -273,12 +273,19 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
 
     /* read the loop's return, both sides */
     if (xe[0] >= 1.0f) {
-        WD_EIGHT
-        for (i = 0; i < 8; i++) {
-            int wpk = wp0 + i;
-            wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-            yl[i] = wd_read(sb, wpk, aL);
-            yr[i] = wd_read(sb + WD_N, wpk, aR);
+        int jl = wp0 - aL, jr = wp0 - aR;
+        jl = (jl < 0) ? jl + WD_N : jl; jr = (jr < 0) ? jr + WD_N : jr;
+        if (jl <= WD_N - 8 && jr <= WD_N - 8) {   /* nearly always: the 8 reads do not reach the ring's end */
+            const float *pl = sb + jl, *pr = sb + WD_N + jr;
+            WD_EIGHT
+            for (i = 0; i < 8; i++) { yl[i] = pl[i]; yr[i] = pr[i]; }
+        } else {
+            WD_EIGHT
+            for (i = 0; i < 8; i++) {
+                int kl = jl + i, kr = jr + i;
+                kl = (kl >= WD_N) ? kl - WD_N : kl; kr = (kr >= WD_N) ? kr - WD_N : kr;
+                yl[i] = sb[kl]; yr[i] = sb[WD_N + kr];
+            }
         }
     } else {
         WD_EIGHT
@@ -294,9 +301,14 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     {
         const float al = 1.0f - cl, ah = 1.0f - ch_;
         float l0 = s->lp[0], l1 = s->lp[1], h0 = s->hs[0], h1 = s->hs[1];
+        /* the soft clips do not chain sample to sample: two samples a pass run side by side */
+        WD_EIGHT2
+        for (i = 0; i < 8; i++) {
+            yl[i] = wd_sat(sgv[i] * xs[0][i] + fb * yl[i]); yr[i] = wd_sat(sgv[i] * xs[1][i] + fb * yr[i]);
+        }
         WD_EIGHT
         for (i = 0; i < 8; i++) {
-            float v0 = wd_sat(sgv[i] * xs[0][i] + fb * yl[i]), v1 = wd_sat(sgv[i] * xs[1][i] + fb * yr[i]);
+            float v0 = yl[i], v1 = yr[i];
             l0 = al * l0 + cl * v0;  l1 = al * l1 + cl * v1;
             h0 = ah * h0 + ch_ * l0; h1 = ah * h1 + ch_ * l1;
             yl[i] = l0 - h0; yr[i] = l1 - h1;
@@ -308,8 +320,10 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
      * sample to sample; eight of them side by side keep the DSP's pipeline full */
     {
         float t0[8], t1[8], t2[8], t3[8], t4[8], t5[8], t6[8], t7[8];
+        const float g1 = 1.0f - g * g;
 #define WD_TAP(j, c, k) t##j[i] = s->ap[c][k][(apw - wd_len(c, k) + i) & (WD_APN - 1)];
-#define WD_AP(v, j, c, k) { float d = t##j[i], wv = v + g * d; s->ap[c][k][w] = wv; v = d - g * wv; }
+/* d - g (v + g d) written as (1 - g^2) d - g v: v reaches the output in one multiply-add, not two */
+#define WD_AP(v, j, c, k) { float d = t##j[i]; s->ap[c][k][w] = v + g * d; v = g1 * d - g * v; }
         /* the 8 taps the block reads first: lengths >= 113 never reach this block's 8 writes */
         for (i = 0; i < 8; i++) {
             WD_TAP(0, 0, 0) WD_TAP(1, 0, 1) WD_TAP(2, 0, 2) WD_TAP(3, 0, 3)
@@ -324,7 +338,7 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
             WD_AP(vl, 2, 0, 2) WD_AP(vr, 6, 1, 2)
             WD_AP(vl, 3, 0, 3) WD_AP(vr, 7, 1, 3)
             yl[i] = vl; yr[i] = vr;
-            cv[i] = vl * WD_TO16; cv[i + 8] = vr * WD_TO16;
+            cv[i] = vl; cv[i + 8] = vr;
             a0 = (vl < 0.0f) ? -vl : vl; a1 = (vr < 0.0f) ? -vr : vr;
             a0 = (a1 > a0) ? a1 : a0;
             bigm = (a0 > bigm) ? a0 : bigm;
@@ -335,12 +349,10 @@ static inline void wd_process(WdState *s, const WdParams *P, float *buf)
     /* the ring stores in a loop of their own: above they chain every sample to the last */
     WD_EIGHT
     for (i = 0; i < 8; i++) {
-        int wpk = wp0 + i;
-        wpk = (wpk >= WD_N) ? wpk - WD_N : wpk;
-        sb[wpk] = za_s14((int)cv[i]);
-        sb[WD_N + wpk] = za_s14((int)cv[i + 8]);
+        int wpk = wp0 + i;   /* wp0 and WD_N are multiples of 8: a block's stores never wrap */
+        sb[wpk] = cv[i];
+        sb[WD_N + wpk] = cv[i + 8];
     }
-    bigm *= WD_TO16;
     s->quiet = (bigm >= WD_QUIET || sg > 0.0f) ? 0 : ((s->quiet < 100000000) ? s->quiet + 8 : s->quiet);
 
     {

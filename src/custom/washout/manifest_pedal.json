@@ -36,6 +36,6 @@
       "comment": "How long the cloud rings out after Wash goes down or the effect goes off: 0.1 s (0) .. 20 s (100), 60 = 2.4 s. The screen shows the time. Default 60."
     }
   ],
-  "dsp_cost": 59.0,
-  "dsp_cost_comment": "Estimated 2026-11-21 from the compiled code (worst block, arena seal included, seal unrolled): about 3,500 cycles (Mix glide block). Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
+  "dsp_cost": 51.0,
+  "dsp_cost_comment": "Estimate, not measured: the previous Washout (tempo-synced ring, 8 diffusers) estimated 4,100 cycles; this one keeps the 8 diffusers and drops the Time sync, Width and the 680 KB ring (now 56 KB of floats): about 3,400 cycles; the cheaper diffuser, ring read/write and loop-input split take about 375 off: about 3,030 cycles. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Arena seal (28 words) included. Re-measure on the pedal (SYSTEM > LOAD)."
 }

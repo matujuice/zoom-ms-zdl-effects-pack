@@ -2,7 +2,7 @@
 
 Seventeen free effects for Zoom MS pedals, made for synths and drum machines.
 
-WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub, DIRTBOX, Breather, GRDELAY, Sweep, LOUDER, DJFilter, Washout, Takeoff, Gooey and GRDLOOP. Free to use and share (MIT licence, see LICENSE).
+WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub, DIRTBOX, Breather, GRDELAY, Sweep, LOUDER, DJFilter, KickKill, Washout, Takeoff, Gooey and GRDLOOP. Free to use and share (MIT licence, see LICENSE).
 
 Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 Tested on a Zoom MS-60B running MS-50G firmware. The MS-70CDR, MS-50G and other MS pedals are untested, so reports are welcome.
@@ -216,19 +216,26 @@ For the end of the chain (after MIX); stereo in and out. A transparent look-ahea
 | Style | CLEAN, PUNCH, LOUD | Only the saturation before the limiter and how much transient gets through (never the release). CLEAN has none, PUNCH adds a little and lets transients through a little, LOUD is the densest. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style (parallel limiting). The dry is delayed like the wet, so a part Mix never sounds like a comb filter. |
 
-### DJFilter: a DJ filter and kick kill
+### DJFilter: a DJ filter
 Stereo in and out.
 
-The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform, with a kick kill for transitions. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing. Turning away from the middle is always more filtering, exponential in frequency. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it for the kick kill (Kill 120 Hz, filter open).
+The DJ mixer filter (Xone / DJM style) you ride by hand, from a CC or Perform. One DJ knob: left closes the highs (low-pass), right closes the lows (high-pass), -3..+3 is flat and costs nothing. Turning away from the middle is always more filtering, exponential in frequency. Always 24 dB/oct, the hard DJ-mixer cut. The filter follows DJ through a fixed 3 ms smoothing, so knob steps and Perform sweeps never click (a full -100 to +100 jump, like a preset recall, gives a small tick). The footswitch is a plain on/off, ramped over a few ms so it never clicks. The kick kill is its own effect now: KickKill, so it can sit on another signal path.
 
 | Knob | Range | What it does |
 |---|---|---|
 | DJ | -100..+100 | Left low-pass (-100 closes down to about 40 Hz), right high-pass (+100 closes up to about 10 kHz), -3..+3 is flat. |
 | Reso | 0..100 | Resonance at the far end of the sweep. About none when the filter is open, rising as it closes, never self-oscillating. Default 30. |
-| Kill | OFF, 20..300 Hz | An independent 24 dB/oct low cut that removes kick and bass. Use it alone or on top of the filter. Default OFF. |
-| Slope | 12 / 24 | dB per octave of the filter (not Kill). 12 is gentle and warm, 24 is the hard DJ-mixer cut. Default 24. |
-| Glide | 0..1000 ms | How fast the filter follows DJ, so a fast CC or Perform jump sweeps instead of stepping. Default about 20 ms. |
 | Level | -12.0..+6.0 dB | Output trim. |
+| Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
+
+### KickKill: a kick kill
+Stereo in and out.
+
+A steep 24 dB/oct low cut that removes kick and bass, the classic "kill the low end before the drop". It was DJFilter's Kill knob; as its own effect it can sit on a different signal path from the DJ filter. The footswitch is a plain on/off, ramped over a few ms so it never clicks: press it to kill the kick. Kill OFF or the footswitch off costs nothing.
+
+| Knob | Range | What it does |
+|---|---|---|
+| Kill | OFF, 20..300 Hz | Where the cut sits: about half level there, then 24 dB less per octave below. Default 100 Hz. |
 | Mix | 0..100 | Dry/wet crossfade, DJ style. Default 100. |
 
 ### Washout: one knob that washes the track away
