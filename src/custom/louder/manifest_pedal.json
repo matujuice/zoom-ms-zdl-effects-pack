@@ -24,6 +24,6 @@
   "audio_func_name": "Fx_DLY_LOUDER",
   "audio_nop": false,
   "audio_nop_comment": "Set true for a UI-only smoke build before trusting the DSP.",
-  "dsp_cost": 16.0,
+  "dsp_cost": 29.0,
   "dsp_cost_comment": "Estimated 2026-11-21 from the compiled code (worst block, arena seal included, seal unrolled): about 600 cycles of audio (the spec says 10 declared) + about 360 for the 74-word seal = 960. Declared = cycles / 75 + 25 %, rounded up (docs/STEREO.md); 1% LOAD = 544 cycles. Re-measure on the pedal (SYSTEM > LOAD)."
 }
