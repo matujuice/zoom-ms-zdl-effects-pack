@@ -1,6 +1,6 @@
 # Matujuice Zoom MS ZDL effects pack
 
-Seventeen free effects for Zoom MS pedals, made for synths and drum machines.
+Eighteen free effects for Zoom MS pedals, made for synths and drum machines.
 
 WaveFold, DualShft, Choral, EuGate, DubSiren, S.GN_L, Scrub, DIRTBOX, Breather, GRDELAY, Sweep, LOUDER, DJFilter, KickKill, Washout, Takeoff, Gooey and GRDLOOP. Free to use and share (MIT licence, see LICENSE).
 
