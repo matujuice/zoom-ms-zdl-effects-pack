@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 NAMES = ["WaveFold", "DualShft", "Choral", "EuGate", "DubSiren", "SGNL", "Scrub",
-         "DirtBox", "Breather", "GRDELAY", "Sweep", "LOUDER", "DJFilter", "Washout", "Takeoff",
+         "DirtBox", "Breather", "GRDELAY", "Sweep", "LOUDER", "DJFilter", "KickKill", "Washout", "Takeoff",
          "Gooey", "GRDLOOP"]
 missing = [n for n in NAMES if not (ROOT / "dist" / (n + ".ZDL")).exists()]
 if missing:

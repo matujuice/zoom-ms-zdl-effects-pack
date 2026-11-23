@@ -20,7 +20,8 @@ Free custom effects for Zoom MultiStomp pedals, with source code.
 | **DIRTBOX** | A distortion box for a 303: seven real pedal circuits (TS9, Distortion+, DS-1, RAT 2, Big Muff, Super-Fuzz, Metal Zone), a 3-band acid EQ and an automatic noise reducer. |
 | **Sweep** | Phaser, flanger and resonant filter in one effect: Type picks the engine, one LFO sweeps it, from a 1/32 note up to 8 bars, locked to the bar. |
 | **LOUDER** | Transparent look-ahead mastering limiter for the end of the chain: Gain, Ceil, Zoom (cover meter), Rels (AUTO or 1-1000 ms), Style (CLEAN, PUNCH, LOUD), Mix. One gain for both sides, hard clip at the ceiling. |
-| **DJFilter** | The DJ mixer filter you ride by hand, plus a kick kill: a one-knob DJ filter (left low-pass, right high-pass), Reso that follows the sweep, Kill (24 dB/oct low cut, 20-300 Hz), Slope 12/24, Glide, Level, Mix. The footswitch is the kick kill. |
+| **DJFilter** | The DJ mixer filter you ride by hand: a one-knob 24 dB/oct DJ filter (left low-pass, right high-pass), Reso that follows the sweep, Level, Mix. |
+| **KickKill** | A kick kill: a 24 dB/oct low cut (OFF, 20-300 Hz) and Mix. The footswitch kills the kick. Its own effect, so it can sit on another path than DJFilter. |
 | **Washout** | A washout for transitions on one macro knob, like Transit's: Wash moves the send, the decay, the smear and the filters together; Tone and Size shape the cloud. The footswitch is on/off with trails. |
 | **Takeoff** | Risers and downlifters that only add sound on top: mono noise sweeps with swelling volume, Dir UP/DOWN, Length in bars or seconds, Color, Wind and Grain to shape the noise, Range, Var so no two takeoffs sound the same, Tail to fade a riser out over bars or seconds. A footswitch flip fires a sweep at once, a hold rises while held, and on MIDISTOMP v2.0 the LED fades from on to off over the run. |
 | **Gooey** | SSL G-bus style mix bus compressor: Thrsh (0.1 dB steps, 0 = off), Ratio, Zoom (cover meter), Attck, Rels (AUTO is program-dependent), MkUp (AUTO adds back the average reduction), Mix (parallel), SC HP (sidechain high-pass). One gain for both sides. |
@@ -41,7 +42,7 @@ Unofficial. Not affiliated with or endorsed by Zoom. Use at your own risk.
 
 The latest release has all seventeen effects, made for MIDISTOMP v2.0 and working on stock firmware too. To try newer changes on `main`, build them from source (below).
 
-Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 GRDLOOP, 501 Gooey, 502 DJFilter). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
+Each effect has its own ID in the Delay category (480 DualShft, 481 LOUDER, 485 DubSiren, 486 Choral, 487 WaveFold, 488 EuGate, 489 S.GN_L, 490 Scrub, 491 DirtBox, 492 Washout, 493 Breather, 494 Takeoff, 495 GRDELAY, 496 Sweep, 497 GRDLOOP, 501 Gooey, 502 DJFilter, 503 KickKill). If another custom effect on your pedal uses one of these numbers, change `fxid` in that effect's `manifest_pedal.json` and rebuild.
 
 ## What's next
 
@@ -57,7 +58,7 @@ py build_all.py eugate     # build one
 py make_release.py         # zip dist/*.ZDL with the readme and licence into release/
 ```
 
-Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly` (GRDELAY), `looper` (GRDLOOP), `louder`, `djfilter`, `washout`, `takeoff`, `gooey`. Probes (`tempoprb`, `dryprb`, `routeprb`) are built only when named.
+Effect names for `build_all.py`: `wavefold`, `dualshft`, `formant` (Choral), `eugate`, `dubsiren`, `sgnl` (S.GN_L, file `SGNL.ZDL`), `scrub`, `breather`, `dirtbox`, `sweep`, `griddly` (GRDELAY), `looper` (GRDLOOP), `louder`, `djfilter`, `kickkill`, `washout`, `takeoff`, `gooey`. Probes (`tempoprb`, `dryprb`, `routeprb`) are built only when named.
 
 ## Repository layout
 

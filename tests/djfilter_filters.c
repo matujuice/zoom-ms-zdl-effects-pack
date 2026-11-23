@@ -1,4 +1,4 @@
-/* DJFilter filters: flat at 0 (and DJ -3..+3), the DJ low-pass and high-pass cutoffs and slopes, resonance following the sweep and staying stable, Kill at 24 dB/oct, Level, Mix and the
+/* DJFilter filters: flat at 0 (and DJ -3..+3), the DJ low-pass and high-pass cutoffs and the 24 dB slope, resonance following the sweep and staying stable, Level, Mix and the
  * labels. Everything through the real entry. Host test only. */
 #include "djfilter_common.h"
 
@@ -40,13 +40,13 @@ int main(void)
     flat_case("DJ +4 (just outside)", 4);
 
     /* DJ low-pass (left) and high-pass (right) cutoffs, 24 and 12 dB/oct, no resonance, no glide */
-    for (s = 0; s < 2; s++) {
+    for (s = 1; s < 2; s++) {                                   /* always 24 dB/oct now */
         static const int amt[] = { 30, 50, 70, 100 };
         for (i = 0; i < 4; i++) {
             double fc;
             a = AMT(amt[i]);
             fc = lp_fc(a);
-            setup(); SET(DJ, DJV(-amt[i])); SET(RESO, 0); SET(GLIDE, 0); SET(SLOPE, s);
+            setup(); SET(DJ, DJV(-amt[i])); SET(RESO, 0);
             g = gain_at(fc, 1500, 3000);
             printf("LP %3d slope %d: fc %.0f Hz gain at fc %.3f\n", amt[i], s ? 24 : 12, fc, g);
             CHECK(fabs(g - (s ? 0.5 : 0.7071)) < 0.06, "LP %d slope %d gain at fc %.3f", amt[i], s ? 24 : 12, g);
@@ -55,7 +55,7 @@ int main(void)
                 CHECK(fabs(g - (s ? 0.059 : 0.243)) < (s ? 0.02 : 0.05), "LP %d slope %d gain at 2 fc %.3f", amt[i], s ? 24 : 12, g);
             }
             fc = hp_fc(a);
-            setup(); SET(DJ, DJV(amt[i])); SET(RESO, 0); SET(GLIDE, 0); SET(SLOPE, s);
+            setup(); SET(DJ, DJV(amt[i])); SET(RESO, 0);
             g = gain_at(fc, 1500, 3000);
             printf("HP %3d slope %d: fc %.0f Hz gain at fc %.3f\n", amt[i], s ? 24 : 12, fc, g);
             CHECK(fabs(g - (s ? 0.5 : 0.7071)) < 0.06, "HP %d slope %d gain at fc %.3f", amt[i], s ? 24 : 12, g);
@@ -72,7 +72,7 @@ int main(void)
             double fc = lp_fc(AMT(amt[i])), f, best = 0.0;
             for (s = 0; s < 14; s++) {
                 f = fc * 0.6 * pow(1.1, (double)s);
-                setup(); SET(DJ, DJV(-amt[i])); SET(RESO, 100); SET(GLIDE, 0);
+                setup(); SET(DJ, DJV(-amt[i])); SET(RESO, 100);
                 g = gain_at(f, 1500, 3000);
                 if (g > best) best = g;
             }
@@ -82,9 +82,9 @@ int main(void)
         CHECK(pk[0] < 1.1, "resonance not gone when open (%.2f)", pk[0]);
         for (i = 1; i < 4; i++) { CHECK(pk[i] > prev, "resonance does not rise as the filter closes"); prev = pk[i]; }
         CHECK(pk[3] > 1.8 && pk[3] < 8.0, "resonance at the far end out of range (%.2f)", pk[3]);
-        for (s = 0; s < 4; s++) {                               /* LP / HP 100, Reso 100, both slopes: a burst dies away */
+        for (s = 2; s < 4; s++) {                               /* LP / HP 100, Reso 100, 24 dB: a burst dies away */
             long b; int j; double tail = 0;
-            setup(); SET(DJ, (s & 1) ? 200 : 0); SET(RESO, 100); SET(GLIDE, 0); SET(SLOPE, s >> 1);
+            setup(); SET(DJ, (s & 1) ? 200 : 0); SET(RESO, 100);
             for (b = 0; b < 30000; b++) {
                 float l[8], r[8];
                 for (j = 0; j < 8; j++) l[j] = r[j] = (b < 20) ? 0.8f * (float)sin(0.3 * (double)(b * 8 + j)) : 0.0f;
@@ -94,30 +94,9 @@ int main(void)
             printf("burst, %s 100 slope %d: tail %.3g\n", (s & 1) ? "HP" : "LP", (s >> 1) ? 24 : 12, tail);
             CHECK(tail < 1e-4, "burst still rings (self-oscillation?) tail %.3g", tail);
         }
-        setup(); SET(DJ, 0); SET(GLIDE, 0);                    /* default Reso 30: a mild lift only */
+        setup(); SET(DJ, 0);                    /* default Reso 30: a mild lift only */
         g = gain_at(45.0, 1500, 3000);
         CHECK(g < 2.0, "default resonance too strong (%.2f)", g);
-    }
-
-    /* Kill: 24 dB/oct low cut, independent of the filter */
-    {
-        double g100, g50, g25;
-        setup(); SET(KILL, 81);                                 /* 100 Hz */
-        g100 = gain_at(100.0, 1500, 3000); g50 = gain_at(50.0, 1500, 3000); g25 = gain_at(25.0, 1500, 3000);
-        g = gain_at(1000.0, 1500, 3000);
-        printf("Kill 100 Hz: 100 Hz %.3f, 50 Hz %.4f, 25 Hz %.4f, 1 kHz %.3f (slope %.1f dB/oct)\n",
-               g100, g50, g25, g, 20.0 * log10(g50 / g25));
-        CHECK(fabs(g100 - 0.5) < 0.06, "Kill gain at its frequency %.3f", g100);
-        CHECK(g > 0.99, "Kill touches the highs %.3f", g);
-        CHECK(g50 / g25 > 12.0 && g50 / g25 < 18.0, "Kill slope is not 24 dB/oct (%.1f dB)", 20.0 * log10(g50 / g25));
-        CHECK(g25 < 0.01, "Kill leaves content below it (%.4f)", g25);
-        setup(); SET(KILL, 1); g = gain_at(20.0, 1500, 6000);
-        CHECK(fabs(g - 0.5) < 0.08, "Kill 20 Hz gain at fc %.3f", g);
-        setup(); SET(KILL, 281); g = gain_at(300.0, 1500, 3000);
-        CHECK(fabs(g - 0.5) < 0.06, "Kill 300 Hz gain at fc %.3f", g);
-        setup(); SET(KILL, 81); SET(SLOPE, 0); SET(DJ, DJV(-32)); SET(RESO, 0); SET(GLIDE, 0);   /* with a 12 dB filter on: Kill is still 24 dB */
-        g50 = gain_at(50.0, 1500, 3000); g25 = gain_at(25.0, 1500, 3000);
-        CHECK(g50 / g25 > 12.0 && g50 / g25 < 18.0, "Kill slope changes with the filter (%.1f dB)", 20.0 * log10(g50 / g25));
     }
 
     /* Level and Mix */
@@ -133,18 +112,10 @@ int main(void)
         n = ZDL_GetLabel_0(0, t);   CHECK(!strcmp(t, "-100") && n == 4, "DJ label 0 [%s]", t);
         n = ZDL_GetLabel_0(100, t); CHECK(!strcmp(t, "0") && n == 1, "DJ label 100 [%s]", t);
         n = ZDL_GetLabel_0(200, t); CHECK(!strcmp(t, "+100") && n == 4, "DJ label 200 [%s]", t);
-        n = ZDL_GetLabel_2(0, t);   CHECK(!strcmp(t, "OFF"), "Kill label 0 [%s]", t);
-        n = ZDL_GetLabel_2(1, t);   CHECK(!strcmp(t, "20"), "Kill label 1 [%s]", t);
-        n = ZDL_GetLabel_2(281, t); CHECK(!strcmp(t, "300"), "Kill label 281 [%s]", t);
-        n = ZDL_GetLabel_3(0, t);   CHECK(!strcmp(t, "12"), "Slope label 0 [%s]", t);
-        n = ZDL_GetLabel_3(1, t);   CHECK(!strcmp(t, "24"), "Slope label 1 [%s]", t);
-        n = ZDL_GetLabel_4(0, t);   CHECK(!strcmp(t, "0"), "Glide label 0 [%s]", t);
-        n = ZDL_GetLabel_4(44, t);  CHECK(!strcmp(t, "20"), "Glide label 44 [%s]", t);
-        n = ZDL_GetLabel_4(100, t); CHECK(!strcmp(t, "1000"), "Glide label 100 [%s]", t);
-        n = ZDL_GetLabel_5(0, t);   CHECK(!strcmp(t, "-12.0"), "Level label 0 [%s]", t);
-        n = ZDL_GetLabel_5(23, t);  CHECK(!strcmp(t, "-0.5"), "Level label 23 [%s]", t);
-        n = ZDL_GetLabel_5(24, t);  CHECK(!strcmp(t, "0.0"), "Level label 24 [%s]", t);
-        n = ZDL_GetLabel_5(36, t);  CHECK(!strcmp(t, "+6.0") && n == 4, "Level label 36 [%s]", t);
+        n = ZDL_GetLabel_2(0, t);   CHECK(!strcmp(t, "-12.0"), "Level label 0 [%s]", t);
+        n = ZDL_GetLabel_2(23, t);  CHECK(!strcmp(t, "-0.5"), "Level label 23 [%s]", t);
+        n = ZDL_GetLabel_2(24, t);  CHECK(!strcmp(t, "0.0"), "Level label 24 [%s]", t);
+        n = ZDL_GetLabel_2(36, t);  CHECK(!strcmp(t, "+6.0") && n == 4, "Level label 36 [%s]", t);
         (void)n;
     }
     return fails;

@@ -1,4 +1,4 @@
-/* DJFilter clicks: fast knob jumps (DJ, Kill, Slope) and footswitch on / off must not step.
+/* DJFilter clicks: fast DJ jumps and footswitch on / off must not step.
  * The measure is the largest sample-to-sample step of the output against the largest step the
  * input itself has, plus a small allowance. Host test only. */
 #include "djfilter_common.h"
@@ -26,12 +26,14 @@ static double run_steps(double hz, double amp, int blocks, int at, change_fn cha
 
 static void dj_left(void)   { SET(DJ, 0); }
 static void dj_right(void)  { SET(DJ, 200); }
-static void kill_on(void)   { SET(KILL, 281); }
-static void slope_12(void)  { SET(SLOPE, 0); }
 static void dj_back(void)   { SET(DJ, 100); }
 static void sw_off(void)    { params[0] = 0.0f; }
 static void lp_sw_off(void) { SET(DJ, 0); params[0] = 0.0f; }
 static void sw_on(void)     { params[0] = 1.0f; }
+
+/* an instant full-range DJ jump (preset recall) sweeps in the fixed 3 ms: a small step, louder than
+ * the input's own, is expected there (the old DJFilter at Glide 0 gave the same 0.221 / 0.022) */
+static double slack = 0.01;
 
 static void check(const char *name, double hz, double amp, int blocks, int at, change_fn pre, change_fn change)
 {
@@ -40,18 +42,16 @@ static void check(const char *name, double hz, double amp, int blocks, int at, c
     if (pre) pre();
     w = run_steps(hz, amp, blocks, at, change, &istep);
     printf("%s: largest output step %.4f (input %.4f)\n", name, w, istep);
-    CHECK(w < istep * 1.5 + 0.01, "%s clicks: output step %.4f, input step %.4f", name, w, istep);
+    CHECK(w < istep * 1.5 + slack, "%s clicks: output step %.4f, input step %.4f", name, w, istep);
 }
-
-static void kill_dj(void)   { SET(KILL, 100); SET(DJ, 150); }
 
 /* DJ moved like a hand turn (1 step / 4 blocks) or like Perform (a value every 16 ms, a 500 ms
  * ramp) on a 110 Hz sine. Returns the largest output 2nd difference against the input's own:
  * a click is a corner or a step, which the 2nd difference shows even when the step is small. */
-static double sweep_2nd(int from, int to, int perf, int glide)
+static double sweep_2nd(int from, int to, int perf)
 {
     long blk, k = 0; int j, cur = from; double p1 = 0, p2 = 0, q1 = 0, q2 = 0, worst = 0, iw = 0;
-    setup(); SET(GLIDE, glide); SET(DJ, from);
+    setup(); SET(DJ, from);
     for (blk = 0; blk < 6000; blk++) {
         float l[8];
         long t = blk - 1000;
@@ -85,11 +85,10 @@ int main(void)
     check("DJ 0 -> +100 (100 Hz)", 100.0, 0.5, 1500, 400, 0, dj_right);
     check("DJ 0 -> -100", 500.0, 0.5, 1500, 400, 0, dj_left);
     check("DJ 0 -> +100", 500.0, 0.5, 1500, 400, 0, dj_right);
+    slack = 0.25;
     check("DJ -100 -> +100", 500.0, 0.5, 1500, 600, dj_left, dj_right);
     check("DJ -100 -> 0", 100.0, 0.5, 1500, 600, dj_left, dj_back);
-    check("Kill OFF -> 300 Hz", 200.0, 0.5, 1500, 400, 0, kill_on);
-    check("Slope 24 -> 12 with DJ -100", 800.0, 0.5, 1500, 400, dj_left, slope_12);
-    check("Kill + DJ jump together", 400.0, 0.5, 1500, 400, 0, kill_dj);
+    slack = 0.01;
 
     /* footswitch: off -> on and on -> off with the filter closed, so the sound changes a lot;
      * the ramp is 128 samples, so the step stays a small multiple of the input's own step */
@@ -101,7 +100,7 @@ int main(void)
         CHECK(w < istep * 1.5 + 0.01, "footswitch on clicks");
     }
     {
-        setup(); SET(DJ, 0); SET(KILL, 50);
+        setup(); SET(DJ, 0);
         w = run_steps(300.0, 0.5, 1000, 400, sw_off, &istep);
         printf("footswitch on -> off: largest step %.4f (input %.4f)\n", w, istep);
         CHECK(w < istep * 1.5 + 0.01, "footswitch off clicks");
@@ -117,7 +116,7 @@ int main(void)
     /* on -> off -> on again with a rest between: the filters restart from the signal, no pop */
     {
         double worst = 0, pl = 0; int ph = 0;
-        setup(); SET(DJ, 40); SET(KILL, 60);
+        setup(); SET(DJ, 40);
         for (b = 0, k = 0; b < 3000; b++) {
             float l[8];
             if (b == 500) params[0] = 0.0f;
@@ -132,11 +131,11 @@ int main(void)
         CHECK(worst < c * 1.5 + 0.01, "on/off/on clicks (%.4f)", worst);
     }
     /* sweeps through DJ 0 (LP <-> HP) by hand and by Perform: before the fade-in at the flat
-     * zone's edge these stepped 25x the input (default Glide) and 140x (Perform, Glide 0) */
-    { static const int pf[] = {0, 1, 1}, gl[] = {44, 44, 0}; static const char *nm[] = {"hand", "Perform", "Perform, Glide 0"};
-      double lim[] = {12.0, 8.0, 15.0}, x; int q;
-      for (q = 0; q < 3; q++) {
-          x = sweep_2nd(0, 200, pf[q], gl[q]);
+     * zone's edge these stepped 25x the input (Glide 20 ms) and 140x (Perform, 3 ms: the smoothing it has now) */
+    { static const int pf[] = {0, 1}; static const char *nm[] = {"hand", "Perform"};
+      double lim[] = {15.0, 15.0}, x; int q;
+      for (q = 0; q < 2; q++) {
+          x = sweep_2nd(0, 200, pf[q]);
           printf("DJ -100 -> +100 (%s): largest 2nd difference x%.1f the input's\n", nm[q], x);
           CHECK(x < lim[q], "DJ sweep through 0 (%s) clicks: x%.1f", nm[q], x);
       } }
