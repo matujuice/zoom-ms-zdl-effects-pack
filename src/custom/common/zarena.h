@@ -56,7 +56,7 @@ static inline void za_seal(void *hdr, int n, unsigned int *seal)
     int i, k;
     for (i = 0; i + 14 <= n; i += 14) {
         c = 0u;
-#ifdef __TI_COMPILER_VERSION__
+#if defined(__TI_COMPILER_VERSION__) && !defined(ZA_SEAL_ROLLED)   /* rolled: smaller, a bit slower */
 #pragma UNROLL(14)
 #endif
         for (k = 0; k < 14; k++) {
@@ -86,7 +86,7 @@ static inline void za_unseal(void *hdr, int n, const unsigned int *seal)
     int i, k;
     for (i = 0; i + 14 <= n; i += 14) {
         c = *seal++;
-#ifdef __TI_COMPILER_VERSION__
+#if defined(__TI_COMPILER_VERSION__) && !defined(ZA_SEAL_ROLLED)   /* rolled: smaller, a bit slower */
 #pragma UNROLL(14)
 #endif
         for (k = 0; k < 14; k++)

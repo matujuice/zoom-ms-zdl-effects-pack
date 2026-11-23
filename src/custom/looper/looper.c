@@ -120,6 +120,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "../common/zmt.h"
+#define ZA_SEAL_ROLLED   /* unrolled, GRDLOOP is 32,610 B: over the 32,270 B proven to load */
 #include "../common/zarena.h"
 
 #ifdef __TI_COMPILER_VERSION__
